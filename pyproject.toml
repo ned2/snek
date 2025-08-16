@@ -1,0 +1,22 @@
+[project]
+name = "snek"
+version = "0.1.0"
+description = "A Snake TUI powered by textual"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=5.0.1",
+]
+
+[project.scripts]
+snek = "snek.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=1.1.0",
+]
