@@ -153,8 +153,12 @@ class StatsPanel(Static):
             self._last_theme = theme
             self.styles.border = ("solid", theme.css_color)
         
+        # Get current world info
+        world_name = self.game.world_path.get_world_name(self.game.level)
+        
         stats_text = Text()
         stats_text.append(f"Level: {self.game.level}\n", style=theme.css_color)
+        stats_text.append(f"World: {world_name}\n", style=theme.css_color)
         stats_text.append(f"Symbols: {self.game.symbols_consumed}\n", style=theme.css_color)
         stats_text.append(f"Length: {len(self.game.snake)}\n", style=theme.css_color)
         stats_text.append(f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n", style=theme.css_color)
