@@ -56,12 +56,6 @@ class GameRules:
         return head == food
     
     @staticmethod
-    def should_level_up(symbols_consumed: int, current_level: int, symbols_per_level: int) -> bool:
-        """Determine if the player should level up."""
-        new_level = (symbols_consumed // symbols_per_level) + 1
-        return new_level > current_level
-    
-    @staticmethod
     def scale_position(pos: Position, old_width: int, old_height: int, new_width: int, new_height: int) -> Position:
         """Scale a position from old dimensions to new dimensions."""
         scaled_x = min(int(pos[0] * new_width / old_width), new_width - 1)

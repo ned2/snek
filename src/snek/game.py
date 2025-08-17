@@ -18,9 +18,7 @@ class Game:
         self.height = height or self.config.default_grid_height
         self.rng = rng or random.Random()
 
-        self.world_path = WorldPath(
-            levels_per_world=self.config.levels_per_unicode_phase
-        )
+        self.world_path = WorldPath()
         self.reset()
 
     def reset(self) -> None:
@@ -28,7 +26,8 @@ class Game:
         self.snake: list[Position] = [mid]
         self.direction = Direction.RIGHT
         self.symbols_consumed = 0
-        self.level = 1
+        self.current_world = 0
+        self.symbols_in_current_world = 0
         self.current_color = self.config.default_color
         self.initial_interval = self.config.initial_speed_interval
         self.current_interval = self.initial_interval
@@ -41,7 +40,7 @@ class Game:
             p = (self.rng.randrange(self.width), self.rng.randrange(self.height))
             if p not in self.snake:
                 self.food = p
-                self.food_emoji = self.world_path.get_food_character(self.level)
+                self.food_emoji = self.world_path.get_food_character(self.current_world)
                 return
 
     def turn(self, dir: Direction) -> None:
@@ -68,17 +67,17 @@ class Game:
         # Check for food collision
         if GameRules.is_food_collision(new_head, self.food):
             self.symbols_consumed += 1
-            self.check_level_up()
+            self.symbols_in_current_world += 1
+            self.check_world_transition()
             self.place_food()
         else:
             self.snake.pop()
 
-    def check_level_up(self) -> None:
-        """Check if player should level up and update color to new color."""
-        if GameRules.should_level_up(
-            self.symbols_consumed, self.level, self.config.symbols_per_level
-        ):
-            self.level += 1
+    def check_world_transition(self) -> None:
+        """Check if player should move to next world and update color."""
+        if self.symbols_in_current_world >= self.config.symbols_per_world:
+            self.current_world += 1
+            self.symbols_in_current_world = 0
             available_colors = [
                 c for c in self.config.level_colors if c != self.current_color
             ]
@@ -122,4 +121,4 @@ class Game:
         if position[0] >= self.width or position[1] >= self.height:
             raise ValueError(f"Food position {position} is out of bounds")
         self.food = position
-        self.food_emoji = emoji or self.world_path.get_food_character(self.level)
+        self.food_emoji = emoji or self.world_path.get_food_character(self.current_world)

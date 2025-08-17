@@ -14,7 +14,7 @@ class GameConfig:
     speed_increase_factor: float = 0.98
 
     # Game progression
-    symbols_per_level: int = 5
+    symbols_per_world: int = 10  # Symbols needed to advance to next world
 
     # UI settings
     stats_panel_width: int = 25
@@ -28,8 +28,6 @@ class GameConfig:
     # Food symbols
     food_symbols: list[str] = None
 
-    # Number of levels before changing character class
-    levels_per_unicode_phase: int = 2
 
     def __post_init__(self):
         """Initialize mutable defaults."""

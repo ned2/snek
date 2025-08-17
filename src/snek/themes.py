@@ -85,22 +85,22 @@ class ThemeManager:
             ),
         ]
 
-    def get_theme_for_level(self, level: int) -> Theme:
-        """Get the theme for a given level, cycling through themes as level increases."""
-        theme_index = (level - 1) % len(self.themes)
+    def get_theme_for_world(self, world_index: int) -> Theme:
+        """Get the theme for a given world, cycling through themes."""
+        theme_index = world_index % len(self.themes)
         return self.themes[theme_index]
 
-    def get_theme_name_for_level(self, level: int) -> str:
-        """Get the theme name for a given level."""
-        return self.get_theme_for_level(level).name
+    def get_theme_name_for_world(self, world_index: int) -> str:
+        """Get the theme name for a given world."""
+        return self.get_theme_for_world(world_index).name
 
     def get_current_theme(self) -> Theme:
         """Get the current active theme."""
         return self.themes[self.current_theme_index]
 
-    def set_level(self, level: int) -> Theme:
-        """Set theme based on level and return it."""
-        self.current_theme_index = (level - 1) % len(self.themes)
+    def set_world(self, world_index: int) -> Theme:
+        """Set theme based on world and return it."""
+        self.current_theme_index = world_index % len(self.themes)
         return self.get_current_theme()
 
     def get_all_themes(self) -> list[Theme]:

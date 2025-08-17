@@ -178,9 +178,11 @@ class SidePanel(Static):
 
     def update_content(self) -> None:
         """Update the stats content."""
-        world_name = self.game.world_path.get_world_name(self.game.level)
+        world_name = self.game.world_path.get_world_name(self.game.current_world)
         self.query_one("#world-value", Label).update(world_name)
-        self.query_one("#symbols-value", Label).update(str(self.game.symbols_consumed))
+        self.query_one("#symbols-value", Label).update(
+            f"{self.game.symbols_in_current_world}/{self.game.config.symbols_per_world}"
+        )
         self.query_one("#speed-value", Label).update(
             f"{self.game.get_moves_per_second():.1f}/sec"
         )
@@ -211,7 +213,7 @@ class SnakeApp(App):
         """Register themes when the app mounts."""
         for theme in self.theme_manager.get_all_themes():
             self.register_theme(theme)
-        self.theme = self.theme_manager.get_theme_name_for_level(1)
+        self.theme = self.theme_manager.get_theme_name_for_world(0)
         # fade the splash screen in on load
         self.splash_view.styles.animate("opacity", value=1.0, duration=1.0)
 
@@ -292,14 +294,14 @@ class SnakeApp(App):
 
     def tick(self) -> None:
         pre_length = len(self.game.snake)
-        old_level = self.game.level
+        old_world = self.game.current_world
 
         self.game.step()
 
-        # Update theme if level changed
-        if self.game.level != old_level:
-            self.theme_manager.set_level(self.game.level)
-            self.theme = self.theme_manager.get_theme_name_for_level(self.game.level)
+        # Update theme if world changed
+        if self.game.current_world != old_world:
+            self.theme_manager.set_world(self.game.current_world)
+            self.theme = self.theme_manager.get_theme_name_for_world(self.game.current_world)
             self.stats_widget.update_content()
 
         if self.game.game_over:
