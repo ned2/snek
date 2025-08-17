@@ -1,6 +1,7 @@
 """Tests to ensure all colors used in the app are valid."""
 
 import pytest
+
 from rich.console import Console
 from rich.style import Style
 from textual.color import Color as TextualColor
