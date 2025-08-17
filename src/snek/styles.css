@@ -1,9 +1,3 @@
-.title-screen {
-    width: 100%;
-    margin-bottom: 5;    
-}
-
-/* Main screen styling */
 Screen {
     align: center middle;
     background: $background;
@@ -16,7 +10,7 @@ Screen {
     width: 100%;
 }
 
-/* Game area takes remaining space after stats panel */
+/* Game area takes remaining space after side panel */
 SnakeView {
     height: 100%;
     width: 1fr;
@@ -24,56 +18,44 @@ SnakeView {
     color: $primary;
 }
 
-/* Stats panel fixed width with border */
+/* Side-panel things */
 SidePanel {
-    width: 25;
+    width: 30;
+    min-width: 30;
     height: 100%;
-    min-width: 25;
     border: solid $primary;
     padding: 0 1;
-}
-
-/* Stats container layout */
-#side-panel-container {
-    height: 100%;
-    layout: vertical;
-}
-
-/* Stats content takes available space */
-#stats-content {
-    height: 1fr;
     color: $primary;
 }
 
-/* Stat row layout */
 .stat-row {
-    width: 100%;
     height: auto;
-    margin-bottom: 1;
 }
 
-/* Stat labels on the left */
 .stat-label {
-    width: auto;
     text-style: bold;
 }
 
-/* Stat values right-aligned */
 .stat-value {
     width: 1fr;
     text-align: right;
 }
 
-/* Figlet widget pushed to bottom */
 #panel-title {
     dock: bottom;
     width: 100%;
+    margin-bottom: 1;
+}
+
+.title-text {
+    width: 100%;
+    margin-bottom: 5;    
 }
 
 /* Splash screen styling */
 SplashView {
+    opacity: 0;
     align: center middle;
-    height: 100%;
 }
 
 #splash-container {
@@ -88,7 +70,6 @@ SplashView {
 /* Death screen styling */
 DeathView {
     align: center middle;
-    height: 100%;
 }
 
 #death-container {
@@ -96,16 +77,10 @@ DeathView {
     height: auto;
 }
 
-#death-title {
-    text-align: center;
-    width: 100%;
-    color: $error;
-    margin-bottom: 1;
-}
-
 .death-message {
     text-align: center;
     text-style: bold;
+    margin-bottom: 1;
     color: $error;
 }
 
@@ -117,18 +92,11 @@ DeathView {
 /* Pause screen styling */
 PauseView {
     align: center middle;
-    height: 100%;
 }
 
 #pause-container {
     align: center middle;
     height: auto;
-}
-
-#pause-title {
-    text-align: center;
-    margin-bottom: 1;
-    width: 100%;
 }
 
 .pause-prompt {

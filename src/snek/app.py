@@ -155,7 +155,7 @@ class SidePanel(Static):
                     classes="stat-row",
                 ),
                 Horizontal(
-                    Label("Foods:", classes="stat-label"),
+                    Label("Total foods:", classes="stat-label"),
                     Label("", id="foods-value", classes="stat-value"),
                     classes="stat-row",
                 ),
@@ -285,16 +285,12 @@ class SnakeApp(App):
         self.game = Game(width=game_width, height=game_height, config=self.config)
         self.view_widget = SnakeView(self.game, self.theme_manager, self.config)
         self.stats_widget = SidePanel(self.game, self.theme_manager)
-
-        # Create layout: game and stats side by side
         self.game_container = Horizontal(
             self.view_widget, self.stats_widget, id="game-content"
         )
-
         self.mount(self.game_container)
         self.interval = self.config.initial_speed_interval
         self.timer = self.set_interval(self.interval, self.tick)
-        self._timer_started = True
 
     def tick(self) -> None:
         pre_length = len(self.game.snake)
