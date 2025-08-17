@@ -32,13 +32,9 @@ class SplashView(Vertical):
     def __init__(self, theme_manager: ThemeManager) -> None:
         super().__init__()
         self.theme_manager = theme_manager
-        # Start with opacity 0 for fade-in effect
-        self.styles.opacity = 0.0
 
     def on_mount(self) -> None:
-        """Animate fade-in when the splash screen is mounted."""
-        self.styles.animate("opacity", value=1.0, duration=2.0)
-        # Update figlet color based on theme
+        """Update figlet color based on theme when mounted."""
         theme = self.theme_manager.get_current_theme()
         figlet = self.query_one("#splash-title", FigletWidget)
         figlet.styles.color = theme.css_color
