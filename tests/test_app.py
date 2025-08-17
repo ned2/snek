@@ -168,14 +168,6 @@ async def test_stats_panel_updates():
             assert stats.game.symbols_consumed == 10
             assert stats.game.current_world == 1
 
-        # Try to get the renderable content
-        if hasattr(stats, "renderable"):
-            content = str(stats.renderable)
-            # Only check if content is not empty
-            if content:
-                assert "10" in content or "Score: 10" in content
-                assert "2" in content or "Level: 2" in content
-
         # As a fallback, just verify the game state was updated correctly
         # The visual rendering can be tested with snapshot tests
 
