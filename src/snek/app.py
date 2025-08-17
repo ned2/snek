@@ -34,7 +34,7 @@ class SplashView(Vertical):
                 "SNEK",
                 font="doh",
                 id="splash-title",
-                classes="title-screen",
+                classes="title-text",
                 colors=["$primary", "$panel"],
                 animate=True,
             )
@@ -65,7 +65,11 @@ class DeathView(Vertical):
         """Compose the death screen with FigletWidget."""
         with Vertical(id="death-container"):
             yield FigletWidget(
-                "GAME OVER", font="doom", id="death-title", colors=["$primary"]
+                "GAME OVER",
+                font="doom",
+                id="death-title",
+                colors=["$primary"],
+                classes="title-text",
             )
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static(
@@ -85,7 +89,11 @@ class PauseView(Vertical):
         """Compose the pause screen with FigletWidget."""
         with Vertical(id="pause-container"):
             yield FigletWidget(
-                "PAUSED", font="doom", id="pause-title", colors=["$primary"]
+                "PAUSED",
+                font="doom",
+                id="pause-title",
+                colors=["$primary"],
+                classes="title-text",
             )
             yield Static("Press any key to continue", classes="pause-prompt")
 
@@ -139,11 +147,6 @@ class SidePanel(Static):
         yield Vertical(
             Vertical(
                 Horizontal(
-                    Label("Level:", classes="stat-label"),
-                    Label("", id="level-value", classes="stat-value"),
-                    classes="stat-row",
-                ),
-                Horizontal(
                     Label("World:", classes="stat-label"),
                     Label("", id="world-value", classes="stat-value"),
                     classes="stat-row",
@@ -154,18 +157,18 @@ class SidePanel(Static):
                     classes="stat-row",
                 ),
                 Horizontal(
-                    Label("Length:", classes="stat-label"),
-                    Label("", id="length-value", classes="stat-value"),
-                    classes="stat-row",
-                ),
-                Horizontal(
                     Label("Speed:", classes="stat-label"),
                     Label("", id="speed-value", classes="stat-value"),
                     classes="stat-row",
                 ),
                 id="stats-content",
             ),
-            FigletWidget("SNEK", font="small", id="panel-title", colors=["$primary"]),
+            FigletWidget(
+                "SNEK",
+                font="small",
+                id="panel-title",
+                colors=["$primary"],
+            ),
             id="side-panel-container",
         )
 
@@ -176,13 +179,11 @@ class SidePanel(Static):
     def update_content(self) -> None:
         """Update the stats content."""
         world_name = self.game.world_path.get_world_name(self.game.level)
-        
-        # Update each value label
-        self.query_one("#level-value", Label).update(str(self.game.level))
         self.query_one("#world-value", Label).update(world_name)
         self.query_one("#symbols-value", Label).update(str(self.game.symbols_consumed))
-        self.query_one("#length-value", Label).update(str(len(self.game.snake)))
-        self.query_one("#speed-value", Label).update(f"{self.game.get_moves_per_second():.1f}/sec")
+        self.query_one("#speed-value", Label).update(
+            f"{self.game.get_moves_per_second():.1f}/sec"
+        )
 
 
 class SnakeApp(App):
@@ -208,12 +209,11 @@ class SnakeApp(App):
 
     def on_mount(self) -> None:
         """Register themes when the app mounts."""
-        # Register all custom themes
         for theme in self.theme_manager.get_all_themes():
             self.register_theme(theme)
-
-        # Set initial theme
         self.theme = self.theme_manager.get_theme_name_for_level(1)
+        # fade the splash screen in on load
+        self.splash_view.styles.animate("opacity", value=1.0, duration=1.0)
 
     def _register_state_callbacks(self) -> None:
         """Register callbacks for state transitions."""
