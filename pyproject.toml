@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "textual>=5.0.1",
+    "textual-pyfiglet>=1.1.0",
 ]
 
 [project.scripts]
@@ -19,4 +20,5 @@ build-backend = "setuptools.build_meta"
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.9",
 ]

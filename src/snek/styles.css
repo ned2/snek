@@ -58,6 +58,7 @@ SplashView {
 #splash-title {
     text-align: center;
     margin-bottom: 1;
+    width: 100%;
 }
 
 .splash-prompt {
