@@ -38,17 +38,17 @@ class SplashView(Vertical):
                 colors=["$primary", "$panel"],
                 animate=True,
             )
-            yield Static("Press any key to start", classes="splash-prompt")
+            yield Static("Press ENTER to start", classes="splash-prompt")
             yield Static(
                 "Use arrow keys to move, P to pause, Q to quit",
                 classes="splash-prompt",
             )
 
     async def on_key(self, event: events.Key) -> None:
-        """Start game on any key press, or quit on Q."""
-        if event.key.upper() == "Q":
+        """Start game on Enter key press, or quit on Q."""
+        if event.key.lower() == "q":
             await self.app.action_quit()
-        else:
+        elif event.key == "enter":
             self.app.start_game()
         event.stop()
 
@@ -73,7 +73,7 @@ class DeathView(Vertical):
             )
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static(
-                "Press Q to quit or any other key to restart", classes="death-prompt"
+                "Press ENTER to restart or Q to quit", classes="death-prompt"
             )
 
 
@@ -95,7 +95,7 @@ class PauseView(Vertical):
                 colors=["$primary"],
                 classes="title-text",
             )
-            yield Static("Press any key to continue", classes="pause-prompt")
+            yield Static("Press ENTER to continue", classes="pause-prompt")
 
 
 class SnakeView(Static):
@@ -373,28 +373,38 @@ class SnakeApp(App):
     async def on_key(self, event: events.Key) -> None:
         # Handle pause screen
         if self.game and self.game.paused and self.pause_view:
-            self.unpause_game()
+            if event.key == "enter":
+                self.unpause_game()
+            elif event.key.lower() == "q":
+                await self.action_quit()
             return
 
         if self.state_manager.is_state(GameState.SPLASH):
-            # Any key starts from splash screen
-            self.start_game()
+            # Enter starts from splash screen
+            if event.key == "enter":
+                self.start_game()
+            elif event.key.lower() == "q":
+                await self.action_quit()
             return
 
         if self.state_manager.is_state(GameState.GAME_OVER):
-            # Q quits, any other key restarts
-            if event.key.upper() == "Q":
-                await self.action_quit()
-            else:
+            # Enter restarts, Q quits
+            if event.key == "enter":
                 self.start_game()
+            elif event.key.lower() == "q":
+                await self.action_quit()
             return
 
-        key = event.key.upper()
-        if key in ("UP", "DOWN", "LEFT", "RIGHT"):
-            self.game.turn(Direction[key])
-        elif key == "P":
+        # Handle game controls
+        key = event.key.lower()
+        if event.key in ("up", "down", "left", "right"):
+            self.game.turn(Direction[event.key.upper()])
+        elif key in ("w", "a", "s", "d"):
+            direction_map = {"w": "UP", "s": "DOWN", "a": "LEFT", "d": "RIGHT"}
+            self.game.turn(Direction[direction_map[key]])
+        elif key == "p":
             self.pause_game()
-        elif key == "Q":
+        elif key == "q":
             await self.action_quit()
 
     async def on_ready(self) -> None:

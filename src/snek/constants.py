@@ -15,11 +15,13 @@ MIN_GAME_WIDTH = 10
 MIN_GAME_HEIGHT = 10
 
 KEY_BINDINGS = {
-    "up": ["up", "w", "k"],
-    "down": ["down", "s", "j"],
-    "left": ["left", "a", "h"],
-    "right": ["right", "d", "l"],
+    "up": ["up", "w"],
+    "down": ["down", "s"],
+    "left": ["left", "a"],
+    "right": ["right", "d"],
     "pause": ["p"],
     "quit": ["q"],
-    "restart": ["r"],
+    "start": ["enter"],
+    "continue": ["enter"],
+    "restart": ["enter"],
 }
