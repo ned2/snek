@@ -111,20 +111,6 @@ class Game:
         """Check if game is in a running state."""
         return not self.game_over and not self.paused
 
-    @property
-    def state(self) -> dict:
-        """Get game state for testing."""
-        return {
-            "snake_length": len(self.snake),
-            "score": self.symbols_consumed,
-            "level": self.level,
-            "game_over": self.game_over,
-            "paused": self.paused,
-            "direction": self.direction,
-            "food_position": self.food,
-            "head_position": self.snake[0] if self.snake else None,
-        }
-
     def set_snake_position(self, positions: list[Position]) -> None:
         """Set snake position for testing."""
         if not positions:
