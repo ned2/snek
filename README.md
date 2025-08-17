@@ -15,3 +15,11 @@ Application Development framework.
 ## Usage
 
     uv run snek
+
+### Controls
+
+- **Arrow keys** or **WASD**: Move the snake
+- **P**: Pause/unpause the game
+- **Space**: Toggle sidebar visibility
+- **Q**: Quit the game
+- **Enter**: Start game / Continue from pause / Restart after game over

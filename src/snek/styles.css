@@ -20,8 +20,6 @@ SnakeView {
 
 /* Side-panel things */
 SidePanel {
-    width: 30;
-    min-width: 30;
     height: 100%;
     border: solid $primary;
     padding: 0 1;

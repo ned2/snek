@@ -107,6 +107,15 @@ class SnakeView(Static):
         self.theme_manager = theme_manager
         self.config = config or default_config
 
+    def on_resize(self, event: events.Resize) -> None:
+        """React to available space changes."""
+        if self.game and self.size.width > 0 and self.size.height > 0:
+            # Calculate grid size based on available space
+            game_width = max(MIN_GAME_WIDTH, self.size.width // 2)
+            game_height = max(MIN_GAME_HEIGHT, self.size.height)
+            self.game.resize(game_width, game_height)
+            self.refresh()
+
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
         width, height = self.game.width, self.game.height
@@ -139,6 +148,9 @@ class SidePanel(Static):
         super().__init__()
         self.game = game
         self.theme_manager = theme_manager
+        # Set width programmatically to have single source of truth
+        self.styles.width = SIDE_PANEL_WIDTH
+        self.styles.min_width = SIDE_PANEL_WIDTH
 
     def compose(self) -> ComposeResult:
         """Compose the side panel with FigletWidget at bottom."""
@@ -210,6 +222,7 @@ class SnakeApp(App):
         self.interval: float | None = None
         self.death_view: DeathView | None = None
         self.pause_view: PauseView | None = None
+        self.sidebar_visible: bool = True
 
         self._register_state_callbacks()
 
@@ -270,7 +283,9 @@ class SnakeApp(App):
         self, terminal_width: int, terminal_height: int
     ) -> tuple[int, int]:
         """Calculate game dimensions from terminal size."""
-        game_width = max(MIN_GAME_WIDTH, (terminal_width - SIDE_PANEL_WIDTH) // 2)
+        # Account for sidebar only if visible
+        sidebar_width = SIDE_PANEL_WIDTH if self.sidebar_visible else 0
+        game_width = max(MIN_GAME_WIDTH, (terminal_width - sidebar_width) // 2)
         game_height = max(MIN_GAME_HEIGHT, terminal_height)
         return game_width, game_height
 
@@ -374,6 +389,18 @@ class SnakeApp(App):
         self.mount(self.game_container)
         self.timer = self.set_interval(self.interval, self.tick)
 
+    def toggle_sidebar(self) -> None:
+        """Toggle sidebar visibility."""
+        if not self.stats_widget or not self.state_manager.is_state(GameState.PLAYING):
+            return
+            
+        self.sidebar_visible = not self.sidebar_visible
+        
+        if self.sidebar_visible:
+            self.stats_widget.styles.display = "block"
+        else:
+            self.stats_widget.styles.display = "none"
+
     async def on_key(self, event: events.Key) -> None:
         # Handle pause screen
         if self.game and self.game.paused and self.pause_view:
@@ -408,6 +435,8 @@ class SnakeApp(App):
             self.game.turn(Direction[direction_map[key]])
         elif key == "p":
             self.pause_game()
+        elif key == " ":  # Space key toggles sidebar
+            self.toggle_sidebar()
         elif key == "q":
             await self.action_quit()
 
@@ -419,8 +448,7 @@ class SnakeApp(App):
     async def on_resize(self, event: events.Resize) -> None:
         """Handle terminal resize by updating grid and scaling snake."""
         if self.game and self.view_widget:
-            width, height = self.size
-            game_width, game_height = self._calculate_game_dimensions(width, height)
-            self.game.resize(game_width, game_height)
+            # The SnakeView will handle its own resizing via on_resize
             self.view_widget.refresh()
-            self.stats_widget.update_content()
+            if self.stats_widget:
+                self.stats_widget.update_content()
