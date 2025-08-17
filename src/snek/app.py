@@ -112,9 +112,10 @@ class SnakeView(Static):
         for y in range(height):
             for x in range(width):
                 if (x, y) in snake:
-                    text.append(self.config.snake_block, style="$primary")
+                    # Use markup for theming - will be styled by CSS
+                    text.append(self.config.snake_block)
                 elif (x, y) == self.game.food:
-                    text.append(f"{self.game.food_emoji} ", style="$primary")
+                    text.append(f"{self.game.food_emoji} ")
                 else:
                     text.append(self.config.empty_cell)
             if y < height - 1:
@@ -148,19 +149,15 @@ class StatsPanel(Static):
         self.update_content()
 
     def update_content(self) -> None:
-        """Update the stats content and colors."""
-        # Update border to use primary color
-        self.styles.border = ("solid", "$primary")
-
+        """Update the stats content."""
         world_name = self.game.world_path.get_world_name(self.game.level)
         stats_text = Text()
-        stats_text.append(f"Level: {self.game.level}\n", style="$primary")
-        stats_text.append(f"World: {world_name}\n", style="$primary")
-        stats_text.append(f"Symbols: {self.game.symbols_consumed}\n", style="$primary")
-        stats_text.append(f"Length: {len(self.game.snake)}\n", style="$primary")
+        stats_text.append(f"Level: {self.game.level}\n")
+        stats_text.append(f"World: {world_name}\n")
+        stats_text.append(f"Symbols: {self.game.symbols_consumed}\n")
+        stats_text.append(f"Length: {len(self.game.snake)}\n")
         stats_text.append(
-            f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n",
-            style="$primary",
+            f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n"
         )
 
         # Update the stats content

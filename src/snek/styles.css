@@ -16,6 +16,7 @@ SnakeView {
     height: 100%;
     width: 1fr;
     overflow: hidden;
+    color: $primary;
 }
 
 /* Stats panel fixed width with border */
@@ -36,6 +37,7 @@ StatsPanel {
 /* Stats content takes available space */
 #stats-content {
     height: 1fr;
+    color: $primary;
 }
 
 /* Figlet widget pushed to bottom */
