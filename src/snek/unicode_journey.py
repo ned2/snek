@@ -19,7 +19,6 @@ class World:
     def theme(self):
         """Get the theme object for this world."""
         return THEME_MAP[self.theme_name]
-    theme_name: str
 
 
 class WorldPath:

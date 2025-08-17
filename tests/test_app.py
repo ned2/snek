@@ -1,10 +1,11 @@
 """Integration tests for the Snek app."""
 
 import pytest
+
 from snek.app import SnakeApp
-from snek.game_rules import Direction
 from snek.config import GameConfig
 from snek.constants import GameState
+from snek.game_rules import Direction
 
 
 @pytest.mark.asyncio
@@ -25,8 +26,8 @@ async def test_start_game_from_splash():
     """Test starting game from splash screen."""
     app = SnakeApp()
     async with app.run_test() as pilot:
-        # Press any key to start
-        await pilot.press("space")
+        # Press Enter to start
+        await pilot.press("enter")
 
         # Should be in playing state
         assert app.state_manager.is_state(GameState.PLAYING)
@@ -44,7 +45,7 @@ async def test_game_controls():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
 
         # Test direction controls
         await pilot.press("up")
@@ -67,7 +68,7 @@ async def test_pause_functionality():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
         await pilot.pause()
 
         # Pause game
@@ -95,7 +96,7 @@ async def test_game_over_and_restart():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
         await pilot.pause()
 
         # Force game over
@@ -129,7 +130,7 @@ async def test_quit_from_game():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
 
         # Quit should work
         await pilot.press("q")
@@ -142,7 +143,7 @@ async def test_stats_panel_updates():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
         await pilot.pause()
 
         # Get initial stats
@@ -180,7 +181,7 @@ async def test_theme_changes_with_world():
 
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
         await pilot.pause()
 
         # Store initial world
@@ -195,11 +196,11 @@ async def test_theme_changes_with_world():
 
         # World should have changed
         assert app.game.current_world == initial_world + 1
-        
+
         # Theme should update when tick() is called
         app.tick()
         await pilot.pause()
-        
+
         # Theme should have changed
         assert app.theme != initial_theme
 
@@ -210,11 +211,8 @@ async def test_resize_handling():
     app = SnakeApp()
     async with app.run_test(size=(80, 24)) as pilot:
         # Start game
-        await pilot.press("space")
+        await pilot.press("enter")
         await pilot.pause()
-
-        initial_width = app.game.width
-        initial_height = app.game.height
 
         # Create a mock resize event
         from textual.events import Resize
@@ -237,7 +235,7 @@ class TestWorldProgression:
     def test_check_world_transition(self):
         """Test world transition when enough symbols consumed in current world."""
         from snek.game import Game
-        
+
         game = Game()
         game.symbols_in_current_world = 10  # Assuming default symbols_per_world is 10
         game.check_world_transition()
@@ -252,24 +250,24 @@ class TestWorldProgression:
     def test_update_speed(self):
         """Test speed update mechanism."""
         from snek.game import Game
-        
+
         game = Game()
         initial_interval = game.current_interval
-        
+
         # Update speed
         new_interval = 0.05
         game.update_speed(new_interval)
-        
+
         assert game.current_interval == new_interval
         assert game.current_interval < initial_interval
 
     def test_get_moves_per_second(self):
         """Test moves per second calculation."""
         from snek.game import Game
-        
+
         game = Game()
         game.current_interval = 0.1
         assert game.get_moves_per_second() == 10.0
-        
+
         game.current_interval = 0.5
         assert game.get_moves_per_second() == 2.0

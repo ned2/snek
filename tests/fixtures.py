@@ -1,17 +1,11 @@
 """Shared test fixtures and utilities."""
-import pytest
-from typing import Generator
-from snek.game import Game
-from snek.config import GameConfig
-from snek.themes import ThemeManager
-from snek.state_manager import StateManager
+
 import random
 
+import pytest
 
-@pytest.fixture
-def theme_manager() -> ThemeManager:
-    """Provide a theme manager instance."""
-    return ThemeManager()
+from snek.game import Game
+from snek.state_manager import StateManager
 
 
 @pytest.fixture
@@ -35,23 +29,23 @@ def seeded_game() -> Game:
 
 class GameTestHelper:
     """Helper methods for game testing."""
-    
+
     @staticmethod
     def move_snake_to(game: Game, positions: list[tuple[int, int]]) -> None:
         """Move snake to specific positions."""
         game.snake = positions
-    
+
     @staticmethod
     def place_food_at(game: Game, x: int, y: int) -> None:
         """Place food at specific position."""
         game.food = (x, y)
-    
+
     @staticmethod
     def make_snake_long(game: Game, length: int) -> None:
         """Make snake a specific length."""
         head = game.snake[0]
         game.snake = [(head[0] - i, head[1]) for i in range(length)]
-    
+
     @staticmethod
     def simulate_game_over(game: Game) -> None:
         """Put game in game over state."""
