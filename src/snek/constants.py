@@ -1,7 +1,6 @@
 """Constants used throughout the Snek game."""
 
 
-# Game states
 class GameState:
     """Game state constants."""
 
@@ -11,12 +10,10 @@ class GameState:
     GAME_OVER = "game_over"
 
 
-# UI Constants
 STATS_PANEL_WIDTH = 25
 MIN_GAME_WIDTH = 10
 MIN_GAME_HEIGHT = 10
 
-# Key bindings
 KEY_BINDINGS = {
     "up": ["up", "w", "k"],
     "down": ["down", "s", "j"],
