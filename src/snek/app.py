@@ -155,6 +155,11 @@ class SidePanel(Static):
                     classes="stat-row",
                 ),
                 Horizontal(
+                    Label("Foods:", classes="stat-label"),
+                    Label("", id="foods-value", classes="stat-value"),
+                    classes="stat-row",
+                ),
+                Horizontal(
                     Label("Speed:", classes="stat-label"),
                     Label("", id="speed-value", classes="stat-value"),
                     classes="stat-row",
@@ -181,6 +186,7 @@ class SidePanel(Static):
         self.query_one("#symbols-value", Label).update(
             f"{self.game.symbols_in_current_world}/{self.game.config.symbols_per_world}"
         )
+        self.query_one("#foods-value", Label).update(str(self.game.symbols_consumed))
         self.query_one("#speed-value", Label).update(
             f"{self.game.get_moves_per_second():.1f}/sec"
         )
