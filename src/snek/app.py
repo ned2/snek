@@ -37,7 +37,11 @@ class SplashView(Vertical):
         """Compose the splash screen with FigletWidget."""
         with Vertical(id="splash-container"):
             yield FigletWidget(
-                "SNEK", font="doh", id="splash-title", justify="center", animate=True
+                "SNEK",
+                font="doh",
+                id="splash-title",
+                colors=["$primary", "$panel"],
+                animate=True,
             )
             yield Static("")
             yield Static("Press any key to start", classes="splash-prompt")
@@ -146,7 +150,7 @@ class StatsPanel(Static):
         """Compose the stats panel with FigletWidget at bottom."""
         yield Vertical(
             Static(id="stats-content"),
-            FigletWidget("SNEK", font="small", id="stats-figlet"),
+            FigletWidget("SNEK", font="small", id="stats-figlet", colors=["$primary"]),
             id="stats-container",
         )
 
