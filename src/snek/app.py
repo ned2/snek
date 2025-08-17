@@ -72,9 +72,7 @@ class DeathView(Vertical):
                 classes="title-text",
             )
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
-            yield Static(
-                "Press ENTER to restart or Q to quit", classes="death-prompt"
-            )
+            yield Static("Press ENTER to restart or Q to quit", classes="death-prompt")
 
 
 class PauseView(Vertical):
@@ -152,7 +150,7 @@ class SidePanel(Static):
                     classes="stat-row",
                 ),
                 Horizontal(
-                    Label("Symbols:", classes="stat-label"),
+                    Label("Progress:", classes="stat-label"),
                     Label("", id="symbols-value", classes="stat-value"),
                     classes="stat-row",
                 ),
@@ -301,7 +299,9 @@ class SnakeApp(App):
         # Update theme if world changed
         if self.game.current_world != old_world:
             self.theme_manager.set_world(self.game.current_world)
-            self.theme = self.theme_manager.get_theme_name_for_world(self.game.current_world)
+            self.theme = self.theme_manager.get_theme_name_for_world(
+                self.game.current_world
+            )
             self.stats_widget.update_content()
 
         if self.game.game_over:
