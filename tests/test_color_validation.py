@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.style import Style
 from textual.color import Color as TextualColor
 
-from snek.themes import ThemeManager
+from snek.themes import THEME_MAP
 
 
 class TestColorValidation:
@@ -15,45 +15,40 @@ class TestColorValidation:
     def test_theme_colors_are_valid_rich_colors(self):
         """Test that all theme colors are valid Rich color names."""
         console = Console()
-        manager = ThemeManager()
 
-        for theme in manager.themes:
-            # Test that the color can be used in Rich
+        for theme_name, theme in THEME_MAP.items():
+            # Test primary color
             try:
-                style = Style(color=theme.primary_color)
-                # Try to render something with this style
-                console.get_style(theme.primary_color)
+                # Extract color value (remove # if present)
+                color = theme.primary
+                if color.startswith('#'):
+                    # Rich can handle hex colors
+                    style = Style(color=color)
+                else:
+                    style = Style(color=color)
+                    console.get_style(color)
             except Exception as e:
                 pytest.fail(
-                    f"Theme '{theme.name}' has invalid color '{theme.primary_color}': {e}"
+                    f"Theme '{theme_name}' has invalid primary color '{theme.primary}': {e}"
                 )
 
     def test_theme_colors_are_valid_textual_colors(self):
         """Test that theme colors can be parsed by Textual."""
-        manager = ThemeManager()
-
-        for theme in manager.themes:
-            # Test that the color can be parsed by Textual
+        for theme_name, theme in THEME_MAP.items():
+            # Test primary color
             try:
-                # Textual expects colors in CSS format
-                if theme.primary_color in [
-                    "black",
-                    "red",
-                    "green",
-                    "yellow",
-                    "blue",
-                    "magenta",
-                    "cyan",
-                    "white",
-                ]:
-                    # These are valid CSS color names
-                    pass
+                # Textual Theme objects already have validated colors
+                # Just verify the primary color can be parsed
+                color = theme.primary
+                if color.startswith('#'):
+                    # Hex color
+                    TextualColor.parse(color)
                 else:
-                    # Try to parse as a Textual color
-                    TextualColor.parse(theme.primary_color)
+                    # Named color
+                    TextualColor.parse(color)
             except Exception as e:
                 pytest.fail(
-                    f"Theme '{theme.name}' has invalid Textual color '{theme.primary_color}': {e}"
+                    f"Theme '{theme_name}' has invalid Textual color '{theme.primary}': {e}"
                 )
 
     def test_hardcoded_colors_in_app(self):
@@ -96,28 +91,25 @@ class TestColorValidation:
                 pytest.fail(f"Gradient color '{color}' is invalid: {e}")
 
     def test_all_theme_colors_unique(self):
-        """Test that each theme has a unique color."""
-        manager = ThemeManager()
-        colors = [theme.primary_color for theme in manager.themes]
+        """Test that each theme has a unique primary color."""
+        colors = [theme.primary for theme in THEME_MAP.values()]
 
         # Check for duplicates
-        assert len(colors) == len(set(colors)), "Some themes share the same color"
+        assert len(colors) == len(set(colors)), "Some themes share the same primary color"
 
     def test_theme_color_rendering(self):
         """Test that theme colors can be rendered in text."""
         from rich.text import Text
 
-        manager = ThemeManager()
-
-        for theme in manager.themes:
+        for theme_name, theme in THEME_MAP.items():
             try:
-                # Create text with the theme color
-                text = Text("Test", style=theme.css_color)
+                # Create text with the theme's primary color
+                text = Text("Test", style=theme.primary)
                 # This should not raise an exception
                 str(text)
             except Exception as e:
                 pytest.fail(
-                    f"Failed to render text with theme '{theme.name}' color '{theme.primary_color}': {e}"
+                    f"Failed to render text with theme '{theme_name}' color '{theme.primary}': {e}"
                 )
 
 
