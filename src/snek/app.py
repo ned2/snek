@@ -16,7 +16,6 @@ from .constants import (
     STATS_PANEL_WIDTH,
     MIN_GAME_WIDTH,
     MIN_GAME_HEIGHT,
-    SNEK_ASCII_ART,
 )
 
 
@@ -138,18 +137,6 @@ class SnakeView(Static):
         return text
 
 
-class AsciiArtPanel(Static):
-    """Panel for ASCII art at bottom of stats."""
-
-    def __init__(self, game: Game, theme_manager: ThemeManager) -> None:
-        super().__init__(id="ascii-art")
-        self.game = game
-        self.theme_manager = theme_manager
-
-    def render(self) -> Text:
-        """Render the ASCII art."""
-        theme = self.theme_manager.get_current_theme()
-        return Text(SNEK_ASCII_ART, style=f"bold {theme.css_color}", justify="center")
 
 
 class StatsPanel(Static):
@@ -162,10 +149,10 @@ class StatsPanel(Static):
         self._last_theme = theme_manager.get_current_theme()
 
     def compose(self) -> ComposeResult:
-        """Compose the stats panel with ASCII art at bottom."""
+        """Compose the stats panel with FigletWidget at bottom."""
         yield Vertical(
             Static(id="stats-content"),
-            AsciiArtPanel(self.game, self.theme_manager),
+            FigletWidget("SNEK", font="small", id="stats-figlet", justify="center"),
             id="stats-container",
         )
 
@@ -201,9 +188,9 @@ class StatsPanel(Static):
         stats_content = self.query_one("#stats-content", Static)
         stats_content.update(stats_text)
 
-        # Update ASCII art color
-        ascii_art = self.query_one("#ascii-art", AsciiArtPanel)
-        ascii_art.refresh()
+        # Update figlet color
+        figlet = self.query_one("#stats-figlet", FigletWidget)
+        figlet.styles.color = theme.css_color
 
 
 class SnakeApp(App):

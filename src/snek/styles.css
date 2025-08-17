@@ -38,8 +38,8 @@ StatsPanel {
     height: 1fr;
 }
 
-/* ASCII art pushed to bottom */
-#ascii-art {
+/* Figlet widget pushed to bottom */
+#stats-figlet {
     height: auto;
     dock: bottom;
 }
