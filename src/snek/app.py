@@ -39,7 +39,7 @@ class SplashView(Vertical):
             yield FigletWidget(
                 "SNEK", font="doh", id="splash-title", justify="center", animate=True
             )
-            yield Static("")  # Empty line for spacing
+            yield Static("")
             yield Static("Press any key to start", classes="splash-prompt")
             yield Static(
                 "Use arrow keys to move, P to pause, Q to quit",
@@ -67,7 +67,7 @@ class DeathView(Vertical):
         """Compose the death screen with FigletWidget."""
         with Vertical(id="death-container"):
             yield FigletWidget("GAME OVER", font="doom", id="death-title")
-            yield Static("")  # Empty line for spacing
+            yield Static("")
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static(
                 "Press Q to quit or any other key to restart", classes="death-prompt"
@@ -92,7 +92,7 @@ class PauseView(Vertical):
         """Compose the pause screen with FigletWidget."""
         with Vertical(id="pause-container"):
             yield FigletWidget("PAUSED", font="banner", id="pause-title")
-            yield Static("")  # Empty line for spacing
+            yield Static("")
             yield Static("Press any key to continue", classes="pause-prompt")
 
 
@@ -110,33 +110,27 @@ class SnakeView(Static):
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
         width, height = self.game.width, self.game.height
-        grid = [[self.config.empty_cell for _ in range(width)] for _ in range(height)]
         snake = self.game.snake
-
-        # Create the rendered text
         text = Text()
 
         for y in range(height):
             for x in range(width):
                 if (x, y) in snake:
-                    # Snake uses theme color
                     theme = self.theme_manager.get_current_theme()
                     text.append(self.config.snake_block, style=theme.css_color)
                 elif (x, y) == self.game.food:
-                    # Food uses theme color
                     theme = self.theme_manager.get_current_theme()
                     text.append(f"{self.game.food_emoji} ", style=theme.css_color)
                 else:
                     text.append(self.config.empty_cell)
-            if y < height - 1:  # Don't add newline after last row
+            if y < height - 1:
+                # Don't add newline after last row
                 text.append("\n")
 
         if self.game.game_over:
             text.append("\n\n GAME OVER! Press R to restart.")
 
         return text
-
-
 
 
 class StatsPanel(Static):
@@ -152,7 +146,7 @@ class StatsPanel(Static):
         """Compose the stats panel with FigletWidget at bottom."""
         yield Vertical(
             Static(id="stats-content"),
-            FigletWidget("SNEK", font="small", id="stats-figlet", justify="center"),
+            FigletWidget("SNEK", font="small", id="stats-figlet"),
             id="stats-container",
         )
 
@@ -169,9 +163,7 @@ class StatsPanel(Static):
             self._last_theme = theme
             self.styles.border = ("solid", theme.css_color)
 
-        # Get current world info
         world_name = self.game.world_path.get_world_name(self.game.level)
-
         stats_text = Text()
         stats_text.append(f"Level: {self.game.level}\n", style=theme.css_color)
         stats_text.append(f"World: {world_name}\n", style=theme.css_color)
@@ -212,7 +204,6 @@ class SnakeApp(App):
         self.death_view: DeathView | None = None
         self.pause_view: PauseView | None = None
 
-        # Register state callbacks
         self._register_state_callbacks()
 
     def _register_state_callbacks(self) -> None:
@@ -274,9 +265,7 @@ class SnakeApp(App):
         """Transition from splash screen to game."""
         self.state_manager.transition_to(GameState.PLAYING)
 
-        # Clear any existing widgets
         self._clear_all_widgets()
-
         width, height = self.size
         game_width, game_height = self._calculate_game_dimensions(width, height)
 
@@ -292,7 +281,7 @@ class SnakeApp(App):
         self.mount(self.game_container)
         self.interval = self.config.initial_speed_interval
         self.timer = self.set_interval(self.interval, self.tick)
-        self._timer_started = True  # For testing
+        self._timer_started = True
 
     def tick(self) -> None:
         pre_length = len(self.game.snake)
@@ -310,14 +299,11 @@ class SnakeApp(App):
             return
 
         if len(self.game.snake) > pre_length:
-            # Snake ate food, increase speed
+            # Snake ate food; increase speed
             self.interval *= self.config.speed_increase_factor
-            # Stop the old timer
             if self.timer:
                 self.timer.stop()
-            # Create a new timer with the updated interval
             self.timer = self.set_interval(self.interval, self.tick)
-            # Update game's speed tracking
             self.game.update_speed(self.interval)
 
         self.view_widget.refresh()
@@ -331,10 +317,7 @@ class SnakeApp(App):
             self.timer.stop()
             self.timer = None
 
-        # Clear game widgets
         self._clear_all_widgets()
-
-        # Show death screen
         self.death_view = DeathView(self.theme_manager)
         self.mount(self.death_view)
         self.death_view.focus()
@@ -347,7 +330,6 @@ class SnakeApp(App):
         self.game.paused = True
         self.state_manager.transition_to(GameState.PAUSED)
 
-        # Stop the timer
         if self.timer:
             self.timer.stop()
 
@@ -355,7 +337,6 @@ class SnakeApp(App):
         if self.game_container:
             self.game_container.remove()
 
-        # Show pause screen
         self.pause_view = PauseView(self.theme_manager)
         self.mount(self.pause_view)
         self.pause_view.focus()
@@ -368,24 +349,17 @@ class SnakeApp(App):
         self.game.paused = False
         self.state_manager.transition_to(GameState.PLAYING)
 
-        # Remove pause screen
         if self.pause_view:
             self.pause_view.remove()
             self.pause_view = None
 
-        # Recreate game widgets
+        # Recreate game widgets and game layout and mount game container
         self.view_widget = SnakeView(self.game, self.theme_manager, self.config)
         self.stats_widget = StatsPanel(self.game, self.theme_manager)
-
-        # Create layout: game and stats side by side
         self.game_container = Horizontal(
             self.view_widget, self.stats_widget, id="game-content"
         )
-
-        # Mount the game container
         self.mount(self.game_container)
-
-        # Restart timer
         self.timer = self.set_interval(self.interval, self.tick)
 
     async def on_key(self, event: events.Key) -> None:
