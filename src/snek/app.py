@@ -393,16 +393,15 @@ class SnakeApp(App):
         """Toggle sidebar visibility."""
         if not self.stats_widget or not self.state_manager.is_state(GameState.PLAYING):
             return
-            
+
         self.sidebar_visible = not self.sidebar_visible
-        
+
         if self.sidebar_visible:
             self.stats_widget.styles.display = "block"
         else:
             self.stats_widget.styles.display = "none"
 
     async def on_key(self, event: events.Key) -> None:
-        # Handle pause screen
         if self.game and self.game.paused and self.pause_view:
             if event.key == "enter":
                 self.unpause_game()
@@ -411,7 +410,6 @@ class SnakeApp(App):
             return
 
         if self.state_manager.is_state(GameState.SPLASH):
-            # Enter starts from splash screen
             if event.key == "enter":
                 self.start_game()
             elif event.key.lower() == "q":
@@ -419,7 +417,6 @@ class SnakeApp(App):
             return
 
         if self.state_manager.is_state(GameState.GAME_OVER):
-            # Enter restarts, Q quits
             if event.key == "enter":
                 self.start_game()
             elif event.key.lower() == "q":
@@ -427,17 +424,16 @@ class SnakeApp(App):
             return
 
         # Handle game controls
-        key = event.key.lower()
         if event.key in ("up", "down", "left", "right"):
             self.game.turn(Direction[event.key.upper()])
-        elif key in ("w", "a", "s", "d"):
+        elif event.key in ("w", "a", "s", "d"):
             direction_map = {"w": "UP", "s": "DOWN", "a": "LEFT", "d": "RIGHT"}
-            self.game.turn(Direction[direction_map[key]])
-        elif key == "p":
+            self.game.turn(Direction[direction_map[event.key]])
+        elif event.key == "p":
             self.pause_game()
-        elif key == " ":  # Space key toggles sidebar
+        elif event.key == "space":
             self.toggle_sidebar()
-        elif key == "q":
+        elif event.key == "q":
             await self.action_quit()
 
     async def on_ready(self) -> None:
