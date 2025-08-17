@@ -1,8 +1,8 @@
 /* Main screen styling */
 Screen {
     align: center middle;
-    background: black;
-    color: green;
+    background: $background;
+    color: $foreground;
 }
 
 /* Game content container takes full screen */
@@ -23,7 +23,7 @@ StatsPanel {
     width: 25;
     height: 100%;
     min-width: 25;
-    border: solid green;
+    border: solid $primary;
     padding: 0 1;
 }
 
@@ -84,14 +84,14 @@ DeathView {
 
 #death-title {
     text-align: center;
-    color: red;
+    color: $error;
     margin-bottom: 1;
 }
 
 .death-message {
     text-align: center;
     text-style: bold;
-    color: red;
+    color: $error;
 }
 
 .death-prompt {
