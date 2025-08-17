@@ -1,3 +1,8 @@
+.title-screen {
+    width: 100%;
+    margin-bottom: 5;    
+}
+
 /* Main screen styling */
 Screen {
     align: center middle;
@@ -20,7 +25,7 @@ SnakeView {
 }
 
 /* Stats panel fixed width with border */
-StatsPanel {
+SidePanel {
     width: 25;
     height: 100%;
     min-width: 25;
@@ -29,7 +34,7 @@ StatsPanel {
 }
 
 /* Stats container layout */
-#stats-container {
+#side-panel-container {
     height: 100%;
     layout: vertical;
 }
@@ -41,9 +46,9 @@ StatsPanel {
 }
 
 /* Figlet widget pushed to bottom */
-#stats-figlet {
-    height: auto;
+#panel-title {
     dock: bottom;
+    width: 100%;
 }
 
 /* Splash screen styling */
@@ -53,24 +58,12 @@ SplashView {
 }
 
 #splash-container {
-    align: center middle;
     height: auto;
-}
-
-#splash-title {
-    text-align: center;
-    margin-bottom: 1;
-    width: 100%;
 }
 
 .splash-prompt {
     text-align: center;
     text-style: bold dim;
-}
-
-.splash-controls {
-    text-align: center;
-    text-style: dim;
 }
 
 /* Death screen styling */
@@ -86,6 +79,7 @@ DeathView {
 
 #death-title {
     text-align: center;
+    width: 100%;
     color: $error;
     margin-bottom: 1;
 }
@@ -115,6 +109,7 @@ PauseView {
 #pause-title {
     text-align: center;
     margin-bottom: 1;
+    width: 100%;
 }
 
 .pause-prompt {

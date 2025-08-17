@@ -7,16 +7,16 @@ from textual.widgets import Static
 from textual_pyfiglet import FigletWidget
 
 from .config import GameConfig, default_config
-from .game import Game
-from .game_rules import Direction
-from .themes import ThemeManager
-from .state_manager import StateManager
 from .constants import (
     GameState,
-    STATS_PANEL_WIDTH,
-    MIN_GAME_WIDTH,
     MIN_GAME_HEIGHT,
+    MIN_GAME_WIDTH,
+    SIDE_PANEL_WIDTH,
 )
+from .game import Game
+from .game_rules import Direction
+from .state_manager import StateManager
+from .themes import ThemeManager
 
 
 class SplashView(Vertical):
@@ -34,14 +34,14 @@ class SplashView(Vertical):
                 "SNEK",
                 font="doh",
                 id="splash-title",
+                classes="title-screen",
                 colors=["$primary", "$panel"],
                 animate=True,
             )
-            yield Static("")
             yield Static("Press any key to start", classes="splash-prompt")
             yield Static(
                 "Use arrow keys to move, P to pause, Q to quit",
-                classes="splash-controls",
+                classes="splash-prompt",
             )
 
     async def on_key(self, event: events.Key) -> None:
@@ -67,7 +67,6 @@ class DeathView(Vertical):
             yield FigletWidget(
                 "GAME OVER", font="doom", id="death-title", colors=["$primary"]
             )
-            yield Static("")
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static(
                 "Press Q to quit or any other key to restart", classes="death-prompt"
@@ -86,9 +85,8 @@ class PauseView(Vertical):
         """Compose the pause screen with FigletWidget."""
         with Vertical(id="pause-container"):
             yield FigletWidget(
-                "PAUSED", font="banner", id="pause-title", colors=["$primary"]
+                "PAUSED", font="doom", id="pause-title", colors=["$primary"]
             )
-            yield Static("")
             yield Static("Press any key to continue", classes="pause-prompt")
 
 
@@ -128,7 +126,7 @@ class SnakeView(Static):
         return text
 
 
-class StatsPanel(Static):
+class SidePanel(Static):
     """Panel showing game statistics."""
 
     def __init__(self, game: Game, theme_manager: ThemeManager) -> None:
@@ -137,11 +135,11 @@ class StatsPanel(Static):
         self.theme_manager = theme_manager
 
     def compose(self) -> ComposeResult:
-        """Compose the stats panel with FigletWidget at bottom."""
+        """Compose the side panel with FigletWidget at bottom."""
         yield Vertical(
             Static(id="stats-content"),
-            FigletWidget("SNEK", font="small", id="stats-figlet", colors=["$primary"]),
-            id="stats-container",
+            FigletWidget("SNEK", font="small", id="panel-title", colors=["$primary"]),
+            id="side-panel-container",
         )
 
     def on_mount(self) -> None:
@@ -156,9 +154,7 @@ class StatsPanel(Static):
         stats_text.append(f"World: {world_name}\n")
         stats_text.append(f"Symbols: {self.game.symbols_consumed}\n")
         stats_text.append(f"Length: {len(self.game.snake)}\n")
-        stats_text.append(
-            f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n"
-        )
+        stats_text.append(f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n")
 
         # Update the stats content
         stats_content = self.query_one("#stats-content", Static)
@@ -177,7 +173,7 @@ class SnakeApp(App):
         self.splash_view: SplashView | None = None
         self.game: Game | None = None
         self.view_widget: SnakeView | None = None
-        self.stats_widget: StatsPanel | None = None
+        self.stats_widget: SidePanel | None = None
         self.game_container: Horizontal | None = None
         self.timer: Timer | None = None
         self.interval: float | None = None
@@ -221,9 +217,7 @@ class SnakeApp(App):
             yield self.splash_view
         else:
             self.view_widget = SnakeView(self.game, self.theme_manager)
-            yield Horizontal(
-                self.view_widget, StatsPanel(self.game, self.theme_manager)
-            )
+            yield Horizontal(self.view_widget, SidePanel(self.game, self.theme_manager))
 
     def _clear_all_widgets(self) -> None:
         """Clear all game-related widgets."""
@@ -246,7 +240,7 @@ class SnakeApp(App):
         self, terminal_width: int, terminal_height: int
     ) -> tuple[int, int]:
         """Calculate game dimensions from terminal size."""
-        game_width = max(MIN_GAME_WIDTH, (terminal_width - STATS_PANEL_WIDTH) // 2)
+        game_width = max(MIN_GAME_WIDTH, (terminal_width - SIDE_PANEL_WIDTH) // 2)
         game_height = max(MIN_GAME_HEIGHT, terminal_height)
         return game_width, game_height
 
@@ -260,7 +254,7 @@ class SnakeApp(App):
 
         self.game = Game(width=game_width, height=game_height, config=self.config)
         self.view_widget = SnakeView(self.game, self.theme_manager, self.config)
-        self.stats_widget = StatsPanel(self.game, self.theme_manager)
+        self.stats_widget = SidePanel(self.game, self.theme_manager)
 
         # Create layout: game and stats side by side
         self.game_container = Horizontal(
@@ -345,7 +339,7 @@ class SnakeApp(App):
 
         # Recreate game widgets and game layout and mount game container
         self.view_widget = SnakeView(self.game, self.theme_manager, self.config)
-        self.stats_widget = StatsPanel(self.game, self.theme_manager)
+        self.stats_widget = SidePanel(self.game, self.theme_manager)
         self.game_container = Horizontal(
             self.view_widget, self.stats_widget, id="game-content"
         )
