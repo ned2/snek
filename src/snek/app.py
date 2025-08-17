@@ -3,7 +3,7 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.timer import Timer
-from textual.widgets import Static
+from textual.widgets import Label, Static
 from textual_pyfiglet import FigletWidget
 
 from .config import GameConfig, default_config
@@ -137,7 +137,34 @@ class SidePanel(Static):
     def compose(self) -> ComposeResult:
         """Compose the side panel with FigletWidget at bottom."""
         yield Vertical(
-            Static(id="stats-content"),
+            Vertical(
+                Horizontal(
+                    Label("Level:", classes="stat-label"),
+                    Label("", id="level-value", classes="stat-value"),
+                    classes="stat-row",
+                ),
+                Horizontal(
+                    Label("World:", classes="stat-label"),
+                    Label("", id="world-value", classes="stat-value"),
+                    classes="stat-row",
+                ),
+                Horizontal(
+                    Label("Symbols:", classes="stat-label"),
+                    Label("", id="symbols-value", classes="stat-value"),
+                    classes="stat-row",
+                ),
+                Horizontal(
+                    Label("Length:", classes="stat-label"),
+                    Label("", id="length-value", classes="stat-value"),
+                    classes="stat-row",
+                ),
+                Horizontal(
+                    Label("Speed:", classes="stat-label"),
+                    Label("", id="speed-value", classes="stat-value"),
+                    classes="stat-row",
+                ),
+                id="stats-content",
+            ),
             FigletWidget("SNEK", font="small", id="panel-title", colors=["$primary"]),
             id="side-panel-container",
         )
@@ -149,16 +176,13 @@ class SidePanel(Static):
     def update_content(self) -> None:
         """Update the stats content."""
         world_name = self.game.world_path.get_world_name(self.game.level)
-        stats_text = Text()
-        stats_text.append(f"Level: {self.game.level}\n")
-        stats_text.append(f"World: {world_name}\n")
-        stats_text.append(f"Symbols: {self.game.symbols_consumed}\n")
-        stats_text.append(f"Length: {len(self.game.snake)}\n")
-        stats_text.append(f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n")
-
-        # Update the stats content
-        stats_content = self.query_one("#stats-content", Static)
-        stats_content.update(stats_text)
+        
+        # Update each value label
+        self.query_one("#level-value", Label).update(str(self.game.level))
+        self.query_one("#world-value", Label).update(world_name)
+        self.query_one("#symbols-value", Label).update(str(self.game.symbols_consumed))
+        self.query_one("#length-value", Label).update(str(len(self.game.snake)))
+        self.query_one("#speed-value", Label).update(f"{self.game.get_moves_per_second():.1f}/sec")
 
 
 class SnakeApp(App):

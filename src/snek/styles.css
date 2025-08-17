@@ -45,6 +45,25 @@ SidePanel {
     color: $primary;
 }
 
+/* Stat row layout */
+.stat-row {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+}
+
+/* Stat labels on the left */
+.stat-label {
+    width: auto;
+    text-style: bold;
+}
+
+/* Stat values right-aligned */
+.stat-value {
+    width: 1fr;
+    text-align: right;
+}
+
 /* Figlet widget pushed to bottom */
 #panel-title {
     dock: bottom;
