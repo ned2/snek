@@ -1,3 +1,4 @@
+"""Configuration settings and defaults for the Snek game."""
 from dataclasses import dataclass
 
 

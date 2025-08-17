@@ -1,3 +1,4 @@
+"""Main Textual application for the Snek game."""
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult

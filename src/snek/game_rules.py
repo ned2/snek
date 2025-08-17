@@ -1,3 +1,4 @@
+"""Game rules and logic separated from state management."""
 from enum import Enum, auto
 
 from .config import GameConfig, default_config

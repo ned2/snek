@@ -1,3 +1,4 @@
+"""Core game logic and state management for Snek."""
 import random
 
 from .config import GameConfig, default_config
