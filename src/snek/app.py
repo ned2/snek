@@ -27,11 +27,6 @@ class SplashView(Vertical):
         super().__init__()
         self.theme_manager = theme_manager
 
-    def on_mount(self) -> None:
-        """Update figlet color to use theme primary color."""
-        figlet = self.query_one("#splash-title", FigletWidget)
-        figlet.styles.color = "$primary"
-
     def compose(self) -> ComposeResult:
         """Compose the splash screen with FigletWidget."""
         with Vertical(id="splash-container"):
@@ -69,7 +64,9 @@ class DeathView(Vertical):
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
         with Vertical(id="death-container"):
-            yield FigletWidget("GAME OVER", font="doom", id="death-title")
+            yield FigletWidget(
+                "GAME OVER", font="doom", id="death-title", colors=["$primary"]
+            )
             yield Static("")
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static(
@@ -85,15 +82,12 @@ class PauseView(Vertical):
         super().__init__()
         self.theme_manager = theme_manager
 
-    def on_mount(self) -> None:
-        """Update figlet color to use theme primary color."""
-        figlet = self.query_one("#pause-title", FigletWidget)
-        figlet.styles.color = "$primary"
-
     def compose(self) -> ComposeResult:
         """Compose the pause screen with FigletWidget."""
         with Vertical(id="pause-container"):
-            yield FigletWidget("PAUSED", font="banner", id="pause-title")
+            yield FigletWidget(
+                "PAUSED", font="banner", id="pause-title", colors=["$primary"]
+            )
             yield Static("")
             yield Static("Press any key to continue", classes="pause-prompt")
 
@@ -162,9 +156,7 @@ class StatsPanel(Static):
         stats_text = Text()
         stats_text.append(f"Level: {self.game.level}\n", style="$primary")
         stats_text.append(f"World: {world_name}\n", style="$primary")
-        stats_text.append(
-            f"Symbols: {self.game.symbols_consumed}\n", style="$primary"
-        )
+        stats_text.append(f"Symbols: {self.game.symbols_consumed}\n", style="$primary")
         stats_text.append(f"Length: {len(self.game.snake)}\n", style="$primary")
         stats_text.append(
             f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n",
@@ -174,10 +166,6 @@ class StatsPanel(Static):
         # Update the stats content
         stats_content = self.query_one("#stats-content", Static)
         stats_content.update(stats_text)
-
-        # Update figlet color
-        figlet = self.query_one("#stats-figlet", FigletWidget)
-        figlet.styles.color = "$primary"
 
 
 class SnakeApp(App):
@@ -206,7 +194,7 @@ class SnakeApp(App):
         # Register all custom themes
         for theme in self.theme_manager.get_all_themes():
             self.register_theme(theme)
-        
+
         # Set initial theme
         self.theme = self.theme_manager.get_theme_name_for_level(1)
 
