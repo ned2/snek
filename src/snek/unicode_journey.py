@@ -11,6 +11,7 @@ class World:
     name: str
     description: str
     characters: list[str]
+    theme_name: str
 
 
 class WorldPath:

@@ -1,8 +1,7 @@
 """Integration tests for the Snek app."""
+
 import pytest
-from textual.color import Color
-from snek.app import SnakeApp, SnakeView, StatsPanel
-from snek.game import Game
+from snek.app import SnakeApp
 from snek.game_rules import Direction
 from snek.config import GameConfig
 from snek.constants import GameState
@@ -16,7 +15,7 @@ async def test_app_startup():
         # Should show splash screen
         assert app.state_manager.is_state(GameState.SPLASH)
         assert app.splash_view is not None
-        
+
         # Game should not be initialized yet
         assert app.game is None
 
@@ -28,11 +27,11 @@ async def test_start_game_from_splash():
     async with app.run_test() as pilot:
         # Press any key to start
         await pilot.press("space")
-        
+
         # Should be in playing state
         assert app.state_manager.is_state(GameState.PLAYING)
         assert app.splash_view is None
-        
+
         # Game should be initialized
         assert app.game is not None
         assert app.view_widget is not None
@@ -46,17 +45,17 @@ async def test_game_controls():
     async with app.run_test() as pilot:
         # Start game
         await pilot.press("space")
-        
+
         # Test direction controls
         await pilot.press("up")
         assert app.game.direction == Direction.UP
-        
+
         await pilot.press("right")
         assert app.game.direction == Direction.RIGHT
-        
+
         await pilot.press("down")
         assert app.game.direction == Direction.DOWN
-        
+
         # Now we can turn left (from down)
         await pilot.press("left")
         assert app.game.direction == Direction.LEFT
@@ -70,12 +69,12 @@ async def test_pause_functionality():
         # Start game
         await pilot.press("space")
         await pilot.pause()
-        
+
         # Pause game
         await pilot.press("p")
         await pilot.pause()
         assert app.game.paused is True
-        
+
         # Check if pause view exists
         try:
             pause_view = app.query_one("PauseView")
@@ -83,7 +82,7 @@ async def test_pause_functionality():
         except:
             # Pause view might be rendered differently
             pass
-        
+
         # Unpause
         await pilot.press("p")
         await pilot.pause()
@@ -98,12 +97,12 @@ async def test_game_over_and_restart():
         # Start game
         await pilot.press("space")
         await pilot.pause()
-        
+
         # Force game over
         app.game.game_over = True
         app.show_death()
         await pilot.pause()
-        
+
         # Check if death view exists
         try:
             death_view = app.query_one("DeathView")
@@ -111,11 +110,11 @@ async def test_game_over_and_restart():
         except:
             # Death view might be rendered differently
             pass
-        
+
         # Press R to restart
         await pilot.press("r")
         await pilot.pause()
-        
+
         # After restart, should be playing again
         assert app.state_manager.is_state(GameState.PLAYING)
         assert app.game is not None
@@ -131,7 +130,7 @@ async def test_quit_from_game():
     async with app.run_test() as pilot:
         # Start game
         await pilot.press("space")
-        
+
         # Quit should work
         await pilot.press("q")
         # App should exit (test framework handles this)
@@ -145,38 +144,38 @@ async def test_stats_panel_updates():
         # Start game
         await pilot.press("space")
         await pilot.pause()
-        
+
         # Get initial stats
         stats = app.stats_widget
-        
+
         # Update game state
         app.game.symbols_consumed = 10
         app.game.level = 2
-        
+
         # The stats panel should update automatically on the next tick
         # or we can trigger a refresh
-        if hasattr(stats, 'refresh'):
+        if hasattr(stats, "refresh"):
             stats.refresh()
         await pilot.pause()
-        
+
         # The stats panel should show the updated values
         # Check if the game state was actually updated
         assert app.game.symbols_consumed == 10
         assert app.game.level == 2
-        
+
         # Check the stats panel's internal state
-        if hasattr(stats, 'game'):
+        if hasattr(stats, "game"):
             assert stats.game.symbols_consumed == 10
             assert stats.game.level == 2
-        
+
         # Try to get the renderable content
-        if hasattr(stats, 'renderable'):
+        if hasattr(stats, "renderable"):
             content = str(stats.renderable)
             # Only check if content is not empty
             if content:
                 assert "10" in content or "Score: 10" in content
                 assert "2" in content or "Level: 2" in content
-        
+
         # As a fallback, just verify the game state was updated correctly
         # The visual rendering can be tested with snapshot tests
 
@@ -186,20 +185,20 @@ async def test_theme_changes_with_level():
     """Test theme changes when level increases."""
     config = GameConfig()
     app = SnakeApp(config=config)
-    
+
     async with app.run_test() as pilot:
         # Start game
         await pilot.press("space")
         await pilot.pause()
-        
+
         # Store initial level
         initial_level = app.game.level
-        
+
         # Force level change by consuming enough symbols
         app.game.symbols_consumed = 5
         app.game.check_level_up()
         await pilot.pause()
-        
+
         # Level should have changed
         assert app.game.level == 2
         assert app.game.level > initial_level
@@ -213,18 +212,19 @@ async def test_resize_handling():
         # Start game
         await pilot.press("space")
         await pilot.pause()
-        
+
         initial_width = app.game.width
         initial_height = app.game.height
-        
+
         # Create a mock resize event
         from textual.events import Resize
+
         resize_event = Resize(100, 30, 100, 30)
-        
+
         # Simulate resize
         await app.on_resize(resize_event)
         await pilot.pause()
-        
+
         # Game dimensions should update
         # (Exact values depend on layout calculations)
         assert app.game.width > 0
