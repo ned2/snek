@@ -1,6 +1,3 @@
-from rich.align import Align
-from rich.console import Group, RenderableType
-from rich.panel import Panel
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
@@ -19,9 +16,7 @@ from .constants import (
     STATS_PANEL_WIDTH,
     MIN_GAME_WIDTH,
     MIN_GAME_HEIGHT,
-    SNEK_TITLE,
     SNEK_ASCII_ART,
-    KEY_BINDINGS,
 )
 
 
