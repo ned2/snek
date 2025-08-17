@@ -17,16 +17,15 @@ from .constants import (
 from .game import Game
 from .game_rules import Direction
 from .state_manager import StateManager
-from .themes import ThemeManager
+from .themes import THEME_MAP
 
 
 class SplashView(Vertical):
     can_focus = True
     """Splash screen with retro arcade vibes."""
 
-    def __init__(self, theme_manager: ThemeManager) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.theme_manager = theme_manager
 
     def compose(self) -> ComposeResult:
         """Compose the splash screen with FigletWidget."""
@@ -58,9 +57,8 @@ class DeathView(Vertical):
     can_focus = True
     """Splash screen shown when snek dies."""
 
-    def __init__(self, theme_manager: ThemeManager) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.theme_manager = theme_manager
 
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
@@ -80,9 +78,8 @@ class PauseView(Vertical):
     can_focus = True
     """Splash screen shown when game is paused."""
 
-    def __init__(self, theme_manager: ThemeManager) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.theme_manager = theme_manager
 
     def compose(self) -> ComposeResult:
         """Compose the pause screen with FigletWidget."""
@@ -101,11 +98,10 @@ class SnakeView(Static):
     """Renders the game as text."""
 
     def __init__(
-        self, game: Game, theme_manager: ThemeManager, config: GameConfig = None
+        self, game: Game, config: GameConfig = None
     ) -> None:
         super().__init__()
         self.game = game
-        self.theme_manager = theme_manager
         self.config = config or default_config
 
     def on_resize(self, event: events.Resize) -> None:
@@ -145,10 +141,9 @@ class SnakeView(Static):
 class SidePanel(Static):
     """Panel showing game statistics."""
 
-    def __init__(self, game: Game, theme_manager: ThemeManager) -> None:
+    def __init__(self, game: Game) -> None:
         super().__init__()
         self.game = game
-        self.theme_manager = theme_manager
         # Set width programmatically to have single source of truth
         self.styles.width = SIDE_PANEL_WIDTH
         self.styles.min_width = SIDE_PANEL_WIDTH
@@ -212,7 +207,6 @@ class SnakeApp(App):
         self.CSS_PATH = css_path
         super().__init__(**kwargs)
         self.config = config or default_config
-        self.theme_manager = ThemeManager()
         self.state_manager = StateManager()
         self.splash_view: SplashView | None = None
         self.game: Game | None = None
@@ -229,11 +223,13 @@ class SnakeApp(App):
 
     def on_mount(self) -> None:
         """Register themes when the app mounts."""
-        for theme in self.theme_manager.get_all_themes():
+        for theme in THEME_MAP.values():
             self.register_theme(theme)
-        self.theme = self.theme_manager.get_theme_name_for_world(0)
+        # Set initial theme to first world's theme
+        self.theme = self.game.world_path.get_world(0).theme_name if self.game else "snek-classic"
         # fade the splash screen in on load
-        self.splash_view.styles.animate("opacity", value=1.0, duration=1.0)
+        if self.splash_view:
+            self.splash_view.styles.animate("opacity", value=1.0, duration=1.0)
 
     def _register_state_callbacks(self) -> None:
         """Register callbacks for state transitions."""
@@ -257,11 +253,11 @@ class SnakeApp(App):
 
     def compose(self) -> ComposeResult:
         if self.state_manager.is_state(GameState.SPLASH):
-            self.splash_view = SplashView(self.theme_manager)
+            self.splash_view = SplashView()
             yield self.splash_view
         else:
-            self.view_widget = SnakeView(self.game, self.theme_manager)
-            yield Horizontal(self.view_widget, SidePanel(self.game, self.theme_manager))
+            self.view_widget = SnakeView(self.game)
+            yield Horizontal(self.view_widget, SidePanel(self.game))
 
     def _clear_all_widgets(self) -> None:
         """Clear all game-related widgets."""
@@ -299,8 +295,8 @@ class SnakeApp(App):
         game_width, game_height = self._calculate_game_dimensions(width, height)
 
         self.game = Game(width=game_width, height=game_height, config=self.config)
-        self.view_widget = SnakeView(self.game, self.theme_manager, self.config)
-        self.stats_widget = SidePanel(self.game, self.theme_manager)
+        self.view_widget = SnakeView(self.game, self.config)
+        self.stats_widget = SidePanel(self.game)
         self.game_container = Horizontal(
             self.view_widget, self.stats_widget, id="game-content"
         )
@@ -316,10 +312,7 @@ class SnakeApp(App):
 
         # Update theme if world changed
         if self.game.current_world != old_world:
-            self.theme_manager.set_world(self.game.current_world)
-            self.theme = self.theme_manager.get_theme_name_for_world(
-                self.game.current_world
-            )
+            self.theme = self.game.world_path.get_world(self.game.current_world).theme_name
             self.stats_widget.update_content()
 
         if self.game.game_over:
@@ -346,7 +339,7 @@ class SnakeApp(App):
             self.timer = None
 
         self._clear_all_widgets()
-        self.death_view = DeathView(self.theme_manager)
+        self.death_view = DeathView()
         self.mount(self.death_view)
         self.death_view.focus()
 
@@ -365,7 +358,7 @@ class SnakeApp(App):
         if self.game_container:
             self.game_container.remove()
 
-        self.pause_view = PauseView(self.theme_manager)
+        self.pause_view = PauseView()
         self.mount(self.pause_view)
         self.pause_view.focus()
 
@@ -382,8 +375,8 @@ class SnakeApp(App):
             self.pause_view = None
 
         # Recreate game widgets and game layout and mount game container
-        self.view_widget = SnakeView(self.game, self.theme_manager, self.config)
-        self.stats_widget = SidePanel(self.game, self.theme_manager)
+        self.view_widget = SnakeView(self.game, self.config)
+        self.stats_widget = SidePanel(self.game)
         self.game_container = Horizontal(
             self.view_widget, self.stats_widget, id="game-content"
         )
