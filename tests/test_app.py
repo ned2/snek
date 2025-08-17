@@ -229,3 +229,47 @@ async def test_resize_handling():
         # (Exact values depend on layout calculations)
         assert app.game.width > 0
         assert app.game.height > 0
+
+
+class TestWorldProgression:
+    """Test world progression."""
+
+    def test_check_world_transition(self):
+        """Test world transition when enough symbols consumed in current world."""
+        from snek.game import Game
+        
+        game = Game()
+        game.symbols_in_current_world = 10  # Assuming default symbols_per_world is 10
+        game.check_world_transition()
+        assert game.current_world == 1
+        assert game.symbols_in_current_world == 0  # Resets for new world
+
+        # Test multiple world transitions
+        game.symbols_in_current_world = 10
+        game.check_world_transition()
+        assert game.current_world == 2
+
+    def test_update_speed(self):
+        """Test speed update mechanism."""
+        from snek.game import Game
+        
+        game = Game()
+        initial_interval = game.current_interval
+        
+        # Update speed
+        new_interval = 0.05
+        game.update_speed(new_interval)
+        
+        assert game.current_interval == new_interval
+        assert game.current_interval < initial_interval
+
+    def test_get_moves_per_second(self):
+        """Test moves per second calculation."""
+        from snek.game import Game
+        
+        game = Game()
+        game.current_interval = 0.1
+        assert game.get_moves_per_second() == 10.0
+        
+        game.current_interval = 0.5
+        assert game.get_moves_per_second() == 2.0
