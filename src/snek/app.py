@@ -28,10 +28,9 @@ class SplashView(Vertical):
         self.theme_manager = theme_manager
 
     def on_mount(self) -> None:
-        """Update figlet color based on theme when mounted."""
-        theme = self.theme_manager.get_current_theme()
+        """Update figlet color to use theme primary color."""
         figlet = self.query_one("#splash-title", FigletWidget)
-        figlet.styles.color = theme.css_color
+        figlet.styles.color = "$primary"
 
     def compose(self) -> ComposeResult:
         """Compose the splash screen with FigletWidget."""
@@ -87,10 +86,9 @@ class PauseView(Vertical):
         self.theme_manager = theme_manager
 
     def on_mount(self) -> None:
-        """Update figlet color based on theme when mounted."""
-        theme = self.theme_manager.get_current_theme()
+        """Update figlet color to use theme primary color."""
         figlet = self.query_one("#pause-title", FigletWidget)
-        figlet.styles.color = theme.css_color
+        figlet.styles.color = "$primary"
 
     def compose(self) -> ComposeResult:
         """Compose the pause screen with FigletWidget."""
@@ -120,11 +118,9 @@ class SnakeView(Static):
         for y in range(height):
             for x in range(width):
                 if (x, y) in snake:
-                    theme = self.theme_manager.get_current_theme()
-                    text.append(self.config.snake_block, style=theme.css_color)
+                    text.append(self.config.snake_block, style="$primary")
                 elif (x, y) == self.game.food:
-                    theme = self.theme_manager.get_current_theme()
-                    text.append(f"{self.game.food_emoji} ", style=theme.css_color)
+                    text.append(f"{self.game.food_emoji} ", style="$primary")
                 else:
                     text.append(self.config.empty_cell)
             if y < height - 1:
@@ -144,7 +140,6 @@ class StatsPanel(Static):
         super().__init__()
         self.game = game
         self.theme_manager = theme_manager
-        self._last_theme = theme_manager.get_current_theme()
 
     def compose(self) -> ComposeResult:
         """Compose the stats panel with FigletWidget at bottom."""
@@ -160,24 +155,20 @@ class StatsPanel(Static):
 
     def update_content(self) -> None:
         """Update the stats content and colors."""
-        theme = self.theme_manager.get_current_theme()
-
-        # Check if theme changed and update border if needed
-        if self._last_theme != theme:
-            self._last_theme = theme
-            self.styles.border = ("solid", theme.css_color)
+        # Update border to use primary color
+        self.styles.border = ("solid", "$primary")
 
         world_name = self.game.world_path.get_world_name(self.game.level)
         stats_text = Text()
-        stats_text.append(f"Level: {self.game.level}\n", style=theme.css_color)
-        stats_text.append(f"World: {world_name}\n", style=theme.css_color)
+        stats_text.append(f"Level: {self.game.level}\n", style="$primary")
+        stats_text.append(f"World: {world_name}\n", style="$primary")
         stats_text.append(
-            f"Symbols: {self.game.symbols_consumed}\n", style=theme.css_color
+            f"Symbols: {self.game.symbols_consumed}\n", style="$primary"
         )
-        stats_text.append(f"Length: {len(self.game.snake)}\n", style=theme.css_color)
+        stats_text.append(f"Length: {len(self.game.snake)}\n", style="$primary")
         stats_text.append(
             f"Speed: {self.game.get_moves_per_second():.1f}/sec\n\n",
-            style=theme.css_color,
+            style="$primary",
         )
 
         # Update the stats content
@@ -186,7 +177,7 @@ class StatsPanel(Static):
 
         # Update figlet color
         figlet = self.query_one("#stats-figlet", FigletWidget)
-        figlet.styles.color = theme.css_color
+        figlet.styles.color = "$primary"
 
 
 class SnakeApp(App):
@@ -209,6 +200,15 @@ class SnakeApp(App):
         self.pause_view: PauseView | None = None
 
         self._register_state_callbacks()
+
+    def on_mount(self) -> None:
+        """Register themes when the app mounts."""
+        # Register all custom themes
+        for theme in self.theme_manager.get_all_themes():
+            self.register_theme(theme)
+        
+        # Set initial theme
+        self.theme = self.theme_manager.get_theme_name_for_level(1)
 
     def _register_state_callbacks(self) -> None:
         """Register callbacks for state transitions."""
@@ -296,6 +296,7 @@ class SnakeApp(App):
         # Update theme if level changed
         if self.game.level != old_level:
             self.theme_manager.set_level(self.game.level)
+            self.theme = self.theme_manager.get_theme_name_for_level(self.game.level)
             self.stats_widget.update_content()
 
         if self.game.game_over:
