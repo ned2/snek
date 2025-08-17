@@ -7,6 +7,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.timer import Timer
 from textual.widgets import Static
+from textual_pyfiglet import FigletWidget
 
 from .config import GameConfig, default_config
 from .game import Game
@@ -18,7 +19,7 @@ from .constants import (
     SNEK_TITLE, SNEK_ASCII_ART, KEY_BINDINGS
 )
 
-class SplashView(Static):
+class SplashView(Vertical):
     can_focus = True
     """Splash screen with retro arcade vibes."""
     def __init__(self, theme_manager: ThemeManager) -> None:
@@ -30,15 +31,18 @@ class SplashView(Static):
     def on_mount(self) -> None:
         """Animate fade-in when the splash screen is mounted."""
         self.styles.animate("opacity", value=1.0, duration=2.0)
-    
-    def render(self) -> RenderableType:
-        """Render the centered 'snek' title as colorful block ASCII art with prompt."""
+        # Update figlet color based on theme
         theme = self.theme_manager.get_current_theme()
-        title = Text(SNEK_TITLE, style="bold gradient(magenta,blue)", justify="center")
-        prompt = Text("Press any key to start", style="bold dim", justify="center")
-        controls = Text("Use arrow keys to move, P to pause, Q to quit", style="dim", justify="center")
-        group = Group(title, "", prompt, controls)
-        return Align.center(group, vertical="middle")
+        figlet = self.query_one("#splash-title", FigletWidget)
+        figlet.styles.color = theme.css_color
+    
+    def compose(self) -> ComposeResult:
+        """Compose the splash screen with FigletWidget."""
+        with Vertical(id="splash-container"):
+            yield FigletWidget("SNEK", font="slant", id="splash-title")
+            yield Static("")  # Empty line for spacing
+            yield Static("Press any key to start", classes="splash-prompt")
+            yield Static("Use arrow keys to move, P to pause, Q to quit", classes="splash-controls")
 
     async def on_key(self, event: events.Key) -> None:
         """Start game on any key press, or quit on Q."""
@@ -48,32 +52,40 @@ class SplashView(Static):
             self.app.start_game()
         event.stop()
 
-class DeathView(Static):
+class DeathView(Vertical):
     can_focus = True
     """Splash screen shown when snek dies."""
     def __init__(self, theme_manager: ThemeManager) -> None:
         super().__init__()
         self.theme_manager = theme_manager
         
-    def render(self) -> RenderableType:
-        title = Text("💀 SNEK DIED! 💀", style="bold red", justify="center")
-        prompt = Text("Press Q to quit or any other key to restart", style="bold dim", justify="center")
-        group = Group(title, prompt)
-        return Align.center(group, vertical="middle")
+    def compose(self) -> ComposeResult:
+        """Compose the death screen with FigletWidget."""
+        with Vertical(id="death-container"):
+            yield FigletWidget("GAME OVER", font="doom", id="death-title")
+            yield Static("")  # Empty line for spacing
+            yield Static("💀 SNEK DIED! 💀", classes="death-message")
+            yield Static("Press Q to quit or any other key to restart", classes="death-prompt")
 
-class PauseView(Static):
+class PauseView(Vertical):
     can_focus = True
     """Splash screen shown when game is paused."""
     def __init__(self, theme_manager: ThemeManager) -> None:
         super().__init__()
         self.theme_manager = theme_manager
         
-    def render(self) -> RenderableType:
+    def on_mount(self) -> None:
+        """Update figlet color based on theme when mounted."""
         theme = self.theme_manager.get_current_theme()
-        title = Text("⏸️  PAUSED ⏸️", style=f"bold {theme.css_color}", justify="center")
-        prompt = Text("Press any key to continue", style="bold dim", justify="center")
-        group = Group(title, prompt)
-        return Align.center(group, vertical="middle")
+        figlet = self.query_one("#pause-title", FigletWidget)
+        figlet.styles.color = theme.css_color
+        
+    def compose(self) -> ComposeResult:
+        """Compose the pause screen with FigletWidget."""
+        with Vertical(id="pause-container"):
+            yield FigletWidget("PAUSED", font="banner", id="pause-title")
+            yield Static("")  # Empty line for spacing
+            yield Static("Press any key to continue", classes="pause-prompt")
 
 class SnakeView(Static):
     """Renders the game as text."""
