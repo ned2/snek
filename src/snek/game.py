@@ -75,14 +75,10 @@ class Game:
             self.snake.pop()
 
     def check_world_transition(self) -> None:
-        """Check if player should move to next world and update color."""
+        """Check if player should move to next world."""
         if self.symbols_in_current_world >= self.config.symbols_per_world:
             self.current_world += 1
             self.symbols_in_current_world = 0
-            available_colors = [
-                c for c in self.config.level_colors if c != self.current_color
-            ]
-            self.current_color = self.rng.choice(available_colors)
 
     def update_speed(self, new_interval: float) -> None:
         """Update the current speed interval."""

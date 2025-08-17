@@ -1,54 +1,50 @@
 """Tests for theme management."""
 import pytest
-from snek.themes import Theme, ThemeManager
+from snek.themes import THEME_MAP
+from snek.unicode_journey import WorldPath
 
 
-class TestTheme:
-    """Test Theme class."""
+class TestThemes:
+    """Test theme functionality."""
     
-    def test_theme_creation(self):
-        """Test creating a theme."""
-        theme = Theme(
-            name="Test",
-            primary_color="green"
-        )
+    def test_all_themes_exist(self):
+        """Test that all required themes exist in THEME_MAP."""
+        expected_themes = [
+            "snek-classic",
+            "snek-ocean", 
+            "snek-sunset",
+            "snek-royal",
+            "snek-cherry"
+        ]
         
-        assert theme.name == "Test"
-        assert theme.primary_color == "green"
-        assert theme.css_color == "green"
-
-
-class TestThemeManager:
-    """Test ThemeManager class."""
+        for theme_name in expected_themes:
+            assert theme_name in THEME_MAP
+            assert THEME_MAP[theme_name] is not None
     
-    def test_initialization(self):
-        """Test theme manager initialization."""
-        manager = ThemeManager()
-        assert len(manager.themes) > 0
-        assert manager.current_theme_index == 0
+    def test_theme_properties(self):
+        """Test that themes have required properties."""
+        for theme_name, theme in THEME_MAP.items():
+            assert theme.name == theme_name
+            assert theme.primary is not None
+            assert theme.secondary is not None
+            assert theme.background is not None
+            assert theme.foreground is not None
+            assert theme.dark is True  # All themes should be dark
     
-    def test_get_theme_for_level(self):
-        """Test getting theme by level."""
-        manager = ThemeManager()
+    def test_world_theme_mapping(self):
+        """Test that each world has a valid theme."""
+        world_path = WorldPath()
         
-        # Should cycle through themes
-        theme1 = manager.get_theme_for_level(1)
-        theme2 = manager.get_theme_for_level(2)
-        assert theme1.name != theme2.name
-        
-        # Should wrap around
-        total_themes = len(manager.themes)
-        theme_wrap = manager.get_theme_for_level(total_themes + 1)
-        assert theme_wrap.name == theme1.name
+        for i in range(len(world_path.worlds)):
+            world = world_path.get_world(i)
+            assert hasattr(world, 'theme_name')
+            assert world.theme_name in THEME_MAP
+            
+            # Test theme property
+            assert world.theme == THEME_MAP[world.theme_name]
+            assert world.theme.name == world.theme_name
     
-    def test_set_level(self):
-        """Test setting theme by level."""
-        manager = ThemeManager()
-        
-        # Set to level 2
-        theme = manager.set_level(2)
-        assert manager.current_theme_index == 1
-        assert theme == manager.themes[1]
-        
-        # Current theme should match
-        assert manager.get_current_theme() == theme
+    def test_theme_colors_unique(self):
+        """Test that each theme has unique primary colors."""
+        primary_colors = [theme.primary for theme in THEME_MAP.values()]
+        assert len(primary_colors) == len(set(primary_colors))

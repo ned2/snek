@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 import random
 
+from .themes import THEME_MAP
+
 
 @dataclass
 class World:
@@ -11,6 +13,12 @@ class World:
     name: str
     description: str
     characters: list[str]
+    theme_name: str
+
+    @property
+    def theme(self):
+        """Get the theme object for this world."""
+        return THEME_MAP[self.theme_name]
     theme_name: str
 
 
@@ -29,41 +37,49 @@ class WorldPath:
                 name="Basic Symbols",
                 description="Simple geometric shapes to begin our journey",
                 characters=["●", "○", "■", "□", "▲", "▼", "◆", "◇", "★", "☆"],
+                theme_name="snek-classic",
             ),
             World(
                 name="Ancient Egypt",
                 description="Hieroglyphic symbols from the land of pharaohs",
                 characters=["𓀀", "𓂀", "𓃀", "𓆣", "𓅱", "𓊖", "𓊗", "𓊘", "𓊙", "𓊚"],
+                theme_name="snek-ocean",
             ),
             World(
                 name="Classical Greece",
                 description="Letters and symbols from ancient Greek civilization",
                 characters=["Α", "Β", "Γ", "Δ", "Θ", "Λ", "Ξ", "Π", "Σ", "Ω"],
+                theme_name="snek-sunset",
             ),
             World(
                 name="Norse Runes",
                 description="Mystical runes from the Viking age",
                 characters=["ᚠ", "ᚢ", "ᚦ", "ᚨ", "ᚱ", "ᚲ", "ᚷ", "ᚹ", "ᚺ", "ᚾ"],
+                theme_name="snek-royal",
             ),
             World(
                 name="Alchemical Mysteries",
                 description="Symbols from medieval alchemy and mysticism",
                 characters=["🜁", "🜄", "🜍", "🜔", "🜛", "🜠", "🜨", "🜩", "🜪", "🜫"],
+                theme_name="snek-cherry",
             ),
             World(
                 name="Mathematical Realm",
                 description="Logic and mathematical symbols",
                 characters=["∴", "∵", "∞", "∇", "∂", "∫", "∑", "∏", "√", "∛"],
+                theme_name="snek-classic",
             ),
             World(
                 name="Global Currencies",
                 description="Currency symbols from around the world",
                 characters=["₹", "₽", "₩", "₪", "₫", "₦", "₨", "₱", "₡", "₵"],
+                theme_name="snek-ocean",
             ),
             World(
                 name="Digital Age",
                 description="Modern symbols and special characters",
                 characters=["◉", "◈", "◊", "◌", "◍", "◎", "◐", "◑", "◒", "◓"],
+                theme_name="snek-sunset",
             ),
         ]
 

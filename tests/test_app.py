@@ -150,7 +150,7 @@ async def test_stats_panel_updates():
 
         # Update game state
         app.game.symbols_consumed = 10
-        app.game.level = 2
+        app.game.current_world = 1
 
         # The stats panel should update automatically on the next tick
         # or we can trigger a refresh
@@ -161,12 +161,12 @@ async def test_stats_panel_updates():
         # The stats panel should show the updated values
         # Check if the game state was actually updated
         assert app.game.symbols_consumed == 10
-        assert app.game.level == 2
+        assert app.game.current_world == 1
 
         # Check the stats panel's internal state
         if hasattr(stats, "game"):
             assert stats.game.symbols_consumed == 10
-            assert stats.game.level == 2
+            assert stats.game.current_world == 1
 
         # Try to get the renderable content
         if hasattr(stats, "renderable"):
@@ -181,8 +181,8 @@ async def test_stats_panel_updates():
 
 
 @pytest.mark.asyncio
-async def test_theme_changes_with_level():
-    """Test theme changes when level increases."""
+async def test_theme_changes_with_world():
+    """Test theme changes when world changes."""
     config = GameConfig()
     app = SnakeApp(config=config)
 
@@ -191,17 +191,25 @@ async def test_theme_changes_with_level():
         await pilot.press("space")
         await pilot.pause()
 
-        # Store initial level
-        initial_level = app.game.level
+        # Store initial world
+        initial_world = app.game.current_world
+        initial_theme = app.theme
 
-        # Force level change by consuming enough symbols
-        app.game.symbols_consumed = 5
-        app.game.check_level_up()
+        # Force world change by consuming enough symbols
+        app.game.symbols_consumed = config.symbols_per_world
+        app.game.symbols_in_current_world = config.symbols_per_world
+        app.game.check_world_transition()
         await pilot.pause()
 
-        # Level should have changed
-        assert app.game.level == 2
-        assert app.game.level > initial_level
+        # World should have changed
+        assert app.game.current_world == initial_world + 1
+        
+        # Theme should update when tick() is called
+        app.tick()
+        await pilot.pause()
+        
+        # Theme should have changed
+        assert app.theme != initial_theme
 
 
 @pytest.mark.asyncio
