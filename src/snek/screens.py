@@ -127,6 +127,10 @@ class GameScreen(Screen):
                 self.stats_widget.update_content()
 
         if self.game.game_over:
+            # Stop the timer to prevent multiple game over modals
+            if self.timer:
+                self.timer.stop()
+                self.timer = None
             self.app.push_screen(GameOverModal())
             return
 
@@ -234,6 +238,9 @@ class PauseModal(ModalScreen):
 
 class GameOverModal(ModalScreen):
     """Modal screen shown when snek dies."""
+    
+    # Make sure the modal can receive focus and key events
+    can_focus = True
 
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
@@ -248,17 +255,21 @@ class GameOverModal(ModalScreen):
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static("Press ENTER to restart or Q to quit", classes="death-prompt")
 
+    def on_mount(self) -> None:
+        """Ensure the modal gets focus when mounted."""
+        self.focus()
+
     async def on_key(self, event: events.Key) -> None:
         """Handle key presses in game over modal."""
         if event.key == "enter":
-            # Restart the game
-            self.dismiss()
-            self.app.pop_screen()
-            self.app.push_screen(GameScreen())
+            # Restart the game - pop current game screen and push new one
+            self.app.pop_screen()  # Remove the GameScreen beneath this modal
+            self.app.push_screen(GameScreen())  # Push new GameScreen
+            self.dismiss()  # Remove this modal last
         elif event.key.lower() == "q":
-            # Quit to splash screen
-            self.dismiss()
-            self.app.pop_screen()
+            # Quit to splash screen - pop game screen and dismiss modal
+            self.app.pop_screen()  # Remove the GameScreen beneath this modal
+            self.dismiss()  # Remove this modal last
         event.stop()
 
 

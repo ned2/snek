@@ -1,4 +1,5 @@
 """Pytest configuration and fixtures."""
+
 import pytest
 from snek.config import GameConfig
 from tests.fixtures import *  # Import all fixtures
@@ -25,4 +26,5 @@ def test_config():
 def mock_rng():
     """Provide a seeded random number generator for deterministic tests."""
     import random
+
     return random.Random(42)

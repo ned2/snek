@@ -1,6 +1,6 @@
 """Tests for world path functionality."""
 
-from snek.unicode_journey import WorldPath, World
+from snek.worlds import WorldPath, World
 from snek.themes import THEME_MAP
 
 

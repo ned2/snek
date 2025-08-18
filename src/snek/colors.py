@@ -3,7 +3,7 @@
 # Standard ANSI colors that work in both Rich and Textual
 VALID_COLORS = {
     "black": "black",
-    "red": "red", 
+    "red": "red",
     "green": "green",
     "yellow": "yellow",
     "blue": "blue",
@@ -27,26 +27,27 @@ COLOR_ALIASES = {
     "grey": "gray",
 }
 
+
 def get_valid_color(color_name: str) -> str:
     """Get a valid color string for Rich/Textual.
-    
+
     Args:
         color_name: The desired color name
-        
+
     Returns:
         A valid color string that Rich/Textual can use
     """
     # Check if it's already valid
     if color_name in VALID_COLORS:
         return VALID_COLORS[color_name]
-    
+
     # Check aliases
     if color_name in COLOR_ALIASES:
         return COLOR_ALIASES[color_name]
-    
+
     # Check extended colors
     if color_name in EXTENDED_COLORS:
         return EXTENDED_COLORS[color_name]
-    
+
     # Default to the input (might be RGB or hex)
     return color_name

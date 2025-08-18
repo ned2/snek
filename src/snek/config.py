@@ -1,4 +1,5 @@
 """Configuration settings and defaults for the Snek game."""
+
 from dataclasses import dataclass
 
 
@@ -28,7 +29,6 @@ class GameConfig:
 
     # Food symbols
     food_symbols: list[str] = None
-
 
     def __post_init__(self):
         """Initialize mutable defaults."""

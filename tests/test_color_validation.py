@@ -21,11 +21,11 @@ class TestColorValidation:
             try:
                 # Extract color value (remove # if present)
                 color = theme.primary
-                if color.startswith('#'):
+                if color.startswith("#"):
                     # Rich can handle hex colors
-                    style = Style(color=color)
+                    Style(color=color)
                 else:
-                    style = Style(color=color)
+                    Style(color=color)
                     console.get_style(color)
             except Exception as e:
                 pytest.fail(
@@ -40,7 +40,7 @@ class TestColorValidation:
                 # Textual Theme objects already have validated colors
                 # Just verify the primary color can be parsed
                 color = theme.primary
-                if color.startswith('#'):
+                if color.startswith("#"):
                     # Hex color
                     TextualColor.parse(color)
                 else:
@@ -95,7 +95,9 @@ class TestColorValidation:
         colors = [theme.primary for theme in THEME_MAP.values()]
 
         # Check for duplicates
-        assert len(colors) == len(set(colors)), "Some themes share the same primary color"
+        assert len(colors) == len(set(colors)), (
+            "Some themes share the same primary color"
+        )
 
     def test_theme_color_rendering(self):
         """Test that theme colors can be rendered in text."""

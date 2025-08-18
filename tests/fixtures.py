@@ -5,13 +5,6 @@ import random
 import pytest
 
 from snek.game import Game
-from snek.state_manager import StateManager
-
-
-@pytest.fixture
-def state_manager() -> StateManager:
-    """Provide a state manager instance."""
-    return StateManager()
 
 
 @pytest.fixture

@@ -1,15 +1,5 @@
 """Constants used throughout the Snek game."""
 
-
-class GameState:
-    """Game state constants."""
-
-    SPLASH = "splash"
-    PLAYING = "playing"
-    PAUSED = "paused"
-    GAME_OVER = "game_over"
-
-
 SIDE_PANEL_WIDTH = 30
 MIN_GAME_WIDTH = 10
 MIN_GAME_HEIGHT = 10
