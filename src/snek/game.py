@@ -1,9 +1,10 @@
 """Core game logic and state management for Snek."""
+
 import random
 
 from .config import GameConfig, default_config
 from .game_rules import Direction, GameRules, Position
-from .unicode_journey import WorldPath
+from .worlds import WorldPath
 
 
 class Game:
@@ -118,4 +119,6 @@ class Game:
         if position[0] >= self.width or position[1] >= self.height:
             raise ValueError(f"Food position {position} is out of bounds")
         self.food = position
-        self.food_emoji = emoji or self.world_path.get_food_character(self.current_world)
+        self.food_emoji = emoji or self.world_path.get_food_character(
+            self.current_world
+        )
