@@ -194,8 +194,8 @@ class GameScreen(Screen):
         event.stop()
 
     def action_quit(self) -> None:
-        """Quit to splash screen."""
-        self.app.pop_screen()
+        """Quit the application."""
+        self.app.exit()
 
     def resume_game(self) -> None:
         """Resume the game after pause."""
@@ -230,9 +230,8 @@ class PauseModal(ModalScreen):
                     break
             self.dismiss()
         elif event.key.lower() == "q":
-            # Quit to splash screen
-            self.dismiss()
-            self.app.pop_screen()
+            # Quit the application
+            self.app.exit()
         event.stop()
 
 
@@ -267,9 +266,8 @@ class GameOverModal(ModalScreen):
             self.app.push_screen(GameScreen())  # Push new GameScreen
             self.dismiss()  # Remove this modal last
         elif event.key.lower() == "q":
-            # Quit to splash screen - pop game screen and dismiss modal
-            self.app.pop_screen()  # Remove the GameScreen beneath this modal
-            self.dismiss()  # Remove this modal last
+            # Quit the application
+            self.app.exit()
         event.stop()
 
 

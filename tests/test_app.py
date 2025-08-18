@@ -140,19 +140,21 @@ async def test_game_over_and_restart():
 
 @pytest.mark.asyncio
 async def test_quit_from_game():
-    """Test quitting from game."""
+    """Test quitting from game exits the app."""
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
         await pilot.press("enter")
         await pilot.pause()
 
-        # Quit should work - this will pop back to splash screen
+        # Quit should exit the app entirely
         await pilot.press("q")
         await pilot.pause()
 
-        # Should be back on splash screen
-        assert isinstance(app.screen, SplashScreen)
+        # App should have exited (the test will complete successfully if app.exit() was called)
+        # If the app didn't exit, we'd still be in the game screen, which we can verify
+        # by checking that the app is no longer running
+        assert not app.is_running
 
 
 @pytest.mark.asyncio
