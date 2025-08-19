@@ -101,16 +101,28 @@ class Game:
         """Check if game is in a running state."""
         return not self.game_over and not self.paused
 
+    def _is_valid_position(self, position: Position) -> bool:
+        """Check if a position is within grid bounds."""
+        x, y = position
+        return 0 <= x < self.width and 0 <= y < self.height
+
     def set_snake_position(self, positions: list[Position]) -> None:
         """Set snake position for testing."""
         if not positions:
             raise ValueError("Snake must have at least one position")
+        
+        # Validate all positions are within bounds
+        for pos in positions:
+            if not self._is_valid_position(pos):
+                raise ValueError(f"Snake position {pos} is out of bounds")
+        
         self.snake = positions
 
     def set_food_position(self, position: Position, emoji: str = None) -> None:
         """Set food position for testing."""
-        if position[0] >= self.width or position[1] >= self.height:
+        if not self._is_valid_position(position):
             raise ValueError(f"Food position {position} is out of bounds")
+        
         self.food = position
         self.food_emoji = emoji or self.world_path.get_food_character(
             self.current_world
