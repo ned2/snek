@@ -18,8 +18,10 @@ from .game_rules import Direction
 class SplashScreen(Screen):
     """Splash screen with retro arcade vibes."""
     
-    # Make sure the screen can receive focus and key events
-    can_focus = True
+    BINDINGS = [
+        ("enter", "start_game", "Start Game"),
+        ("q", "quit", "Quit"),
+    ]
 
     def compose(self) -> ComposeResult:
         """Compose the splash screen with FigletWidget."""
@@ -42,21 +44,32 @@ class SplashScreen(Screen):
         """Fade in the splash screen on load."""
         self.styles.animate("opacity", value=1.0, duration=1.0)
 
-    async def on_key(self, event: events.Key) -> None:
-        """Handle key presses on splash screen."""
-        if event.key == "enter":
-            game_screen = GameScreen()
-            self.app.push_screen(game_screen)
-        elif event.key.lower() == "q":
-            self.app.exit()
-        event.stop()
+    def action_start_game(self) -> None:
+        """Start the game."""
+        game_screen = GameScreen()
+        self.app.push_screen(game_screen)
+
+    def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
 
 
 class GameScreen(Screen):
     """Main game screen containing the snake game and side panel."""
     
-    # Make sure the screen can receive focus and key events
-    can_focus = True
+    BINDINGS = [
+        ("up", "turn('UP')", "Up"),
+        ("down", "turn('DOWN')", "Down"),
+        ("left", "turn('LEFT')", "Left"),
+        ("right", "turn('RIGHT')", "Right"),
+        ("w", "turn('UP')", None),
+        ("s", "turn('DOWN')", None),
+        ("a", "turn('LEFT')", None),
+        ("d", "turn('RIGHT')", None),
+        ("p", "pause", "Pause"),
+        ("space", "toggle_sidebar", "Toggle Sidebar"),
+        ("q", "quit", "Quit"),
+    ]
 
     def __init__(self, config: GameConfig = None) -> None:
         super().__init__()
@@ -89,9 +102,6 @@ class GameScreen(Screen):
             # Set initial theme
             if hasattr(self.app, "theme") and self.game.world_path:
                 self.app.theme = self.game.world_path.get_world(0).theme_name
-        
-        # Focus this screen to receive key events
-        self.focus()
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
@@ -167,31 +177,17 @@ class GameScreen(Screen):
         else:
             self.stats_widget.styles.display = "none"
 
-    async def on_key(self, event: events.Key) -> None:
-        """Handle key presses for game controls."""
+    def action_turn(self, dir_name: str) -> None:
+        """Turn the snake in the specified direction."""
         if not self.game:
             return
-
-        # Handle game controls
-        if event.key in ("up", "down", "left", "right"):
-            self.game.turn(Direction[event.key.upper()])
-        elif event.key in ("w", "a", "s", "d"):
-            direction_map = {"w": "UP", "s": "DOWN", "a": "LEFT", "d": "RIGHT"}
-            self.game.turn(Direction[direction_map[event.key]])
-        elif event.key == "p":
-            self.action_pause()
-        elif event.key == "space":
-            self.action_toggle_sidebar()
-        elif event.key == "q":
-            self.action_quit()
-
+        self.game.turn(Direction[dir_name])
+        
         # Force a refresh after key press to show immediate response
         if self.view_widget:
             self.view_widget.refresh()
         if self.stats_widget:
             self.stats_widget.update_content()
-        
-        event.stop()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -204,9 +200,34 @@ class GameScreen(Screen):
             if self.interval:
                 self.timer = self.set_interval(self.interval, self.tick)
 
+    def restart_game(self) -> None:
+        """Restart the game."""
+        if self.timer:
+            self.timer.stop()
+        
+        if self.game:
+            self.game.reset()
+        
+        self.interval = self.config.initial_speed_interval
+        self.timer = self.set_interval(self.interval, self.tick)
+        
+        if self.view_widget:
+            self.view_widget.refresh()
+        if self.stats_widget:
+            self.stats_widget.update_content()
+        
+        # Update theme to initial world
+        if hasattr(self.app, "theme") and self.game and self.game.world_path:
+            self.app.theme = self.game.world_path.get_world(0).theme_name
+
 
 class PauseModal(ModalScreen):
     """Modal screen shown when game is paused."""
+    
+    BINDINGS = [
+        ("enter", "resume", "Resume"),
+        ("q", "quit", "Quit"),
+    ]
 
     def compose(self) -> ComposeResult:
         """Compose the pause screen with FigletWidget."""
@@ -220,26 +241,27 @@ class PauseModal(ModalScreen):
             )
             yield Static("Press ENTER to continue", classes="pause-prompt")
 
-    async def on_key(self, event: events.Key) -> None:
-        """Handle key presses in pause modal."""
-        if event.key == "enter":
-            # Resume the game
-            for screen in self.app.screen_stack:
-                if isinstance(screen, GameScreen):
-                    screen.resume_game()
-                    break
-            self.dismiss()
-        elif event.key.lower() == "q":
-            # Quit the application
-            self.app.exit()
-        event.stop()
+    def action_resume(self) -> None:
+        """Resume the game."""
+        # Resume the game
+        for screen in self.app.screen_stack:
+            if isinstance(screen, GameScreen):
+                screen.resume_game()
+                break
+        self.dismiss()
+
+    def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
 
 
 class GameOverModal(ModalScreen):
     """Modal screen shown when snek dies."""
     
-    # Make sure the modal can receive focus and key events
-    can_focus = True
+    BINDINGS = [
+        ("enter", "restart", "Restart"),
+        ("q", "quit", "Quit"),
+    ]
 
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
@@ -254,21 +276,18 @@ class GameOverModal(ModalScreen):
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
             yield Static("Press ENTER to restart or Q to quit", classes="death-prompt")
 
-    def on_mount(self) -> None:
-        """Ensure the modal gets focus when mounted."""
-        self.focus()
+    def action_restart(self) -> None:
+        """Restart the game."""
+        # Find the GameScreen and restart it instead of creating a new one
+        for screen in self.app.screen_stack:
+            if isinstance(screen, GameScreen):
+                screen.restart_game()
+                break
+        self.dismiss()
 
-    async def on_key(self, event: events.Key) -> None:
-        """Handle key presses in game over modal."""
-        if event.key == "enter":
-            # Restart the game - pop current game screen and push new one
-            self.app.pop_screen()  # Remove the GameScreen beneath this modal
-            self.app.push_screen(GameScreen())  # Push new GameScreen
-            self.dismiss()  # Remove this modal last
-        elif event.key.lower() == "q":
-            # Quit the application
-            self.app.exit()
-        event.stop()
+    def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
 
 
 class SnakeView(Static):
