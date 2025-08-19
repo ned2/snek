@@ -51,11 +51,6 @@ SidePanel {
 }
 
 /* Splash screen styling */
-SplashView {
-    opacity: 0;
-    align: center middle;
-}
-
 #splash-container {
     height: auto;
 }
@@ -65,11 +60,7 @@ SplashView {
     text-style: bold dim;
 }
 
-/* Death screen styling */
-DeathView {
-    align: center middle;
-}
-
+/* Game over modal styling */
 #death-container {
     align: center middle;
     height: auto;
@@ -87,11 +78,7 @@ DeathView {
     text-style: bold dim;
 }
 
-/* Pause screen styling */
-PauseView {
-    align: center middle;
-}
-
+/* Pause modal styling */
 #pause-container {
     align: center middle;
     height: auto;

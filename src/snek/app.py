@@ -17,7 +17,7 @@ class SnakeApp(App):
         self.config = config or default_config
 
     def on_load(self) -> None:
-        """Register themes when the app loads (runs once)."""
+        """Register all themes when the app loads."""
         for theme in THEME_MAP.values():
             self.register_theme(theme)
         self.theme = "snek-classic"

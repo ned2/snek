@@ -8,6 +8,7 @@ from .worlds import WorldPath
 
 
 class Game:
+    """Core game engine that manages snake movement, food placement, and world progression."""
     def __init__(
         self,
         width: int = None,
@@ -15,6 +16,7 @@ class Game:
         config: GameConfig = None,
         rng: random.Random = None,
     ) -> None:
+        """Initialize a new game with given dimensions and configuration."""
         self.config = config or default_config
         self.width = width or self.config.default_grid_width
         self.height = height or self.config.default_grid_height
@@ -24,6 +26,7 @@ class Game:
         self.reset()
 
     def reset(self) -> None:
+        """Reset the game to initial state with snake at center."""
         mid = (self.width // 2, self.height // 2)
         self.snake: list[Position] = [mid]
         self.direction = Direction.RIGHT
@@ -32,36 +35,36 @@ class Game:
         self.symbols_in_current_world = 0
         self.initial_interval = self.config.initial_speed_interval
         self.current_interval = self.initial_interval
-        self.place_food()
         self.game_over = False
         self.paused = False
+        self.place_food()
 
     def place_food(self) -> None:
+        """Place food at a random empty position on the grid."""
         while True:
-            p = (self.rng.randrange(self.width), self.rng.randrange(self.height))
-            if p not in self.snake:
-                self.food = p
+            pos = (self.rng.randrange(self.width), self.rng.randrange(self.height))
+            if pos not in self.snake:
+                self.food = pos
                 self.food_emoji = self.world_path.get_food_character(self.current_world)
                 return
 
     def turn(self, new_direction: Direction) -> None:
+        """Change snake direction if the turn is valid (not reversing)."""
         if GameRules.is_valid_turn(self.direction, new_direction):
             self.direction = new_direction
 
     def step(self) -> None:
+        """Advance the game by one step: move snake, check collisions, handle food."""
         if self.game_over or self.paused:
             return
-
         new_head_pos = GameRules.calculate_new_position(
             self.snake[0], self.direction, self.width, self.height
         )
-
         if GameRules.is_self_collision(new_head_pos, self.snake):
             self.game_over = True
             return
 
         self.snake.insert(0, new_head_pos)
-
         if GameRules.is_food_collision(new_head_pos, self.food):
             self.symbols_consumed += 1
             self.symbols_in_current_world += 1
@@ -110,19 +113,15 @@ class Game:
         """Set snake position for testing."""
         if not positions:
             raise ValueError("Snake must have at least one position")
-        
-        # Validate all positions are within bounds
         for pos in positions:
             if not self._is_valid_position(pos):
                 raise ValueError(f"Snake position {pos} is out of bounds")
-        
         self.snake = positions
 
     def set_food_position(self, position: Position, emoji: str = None) -> None:
         """Set food position for testing."""
         if not self._is_valid_position(position):
             raise ValueError(f"Food position {position} is out of bounds")
-        
         self.food = position
         self.food_emoji = emoji or self.world_path.get_food_character(
             self.current_world

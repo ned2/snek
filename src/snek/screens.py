@@ -16,8 +16,8 @@ from .game_rules import Direction
 
 
 class SplashScreen(Screen):
-    """Splash screen with retro arcade vibes."""
-    
+    """Splash screen for Snek."""
+
     BINDINGS = [
         ("enter", "start_game", "Start Game"),
         ("q", "quit", "Quit"),
@@ -56,7 +56,7 @@ class SplashScreen(Screen):
 
 class GameScreen(Screen):
     """Main game screen containing the snake game and side panel."""
-    
+
     BINDINGS = [
         ("up", "turn('UP')", "Up"),
         ("down", "turn('DOWN')", "Down"),
@@ -70,8 +70,7 @@ class GameScreen(Screen):
         ("space", "toggle_sidebar", "Toggle Sidebar"),
         ("q", "quit", "Quit"),
     ]
-    
-    # Reactive fields for automatic UI updates
+
     foods_eaten = reactive(0)
     speed = reactive(0.0)
     world_index = reactive(0)
@@ -121,15 +120,12 @@ class GameScreen(Screen):
             self.timer.stop()
         self.timer = self.set_interval(self.interval, self.tick)
 
-
     def tick(self) -> None:
         """Game tick - advance game state."""
         if not self.game:
             return
-
         pre_length = len(self.game.snake)
         old_world = self.game.current_world
-
         self.game.step()
 
         # Update theme if world changed
@@ -152,13 +148,13 @@ class GameScreen(Screen):
             self._restart_timer()
             self.game.update_speed(self.interval)
 
-        # Update reactive fields - this will automatically trigger UI updates
+        # Update reactive fields
         self.foods_eaten = self.game.symbols_consumed
         self.speed = self.game.get_moves_per_second()
         self.world_index = self.game.current_world
         self.symbols_in_world = self.game.symbols_in_current_world
-        
-        # Update stats panel reactive fields
+
+        # Update stats-panel reactive fields
         if self.stats_widget:
             self.stats_widget.foods_eaten = self.game.symbols_consumed
             self.stats_widget.speed = self.game.get_moves_per_second()
@@ -180,9 +176,7 @@ class GameScreen(Screen):
         """Toggle sidebar visibility."""
         if not self.stats_widget:
             return
-
         self.sidebar_visible = not self.sidebar_visible
-
         if self.sidebar_visible:
             self.stats_widget.styles.display = "block"
         else:
@@ -193,9 +187,8 @@ class GameScreen(Screen):
         if not self.game:
             return
         self.game.turn(Direction[dir_name])
-        
-        # Force a refresh after key press to show immediate response
         if self.view_widget:
+            # Force a refresh after key press to show immediate response
             self.view_widget.refresh()
 
     def action_quit(self) -> None:
@@ -213,34 +206,33 @@ class GameScreen(Screen):
         """Restart the game."""
         if self.game:
             self.game.reset()
-        
         self.interval = self.config.initial_speed_interval
         self._restart_timer()
-        
-        # Update reactive fields to trigger UI updates
+
+        # Update reactive fields
         self.foods_eaten = self.game.symbols_consumed
         self.speed = self.game.get_moves_per_second()
         self.world_index = self.game.current_world
         self.symbols_in_world = self.game.symbols_in_current_world
-        
-        # Update stats panel reactive fields
+
+        # Update stats-panel
         if self.stats_widget:
             self.stats_widget.foods_eaten = self.game.symbols_consumed
             self.stats_widget.speed = self.game.get_moves_per_second()
             self.stats_widget.world_index = self.game.current_world
             self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
-        
+
         if self.view_widget:
             self.view_widget.refresh()
-        
-        # Update theme to initial world
+
         if hasattr(self.app, "theme") and self.game and self.game.world_path:
+            # Update theme to initial world
             self.app.theme = self.game.world_path.get_world(0).theme_name
 
 
 class PauseModal(ModalScreen):
     """Modal screen shown when game is paused."""
-    
+
     BINDINGS = [
         ("enter", "resume", "Resume"),
         ("q", "quit", "Quit"),
@@ -260,7 +252,6 @@ class PauseModal(ModalScreen):
 
     def action_resume(self) -> None:
         """Resume the game."""
-        # Resume the game
         for screen in self.app.screen_stack:
             if isinstance(screen, GameScreen):
                 screen.resume_game()
@@ -274,7 +265,7 @@ class PauseModal(ModalScreen):
 
 class GameOverModal(ModalScreen):
     """Modal screen shown when snek dies."""
-    
+
     BINDINGS = [
         ("enter", "restart", "Restart"),
         ("q", "quit", "Quit"),
@@ -295,7 +286,6 @@ class GameOverModal(ModalScreen):
 
     def action_restart(self) -> None:
         """Restart the game."""
-        # Find the GameScreen and restart it instead of creating a new one
         for screen in self.app.screen_stack:
             if isinstance(screen, GameScreen):
                 screen.restart_game()
@@ -327,13 +317,12 @@ class SnakeView(Static):
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
         width, height = self.game.width, self.game.height
-        snake_positions = set(self.game.snake)  # Convert to set for O(1) lookup
+        snake_positions = set(self.game.snake)
         text = Text()
 
         for y in range(height):
             for x in range(width):
                 if (x, y) in snake_positions:
-                    # Use markup for theming - will be styled by CSS
                     text.append(self.config.snake_block)
                 elif (x, y) == self.game.food:
                     text.append(f"{self.game.food_emoji} ")
@@ -342,17 +331,12 @@ class SnakeView(Static):
             if y < height - 1:
                 # Don't add newline after last row
                 text.append("\n")
-
-        if self.game.game_over:
-            text.append("\n\n GAME OVER! Press R to restart.")
-
         return text
 
 
 class SidePanel(Static):
     """Panel showing game statistics."""
-    
-    # Reactive fields for automatic UI updates
+
     foods_eaten = reactive(0)
     speed = reactive(0.0)
     world_index = reactive(0)
@@ -361,7 +345,6 @@ class SidePanel(Static):
     def __init__(self, game: Game) -> None:
         super().__init__()
         self.game = game
-        # Set width programmatically to have single source of truth
         self.styles.width = default_config.side_panel_width
         self.styles.min_width = default_config.side_panel_width
 
