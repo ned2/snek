@@ -346,8 +346,8 @@ class SidePanel(Static):
     def __init__(self, game: Game) -> None:
         super().__init__()
         self.game = game
-        self.styles.width = default_config.side_panel_width
-        self.styles.min_width = default_config.side_panel_width
+        self.styles.width = self.game.config.side_panel_width
+        self.styles.min_width = self.game.config.side_panel_width
 
     def compose(self) -> ComposeResult:
         """Compose the side panel with FigletWidget at bottom."""

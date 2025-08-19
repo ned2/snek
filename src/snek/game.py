@@ -8,7 +8,8 @@ from .worlds import WorldPath
 
 
 class Game:
-    """Core game engine that manages snake movement, food placement, and world progression."""
+    """Game engine that manages snake movement, food placement, and world progression."""
+
     def __init__(
         self,
         width: int = None,

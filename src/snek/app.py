@@ -1,6 +1,6 @@
 """Main Textual application for the Snek game."""
 
-from textual.app import App, ComposeResult
+from textual.app import App
 
 from .config import GameConfig, default_config
 from .screens import SplashScreen
@@ -25,7 +25,3 @@ class SnakeApp(App):
     def on_mount(self) -> None:
         """Start with the splash screen."""
         self.push_screen(SplashScreen())
-
-    def compose(self) -> ComposeResult:
-        """Compose the main app - screens handle their own composition."""
-        return []
