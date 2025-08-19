@@ -121,14 +121,6 @@ class GameScreen(Screen):
             self.timer.stop()
         self.timer = self.set_interval(self.interval, self.tick)
 
-    def _calculate_game_dimensions(
-        self, terminal_width: int, terminal_height: int
-    ) -> tuple[int, int]:
-        """Calculate game dimensions from terminal size."""
-        sidebar_width = self.config.side_panel_width if self.sidebar_visible else 0
-        game_width = max(self.config.min_game_width, (terminal_width - sidebar_width) // 2)
-        game_height = max(self.config.min_game_height, terminal_height)
-        return game_width, game_height
 
     def tick(self) -> None:
         """Game tick - advance game state."""
