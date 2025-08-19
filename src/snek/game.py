@@ -30,7 +30,6 @@ class Game:
         self.symbols_consumed = 0
         self.current_world = 0
         self.symbols_in_current_world = 0
-        self.current_color = self.config.default_color
         self.initial_interval = self.config.initial_speed_interval
         self.current_interval = self.initial_interval
         self.place_food()
@@ -45,29 +44,25 @@ class Game:
                 self.food_emoji = self.world_path.get_food_character(self.current_world)
                 return
 
-    def turn(self, dir: Direction) -> None:
-        if GameRules.is_valid_turn(self.direction, dir):
-            self.direction = dir
+    def turn(self, new_direction: Direction) -> None:
+        if GameRules.is_valid_turn(self.direction, new_direction):
+            self.direction = new_direction
 
     def step(self) -> None:
         if self.game_over or self.paused:
             return
 
-        # Calculate new head position
-        new_head = GameRules.calculate_new_position(
+        new_head_pos = GameRules.calculate_new_position(
             self.snake[0], self.direction, self.width, self.height
         )
 
-        # Check for self collision
-        if GameRules.is_self_collision(new_head, self.snake):
+        if GameRules.is_self_collision(new_head_pos, self.snake):
             self.game_over = True
             return
 
-        # Move snake
-        self.snake.insert(0, new_head)
+        self.snake.insert(0, new_head_pos)
 
-        # Check for food collision
-        if GameRules.is_food_collision(new_head, self.food):
+        if GameRules.is_food_collision(new_head_pos, self.food):
             self.symbols_consumed += 1
             self.symbols_in_current_world += 1
             self.check_world_transition()
@@ -92,12 +87,10 @@ class Game:
     def resize(self, new_width: int, new_height: int) -> None:
         """Resize grid and scale snake and food positions."""
         old_width, old_height = self.width, self.height
-        # Scale snake positions
         self.snake = [
             GameRules.scale_position(pos, old_width, old_height, new_width, new_height)
             for pos in self.snake
         ]
-        # Scale food position
         self.food = GameRules.scale_position(
             self.food, old_width, old_height, new_width, new_height
         )
