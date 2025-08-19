@@ -19,7 +19,9 @@ class GameConfig:
     symbols_per_world: int = 10  # Symbols needed to advance to next world
 
     # UI settings
-    stats_panel_width: int = 25
+    side_panel_width: int = 30
+    min_game_width: int = 10
+    min_game_height: int = 10
     snake_block: str = "██"
     empty_cell: str = "  "
 

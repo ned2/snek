@@ -11,7 +11,6 @@ from textual.widgets import Label, Static
 from textual_pyfiglet import FigletWidget
 
 from .config import GameConfig, default_config
-from .constants import MIN_GAME_HEIGHT, MIN_GAME_WIDTH, SIDE_PANEL_WIDTH
 from .game import Game
 from .game_rules import Direction
 
@@ -120,9 +119,9 @@ class GameScreen(Screen):
         self, terminal_width: int, terminal_height: int
     ) -> tuple[int, int]:
         """Calculate game dimensions from terminal size."""
-        sidebar_width = SIDE_PANEL_WIDTH if self.sidebar_visible else 0
-        game_width = max(MIN_GAME_WIDTH, (terminal_width - sidebar_width) // 2)
-        game_height = max(MIN_GAME_HEIGHT, terminal_height)
+        sidebar_width = self.config.side_panel_width if self.sidebar_visible else 0
+        game_width = max(self.config.min_game_width, (terminal_width - sidebar_width) // 2)
+        game_height = max(self.config.min_game_height, terminal_height)
         return game_width, game_height
 
     def tick(self) -> None:
@@ -327,8 +326,8 @@ class SnakeView(Static):
         """React to available space changes."""
         if self.game and self.size.width > 0 and self.size.height > 0:
             # Calculate grid size based on available space
-            game_width = max(MIN_GAME_WIDTH, self.size.width // 2)
-            game_height = max(MIN_GAME_HEIGHT, self.size.height)
+            game_width = max(self.config.min_game_width, self.size.width // 2)
+            game_height = max(self.config.min_game_height, self.size.height)
             self.game.resize(game_width, game_height)
             self.refresh()
 
@@ -370,8 +369,8 @@ class SidePanel(Static):
         super().__init__()
         self.game = game
         # Set width programmatically to have single source of truth
-        self.styles.width = SIDE_PANEL_WIDTH
-        self.styles.min_width = SIDE_PANEL_WIDTH
+        self.styles.width = default_config.side_panel_width
+        self.styles.min_width = default_config.side_panel_width
 
     def compose(self) -> ComposeResult:
         """Compose the side panel with FigletWidget at bottom."""
