@@ -335,12 +335,12 @@ class SnakeView(Static):
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
         width, height = self.game.width, self.game.height
-        snake = self.game.snake
+        snake_positions = set(self.game.snake)  # Convert to set for O(1) lookup
         text = Text()
 
         for y in range(height):
             for x in range(width):
-                if (x, y) in snake:
+                if (x, y) in snake_positions:
                     # Use markup for theming - will be styled by CSS
                     text.append(self.config.snake_block)
                 elif (x, y) == self.game.food:

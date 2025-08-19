@@ -9,21 +9,22 @@ from .themes import THEME_MAP
 
 class SnakeApp(App):
     """Main Snek application using Textual's Screen system."""
+    
+    CSS_PATH = "styles.css"  # Class attribute - more idiomatic for Textual
 
-    def __init__(
-        self, config: GameConfig = None, css_path: str = "styles.css", **kwargs
-    ) -> None:
-        self.CSS_PATH = css_path
+    def __init__(self, config: GameConfig = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.config = config or default_config
 
-    def on_mount(self) -> None:
-        """Register themes when the app mounts."""
+    def on_load(self) -> None:
+        """Register themes when the app loads (runs once)."""
         for theme in THEME_MAP.values():
             self.register_theme(theme)
         # Set initial theme to first world's theme
         self.theme = "snek-classic"
-        # Start with the splash screen
+
+    def on_mount(self) -> None:
+        """Start with the splash screen."""
         self.push_screen(SplashScreen())
 
     def compose(self) -> ComposeResult:
