@@ -3,6 +3,7 @@
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
+from textual.reactive import reactive
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
@@ -70,6 +71,12 @@ class GameScreen(Screen):
         ("space", "toggle_sidebar", "Toggle Sidebar"),
         ("q", "quit", "Quit"),
     ]
+    
+    # Reactive fields for automatic UI updates
+    foods_eaten = reactive(0)
+    speed = reactive(0.0)
+    world_index = reactive(0)
+    symbols_in_world = reactive(0)
 
     def __init__(self, config: GameConfig = None) -> None:
         super().__init__()
@@ -133,8 +140,6 @@ class GameScreen(Screen):
             self.app.theme = self.game.world_path.get_world(
                 self.game.current_world
             ).theme_name
-            if self.stats_widget:
-                self.stats_widget.update_content()
 
         if self.game.game_over:
             # Stop the timer to prevent multiple game over modals
@@ -152,10 +157,21 @@ class GameScreen(Screen):
             self.timer = self.set_interval(self.interval, self.tick)
             self.game.update_speed(self.interval)
 
+        # Update reactive fields - this will automatically trigger UI updates
+        self.foods_eaten = self.game.symbols_consumed
+        self.speed = self.game.get_moves_per_second()
+        self.world_index = self.game.current_world
+        self.symbols_in_world = self.game.symbols_in_current_world
+        
+        # Update stats panel reactive fields
+        if self.stats_widget:
+            self.stats_widget.foods_eaten = self.game.symbols_consumed
+            self.stats_widget.speed = self.game.get_moves_per_second()
+            self.stats_widget.world_index = self.game.current_world
+            self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
+
         if self.view_widget:
             self.view_widget.refresh()
-        if self.stats_widget:
-            self.stats_widget.update_content()
 
     def action_pause(self) -> None:
         """Pause the game."""
@@ -186,8 +202,6 @@ class GameScreen(Screen):
         # Force a refresh after key press to show immediate response
         if self.view_widget:
             self.view_widget.refresh()
-        if self.stats_widget:
-            self.stats_widget.update_content()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -211,10 +225,21 @@ class GameScreen(Screen):
         self.interval = self.config.initial_speed_interval
         self.timer = self.set_interval(self.interval, self.tick)
         
+        # Update reactive fields to trigger UI updates
+        self.foods_eaten = self.game.symbols_consumed
+        self.speed = self.game.get_moves_per_second()
+        self.world_index = self.game.current_world
+        self.symbols_in_world = self.game.symbols_in_current_world
+        
+        # Update stats panel reactive fields
+        if self.stats_widget:
+            self.stats_widget.foods_eaten = self.game.symbols_consumed
+            self.stats_widget.speed = self.game.get_moves_per_second()
+            self.stats_widget.world_index = self.game.current_world
+            self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
+        
         if self.view_widget:
             self.view_widget.refresh()
-        if self.stats_widget:
-            self.stats_widget.update_content()
         
         # Update theme to initial world
         if hasattr(self.app, "theme") and self.game and self.game.world_path:
@@ -334,6 +359,12 @@ class SnakeView(Static):
 
 class SidePanel(Static):
     """Panel showing game statistics."""
+    
+    # Reactive fields for automatic UI updates
+    foods_eaten = reactive(0)
+    speed = reactive(0.0)
+    world_index = reactive(0)
+    symbols_in_world = reactive(0)
 
     def __init__(self, game: Game) -> None:
         super().__init__()
@@ -391,4 +422,23 @@ class SidePanel(Static):
         self.query_one("#foods-value", Label).update(str(self.game.symbols_consumed))
         self.query_one("#speed-value", Label).update(
             f"{self.game.get_moves_per_second():.1f}/sec"
+        )
+
+    def watch_foods_eaten(self, value: int) -> None:
+        """React to foods eaten changes."""
+        self.query_one("#foods-value", Label).update(str(value))
+
+    def watch_speed(self, value: float) -> None:
+        """React to speed changes."""
+        self.query_one("#speed-value", Label).update(f"{value:.1f}/sec")
+
+    def watch_world_index(self, value: int) -> None:
+        """React to world index changes."""
+        world_name = self.game.world_path.get_world_name(value)
+        self.query_one("#world-value", Label).update(world_name)
+
+    def watch_symbols_in_world(self, value: int) -> None:
+        """React to symbols in current world changes."""
+        self.query_one("#symbols-value", Label).update(
+            f"{value}/{self.game.config.symbols_per_world}"
         )
