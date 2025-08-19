@@ -308,17 +308,20 @@ class SnakeView(Static):
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
         width, height = self.game.width, self.game.height
+        empty_cell = self.game.config.empty_cell
+        food_emoji = self.game.food_emoji
+        snake_block = self.game.config.snake_block
+
         snake_positions = set(self.game.snake)
         text = Text()
-
         for y in range(height):
             for x in range(width):
                 if (x, y) in snake_positions:
-                    text.append(self.game.config.snake_block)
+                    text.append(snake_block)
                 elif (x, y) == self.game.food:
-                    text.append(f"{self.game.food_emoji} ")
+                    text.append(f"{food_emoji} ")
                 else:
-                    text.append(self.game.config.empty_cell)
+                    text.append(empty_cell)
             if y < height - 1:
                 # Don't add newline after last row
                 text.append("\n")
