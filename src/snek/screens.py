@@ -311,21 +311,22 @@ class SnakeView(Static):
         empty_cell = self.game.config.empty_cell
         food_emoji = self.game.food_emoji
         snake_block = self.game.config.snake_block
+        food_pos = self.game.food
 
         snake_positions = set(self.game.snake)
-        text = Text()
+        rows = []
         for y in range(height):
+            row_parts = []
             for x in range(width):
-                if (x, y) in snake_positions:
-                    text.append(snake_block)
-                elif (x, y) == self.game.food:
-                    text.append(f"{food_emoji} ")
+                pos = (x, y)
+                if pos in snake_positions:
+                    row_parts.append(snake_block)
+                elif pos == food_pos:
+                    row_parts.append(f"{food_emoji} ")
                 else:
-                    text.append(empty_cell)
-            if y < height - 1:
-                # Don't add newline after last row
-                text.append("\n")
-        return text
+                    row_parts.append(empty_cell)
+            rows.append("".join(row_parts))
+        return Text("\n".join(rows))
 
 
 class SidePanel(Static):
