@@ -79,7 +79,8 @@ class GameScreen(Screen):
     def __init__(self, config: GameConfig = None) -> None:
         super().__init__()
         self.config = config or default_config
-        self.game: Game | None = None
+        # Initialize game with default size - will be resized on mount
+        self.game: Game = Game(width=20, height=15, config=self.config)
         self.view_widget: SnakeView | None = None
         self.stats_widget: SidePanel | None = None
         self.timer: Timer | None = None
@@ -88,10 +89,6 @@ class GameScreen(Screen):
 
     def compose(self) -> ComposeResult:
         """Compose the game screen."""
-        # Initialize game with default size - will be resized on mount
-        game_width, game_height = 20, 15
-
-        self.game = Game(width=game_width, height=game_height, config=self.config)
         self.view_widget = SnakeView(self.game)
         self.stats_widget = SidePanel(self.game)
 
@@ -99,14 +96,13 @@ class GameScreen(Screen):
 
     def on_mount(self) -> None:
         """Start the game timer when the screen mounts."""
-        if self.game:
-            # Always start the timer - game dimensions will be set by compose
-            self.interval = self.config.initial_speed_interval
-            self._restart_timer()
+        # Always start the timer - game dimensions will be set by compose
+        self.interval = self.config.initial_speed_interval
+        self._restart_timer()
 
-            # Set initial theme
-            if hasattr(self.app, "theme") and self.game.world_path:
-                self.app.theme = self.game.world_path.get_world(0).theme_name
+        # Set initial theme
+        if hasattr(self.app, "theme"):
+            self.app.theme = self.game.world_path.get_world(0).theme_name
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
@@ -122,8 +118,6 @@ class GameScreen(Screen):
 
     def tick(self) -> None:
         """Game tick - advance game state."""
-        if not self.game:
-            return
         pre_length = len(self.game.snake)
         old_world = self.game.current_world
         self.game.step()
@@ -166,7 +160,7 @@ class GameScreen(Screen):
 
     def action_pause(self) -> None:
         """Pause the game."""
-        if self.game and not self.game.game_over:
+        if not self.game.game_over:
             self.game.paused = True
             if self.timer:
                 self.timer.stop()
@@ -185,8 +179,6 @@ class GameScreen(Screen):
 
     def action_turn(self, dir_name: str) -> None:
         """Turn the snake in the specified direction."""
-        if not self.game:
-            return
         self.game.turn(Direction[dir_name])
         if self.view_widget:
             # Force a refresh after key press to show immediate response
@@ -198,15 +190,14 @@ class GameScreen(Screen):
 
     def resume_game(self) -> None:
         """Resume the game after pause."""
-        if self.game and self.game.paused:
+        if self.game.paused:
             self.game.paused = False
             if self.interval:
                 self._restart_timer()
 
     def restart_game(self) -> None:
         """Restart the game."""
-        if self.game:
-            self.game.reset()
+        self.game.reset()
         self.interval = self.config.initial_speed_interval
         self._restart_timer()
 
@@ -226,7 +217,7 @@ class GameScreen(Screen):
         if self.view_widget:
             self.view_widget.refresh()
 
-        if hasattr(self.app, "theme") and self.game and self.game.world_path:
+        if hasattr(self.app, "theme"):
             # Update theme to initial world
             self.app.theme = self.game.world_path.get_world(0).theme_name
 
