@@ -15,8 +15,8 @@ class GameConfig:
     initial_speed_interval: float = 0.1
     speed_increase_factor: float = 0.98
 
-    # Game progression
-    symbols_per_world: int = 10  # Symbols needed to advance to next world
+    # Symbols needed to advance to next world
+    symbols_per_world: int = 10
 
     # UI settings
     side_panel_width: int = 30
@@ -24,29 +24,6 @@ class GameConfig:
     min_game_height: int = 10
     snake_block: str = "██"
     empty_cell: str = "  "
-
-    # Colors
-    default_color: str = "green"
-    level_colors: list[str] = None
-
-    # Food symbols
-    food_symbols: list[str] = None
-
-    def __post_init__(self):
-        """Initialize mutable defaults."""
-        if self.level_colors is None:
-            self.level_colors = [
-                "green",
-                "blue",
-                "cyan",
-                "magenta",
-                "yellow",
-                "red",
-                "white",
-            ]
-
-        if self.food_symbols is None:
-            self.food_symbols = ["*", "@", "#", "$", "%", "&", "§", "¤", "¶", "☼", "☻"]
 
 
 default_config = GameConfig()

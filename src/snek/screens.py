@@ -92,7 +92,7 @@ class GameScreen(Screen):
         game_width, game_height = 20, 15
 
         self.game = Game(width=game_width, height=game_height, config=self.config)
-        self.view_widget = SnakeView(self.game, self.config)
+        self.view_widget = SnakeView(self.game)
         self.stats_widget = SidePanel(self.game)
 
         yield Horizontal(self.view_widget, self.stats_widget, id="game-content")
@@ -301,17 +301,16 @@ class GameOverModal(ModalScreen):
 class SnakeView(Static):
     """Renders the game as text."""
 
-    def __init__(self, game: Game, config: GameConfig = None) -> None:
+    def __init__(self, game: Game) -> None:
         super().__init__()
         self.game = game
-        self.config = config or default_config
 
     def on_resize(self, event: events.Resize) -> None:
         """React to available space changes."""
         if self.game and self.size.width > 0 and self.size.height > 0:
             # Calculate grid size based on available space
-            game_width = max(self.config.min_game_width, self.size.width // 2)
-            game_height = max(self.config.min_game_height, self.size.height)
+            game_width = max(self.game.config.min_game_width, self.size.width // 2)
+            game_height = max(self.game.config.min_game_height, self.size.height)
             self.game.resize(game_width, game_height)
             self.refresh()
 
@@ -324,11 +323,11 @@ class SnakeView(Static):
         for y in range(height):
             for x in range(width):
                 if (x, y) in snake_positions:
-                    text.append(self.config.snake_block)
+                    text.append(self.game.config.snake_block)
                 elif (x, y) == self.game.food:
                     text.append(f"{self.game.food_emoji} ")
                 else:
-                    text.append(self.config.empty_cell)
+                    text.append(self.game.config.empty_cell)
             if y < height - 1:
                 # Don't add newline after last row
                 text.append("\n")
