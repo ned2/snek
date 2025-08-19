@@ -11,6 +11,7 @@ from textual.widgets import Label, Static
 from textual_pyfiglet import FigletWidget
 
 from .config import GameConfig, default_config
+from .demo_ai import DemoAI
 from .game import Game
 from .game_rules import Direction
 
@@ -20,6 +21,7 @@ class SplashScreen(Screen):
 
     BINDINGS = [
         ("enter", "start_game", "Start Game"),
+        ("s", "start_demo", "Start Demo"),
         ("q", "quit", "Quit"),
     ]
 
@@ -34,7 +36,7 @@ class SplashScreen(Screen):
                 colors=["$primary", "$panel"],
                 animate=True,
             )
-            yield Static("Press ENTER to start", classes="splash-prompt")
+            yield Static("Press ENTER to start or S for demo", classes="splash-prompt")
             yield Static(
                 "Use arrow keys to move, P to pause, Q to quit",
                 classes="splash-prompt",
@@ -47,6 +49,11 @@ class SplashScreen(Screen):
     def action_start_game(self) -> None:
         """Start the game."""
         game_screen = GameScreen()
+        self.app.push_screen(game_screen)
+
+    def action_start_demo(self) -> None:
+        """Start the game in demo mode."""
+        game_screen = GameScreen(demo_mode=True)
         self.app.push_screen(game_screen)
 
     def action_quit(self) -> None:
@@ -76,11 +83,15 @@ class GameScreen(Screen):
     world_index = reactive(0)
     symbols_in_world = reactive(0)
 
-    def __init__(self, config: GameConfig = None) -> None:
+    def __init__(self, config: GameConfig = None, demo_mode: bool = False) -> None:
         super().__init__()
         self.config = config or default_config
+        self.demo_mode = demo_mode
         # Initialize game with default size - will be resized on mount
         self.game: Game = Game(width=20, height=15, config=self.config)
+        self.demo_ai: DemoAI | None = None
+        if self.demo_mode:
+            self.demo_ai = DemoAI(self.game)
         self.view_widget: SnakeView | None = None
         self.stats_widget: SidePanel | None = None
         self.timer: Timer | None = None
@@ -97,7 +108,11 @@ class GameScreen(Screen):
     def on_mount(self) -> None:
         """Start the game timer when the screen mounts."""
         # Always start the timer - game dimensions will be set by compose
-        self.interval = self.config.initial_speed_interval
+        # Use faster speed for demo mode for better visual experience
+        if self.demo_mode:
+            self.interval = self.config.initial_speed_interval * 0.6  # 40% faster
+        else:
+            self.interval = self.config.initial_speed_interval
         self._restart_timer()
 
         # Set initial theme
@@ -118,6 +133,12 @@ class GameScreen(Screen):
 
     def tick(self) -> None:
         """Game tick - advance game state."""
+        # In demo mode, let the AI choose the direction
+        if self.demo_mode and self.demo_ai:
+            ai_direction = self.demo_ai.get_next_direction()
+            if ai_direction:
+                self.game.turn(ai_direction)
+
         pre_length = len(self.game.snake)
         old_world = self.game.current_world
         self.game.step()
@@ -179,6 +200,9 @@ class GameScreen(Screen):
 
     def action_turn(self, dir_name: str) -> None:
         """Turn the snake in the specified direction."""
+        # Don't allow manual control in demo mode
+        if self.demo_mode:
+            return
         self.game.turn(Direction[dir_name])
         if self.view_widget:
             # Force a refresh after key press to show immediate response
@@ -198,6 +222,8 @@ class GameScreen(Screen):
     def restart_game(self) -> None:
         """Restart the game."""
         self.game.reset()
+        if self.demo_mode and self.demo_ai:
+            self.demo_ai = DemoAI(self.game)  # Recreate AI for fresh game
         self.interval = self.config.initial_speed_interval
         self._restart_timer()
 
@@ -265,6 +291,19 @@ class GameOverModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
+        # Check if we're in demo mode to show appropriate prompt
+        demo_mode = False
+        for screen in self.app.screen_stack:
+            if isinstance(screen, GameScreen):
+                demo_mode = screen.demo_mode
+                break
+
+        prompt_text = (
+            "Press ENTER to return to menu or Q to quit"
+            if demo_mode
+            else "Press ENTER to restart or Q to quit"
+        )
+
         with Vertical(id="death-container"):
             yield FigletWidget(
                 "GAME OVER",
@@ -274,14 +313,20 @@ class GameOverModal(ModalScreen):
                 classes="title-text",
             )
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
-            yield Static("Press ENTER to restart or Q to quit", classes="death-prompt")
+            yield Static(prompt_text, classes="death-prompt")
 
     def action_restart(self) -> None:
-        """Restart the game."""
+        """Restart the game or return to splash if in demo mode."""
         for screen in self.app.screen_stack:
             if isinstance(screen, GameScreen):
-                screen.restart_game()
-                break
+                if screen.demo_mode:
+                    # In demo mode, return to splash screen instead of restarting
+                    self.app.pop_screen()  # Remove GameOverModal
+                    self.app.pop_screen()  # Remove GameScreen
+                    return
+                else:
+                    screen.restart_game()
+                    break
         self.dismiss()
 
     def action_quit(self) -> None:

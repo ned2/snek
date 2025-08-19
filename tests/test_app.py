@@ -128,7 +128,7 @@ async def test_game_over_and_restart():
         modal = app.screen
         assert isinstance(modal, GameOverModal)
         assert hasattr(modal, "action_restart")
-        
+
         # Get the GameScreen and verify it has restart_game method
         game_screen_in_stack = None
         for screen in app.screen_stack:
@@ -137,13 +137,15 @@ async def test_game_over_and_restart():
                 break
         assert game_screen_in_stack is not None
         assert hasattr(game_screen_in_stack, "restart_game")
-        
+
         # Test restart_game method directly
         game_screen_in_stack.game.symbols_consumed = 5  # Change state
         game_screen_in_stack.restart_game()
         assert game_screen_in_stack.game.symbols_consumed == 0  # Should be reset
         assert not game_screen_in_stack.game.game_over  # Should not be game over
-        assert len(game_screen_in_stack.game.snake) == 1  # Should have initial snake length
+        assert (
+            len(game_screen_in_stack.game.snake) == 1
+        )  # Should have initial snake length
 
 
 @pytest.mark.asyncio
