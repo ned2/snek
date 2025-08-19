@@ -103,7 +103,7 @@ class GameScreen(Screen):
         if self.game:
             # Always start the timer - game dimensions will be set by compose
             self.interval = self.config.initial_speed_interval
-            self.timer = self.set_interval(self.interval, self.tick)
+            self._restart_timer()
 
             # Set initial theme
             if hasattr(self.app, "theme") and self.game.world_path:
@@ -114,6 +114,12 @@ class GameScreen(Screen):
         if self.timer:
             self.timer.stop()
             self.timer = None
+
+    def _restart_timer(self) -> None:
+        """Helper to safely restart the game timer."""
+        if self.timer:
+            self.timer.stop()
+        self.timer = self.set_interval(self.interval, self.tick)
 
     def _calculate_game_dimensions(
         self, terminal_width: int, terminal_height: int
@@ -151,9 +157,7 @@ class GameScreen(Screen):
         if len(self.game.snake) > pre_length:
             # Snake ate food; increase speed
             self.interval *= self.config.speed_increase_factor
-            if self.timer:
-                self.timer.stop()
-            self.timer = self.set_interval(self.interval, self.tick)
+            self._restart_timer()
             self.game.update_speed(self.interval)
 
         # Update reactive fields - this will automatically trigger UI updates
@@ -211,18 +215,15 @@ class GameScreen(Screen):
         if self.game and self.game.paused:
             self.game.paused = False
             if self.interval:
-                self.timer = self.set_interval(self.interval, self.tick)
+                self._restart_timer()
 
     def restart_game(self) -> None:
         """Restart the game."""
-        if self.timer:
-            self.timer.stop()
-        
         if self.game:
             self.game.reset()
         
         self.interval = self.config.initial_speed_interval
-        self.timer = self.set_interval(self.interval, self.tick)
+        self._restart_timer()
         
         # Update reactive fields to trigger UI updates
         self.foods_eaten = self.game.symbols_consumed
