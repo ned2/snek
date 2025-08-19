@@ -181,6 +181,7 @@ class GameScreen(Screen):
             self.stats_widget.styles.display = "block"
         else:
             self.stats_widget.styles.display = "none"
+        self.refresh(layout=True)
 
     def action_turn(self, dir_name: str) -> None:
         """Turn the snake in the specified direction."""
