@@ -132,9 +132,10 @@ class TestMovement:
     def test_step_self_collision(self):
         """Test game over on self collision."""
         game = Game()
-        # Create a snake that will collide with itself
-        game.snake = [(5, 5), (4, 5), (4, 4), (5, 4)]
-        game.direction = Direction.UP  # Will hit (5, 4)
+        # Create a snake that will collide with its body (not tail)
+        # Snake body: head -> (5,5) -> (4,5) -> (4,4) -> (5,4) -> tail (6,4)
+        game.snake = [(5, 5), (4, 5), (4, 4), (5, 4), (6, 4)]
+        game.direction = Direction.UP  # Will hit (5, 4) which is part of body
 
         game.step()
 
