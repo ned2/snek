@@ -23,7 +23,7 @@ async def test_start_game_from_splash():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Press Enter to start
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         # Should now be on game screen
@@ -41,7 +41,7 @@ async def test_game_controls():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         # Get the game from the screen
@@ -70,14 +70,14 @@ async def test_pause_functionality():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
 
         # Pause game
-        await pilot.press("p")
+        await pilot.press("space")
         await pilot.pause()
         assert game_screen.game.paused is True
 
@@ -91,8 +91,8 @@ async def test_pause_functionality():
         )
         assert pause_modal_found
 
-        # Unpause by pressing enter
-        await pilot.press("enter")
+        # Unpause by pressing space
+        await pilot.press("space")
         await pilot.pause()
         assert game_screen.game.paused is False
 
@@ -103,7 +103,7 @@ async def test_game_over_and_restart():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         game_screen = app.screen
@@ -154,7 +154,7 @@ async def test_quit_from_game():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         # Quit should exit the app entirely
@@ -173,7 +173,7 @@ async def test_stats_panel_updates():
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         game_screen = app.screen
@@ -208,7 +208,7 @@ async def test_theme_changes_with_world():
 
     async with app.run_test() as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         game_screen = app.screen
@@ -246,7 +246,7 @@ async def test_resize_handling():
     app = SnakeApp()
     async with app.run_test(size=(80, 24)) as pilot:
         # Start game
-        await pilot.press("enter")
+        await pilot.press("space")
         await pilot.pause()
 
         game_screen = app.screen

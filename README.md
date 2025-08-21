@@ -6,20 +6,25 @@ Application Development framework.
 
 ## Dependencies
 
-* Currently only tested on Python 3.13.
+* Python 3.10+ (tested on Python 3.10, 3.11, 3.12, 3.13)
 
 ## Installation
+
+### From PyPI (recommended)
+
+    pip install snek-tui
+
+### Development
 
     uv sync
     
 ## Usage
 
-    uv run snek
+    snek
 
 ### Controls
 
 - **Arrow keys** or **WASD**: Move the snake
-- **P**: Pause/unpause the game
-- **Space**: Toggle sidebar visibility
+- **Space**: Start game / Pause/unpause the game / Restart after game over
+- **Enter**: Toggle sidebar visibility
 - **Q**: Quit the game
-- **Enter**: Start game / Continue from pause / Restart after game over

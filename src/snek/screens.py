@@ -20,8 +20,8 @@ class SplashScreen(Screen):
     """Splash screen for Snek."""
 
     BINDINGS = [
-        ("enter", "start_game", "Start Game"),
-        ("s", "start_demo", "Start Demo"),
+        ("space", "start_game", "Start Game"),
+        ("d", "start_demo", "Start Demo"),
         ("q", "quit", "Quit"),
     ]
 
@@ -36,9 +36,11 @@ class SplashScreen(Screen):
                 colors=["$primary", "$panel"],
                 animate=True,
             )
-            yield Static("Press ENTER to start or S for demo", classes="splash-prompt")
             yield Static(
-                "Use arrow keys to move, P to pause, Q to quit",
+                "Press SPACE to start or D for demo mode.", classes="splash-prompt"
+            )
+            yield Static(
+                "Use arrow or WASD keys to move, Space to pause, Q to quit.",
                 classes="splash-prompt",
             )
 
@@ -73,8 +75,8 @@ class GameScreen(Screen):
         ("s", "turn('DOWN')", None),
         ("a", "turn('LEFT')", None),
         ("d", "turn('RIGHT')", None),
-        ("p", "pause", "Pause"),
-        ("space", "toggle_sidebar", "Toggle Sidebar"),
+        ("space", "pause", "Pause"),
+        ("enter", "toggle_sidebar", "Toggle Sidebar"),
         ("q", "quit", "Quit"),
     ]
 
@@ -252,7 +254,7 @@ class PauseModal(ModalScreen):
     """Modal screen shown when game is paused."""
 
     BINDINGS = [
-        ("enter", "resume", "Resume"),
+        ("space", "resume", "Resume"),
         ("q", "quit", "Quit"),
     ]
 
@@ -266,7 +268,13 @@ class PauseModal(ModalScreen):
                 colors=["$primary"],
                 classes="title-text",
             )
-            yield Static("Press ENTER to continue", classes="pause-prompt")
+            yield Static("Press SPACE to continue", id="pause-prompt")
+            yield Static("KEYBOARD CONTROLS", id="controls-header")
+            with Vertical(id="controls-container"):
+                yield Static("Arrows / WASD: Move the snek")
+                yield Static("        Space: Pause the game")
+                yield Static("        Enter: Toggle sidebar")
+                yield Static("            Q: Quit the game")
 
     def action_resume(self) -> None:
         """Resume the game."""
@@ -285,7 +293,7 @@ class GameOverModal(ModalScreen):
     """Modal screen shown when snek dies."""
 
     BINDINGS = [
-        ("enter", "restart", "Restart"),
+        ("space", "restart", "Restart"),
         ("q", "quit", "Quit"),
     ]
 
@@ -299,9 +307,9 @@ class GameOverModal(ModalScreen):
                 break
 
         prompt_text = (
-            "Press ENTER to return to menu or Q to quit"
+            "Press SPACE to return to menu or Q to quit"
             if demo_mode
-            else "Press ENTER to restart or Q to quit"
+            else "Press SPACE to restart or Q to quit"
         )
 
         with Vertical(id="death-container"):

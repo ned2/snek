@@ -58,6 +58,7 @@ SidePanel {
 .splash-prompt {
     text-align: center;
     text-style: bold dim;
+    margin-bottom: 1;
 }
 
 /* Game over modal styling */
@@ -84,7 +85,25 @@ SidePanel {
     height: auto;
 }
 
-.pause-prompt {
+#pause-prompt {
     text-align: center;
     text-style: bold dim;
+    margin-bottom: 3;
+}
+
+#controls-header {
+    text-align: center;
+    text-style: bold dim;
+    margin-bottom: 1;
+}
+
+#controls-container {
+    align: center middle;
+    height: auto;
+}
+
+#controls-container Static {
+    width: 32;
+    text-align: left;
+    text-style: dim;
 }

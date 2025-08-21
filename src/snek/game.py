@@ -61,12 +61,15 @@ class Game:
         new_head_pos = GameRules.calculate_new_position(
             self.snake[0], self.direction, self.width, self.height
         )
-        if GameRules.is_self_collision(new_head_pos, self.snake):
+        grows = GameRules.is_food_collision(new_head_pos, self.food)
+        # Only include the tail in collision check if we grow this turn
+        body_to_check = self.snake if grows else self.snake[:-1]
+        if GameRules.is_self_collision(new_head_pos, body_to_check):
             self.game_over = True
             return
 
         self.snake.insert(0, new_head_pos)
-        if GameRules.is_food_collision(new_head_pos, self.food):
+        if grows:
             self.symbols_consumed += 1
             self.symbols_in_current_world += 1
             self.check_world_transition()

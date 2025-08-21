@@ -1,20 +1,41 @@
 [project]
-name = "snek"
+name = "snek-tui"
 version = "0.1.0"
-description = "A Snake TUI powered by textual"
+authors = [
+    {name = "Ned Letcher"},
+]
+description = "A terminal-based Snake game built with Textual"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
+license = {text = "MIT"}
+license-files = ["LICENSE"]
+keywords = ["snake", "game", "terminal", "tui", "textual"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Games/Entertainment :: Arcade",
+]
 dependencies = [
     "textual>=5.0.1",
     "textual-pyfiglet>=1.1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/nedned/snek"
+Repository = "https://github.com/nedned/snek"
+Issues = "https://github.com/nedned/snek/issues"
+
 [project.scripts]
 snek = "snek.cli:main"
-
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+snek-tui = "snek.cli:main"
 
 [dependency-groups]
 dev = [
@@ -23,3 +44,10 @@ dev = [
     "ruff>=0.12.9",
     "textual-dev>=1.7.0",
 ]
+
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/snek"]
