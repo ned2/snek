@@ -32,6 +32,15 @@ uv run ruff check                 # Lint the codebase
 uv run ruff format                # Format the codebase
 ```
 
+**Coverage Testing:**
+
+```bash
+uv run coverage run -m pytest     # Run tests with coverage
+uv run coverage report            # Show coverage report in terminal
+uv run coverage html              # Generate HTML coverage report in htmlcov/
+uv run coverage erase             # Clear previous coverage data
+```
+
 **Development server (if using textual-dev):**
 
 ```bash
