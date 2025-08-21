@@ -22,8 +22,8 @@ class DemoAI:
         head = self.game.snake[0]
         food = self.game.food
 
-        # If we have a valid path and the next position is still safe, follow it
         if len(self.path) > 1 and self._is_path_still_safe():
+            # we have a valid path and the next position is still safe, so follow it
             next_pos = self.path[1]  # Skip current head position
             direction = self._get_direction_to_position(head, next_pos)
             if direction and GameRules.is_valid_turn(self.game.direction, direction):
@@ -48,8 +48,8 @@ class DemoAI:
         if len(self.path) < 2:
             return False
 
-        # Check if any part of the path intersects with the snake body
-        snake_set = set(self.game.snake[1:])  # Exclude head
+        # Check if any part of the path intersects with snake body (excluding the head)
+        snake_set = set(self.game.snake[1:])
         for pos in self.path[1:]:  # Skip current head position
             if pos in snake_set:
                 return False
@@ -91,7 +91,6 @@ class DemoAI:
                 next_pos = GameRules.calculate_new_position(
                     current, direction, self.game.width, self.game.height
                 )
-
                 if (
                     next_pos not in visited
                     and next_pos not in snake_set
@@ -99,7 +98,6 @@ class DemoAI:
                 ):
                     visited.add(next_pos)
                     queue.append((next_pos, path + [next_pos]))
-
         return None
 
     def _is_safe_move(
@@ -109,12 +107,10 @@ class DemoAI:
         # Basic safety: don't hit the snake body immediately
         if next_pos in self.game.snake:
             return False
-
         # Advanced safety: consider if the tail will move
         # If we haven't eaten recently, the tail will move away
         if path_length > len(self.game.snake) // 2:
             return True
-
         return True
 
     def _greedy_path_to_food(self, start: Position, goal: Position) -> list[Position]:
@@ -122,9 +118,7 @@ class DemoAI:
         path = [start]
         current = start
 
-        for _ in range(
-            max(self.game.width, self.game.height) * 2
-        ):  # Prevent infinite loops
+        for _ in range(max(self.game.width, self.game.height) * 2):
             if current == goal:
                 break
 
@@ -202,7 +196,6 @@ class DemoAI:
             return Direction.DOWN
         elif dy < 0:
             return Direction.UP
-
         return None
 
     def _pos_to_direction(self, current: Position, target: Position) -> Direction:
@@ -214,9 +207,7 @@ class DemoAI:
         """Calculate Manhattan distance between two positions with wrapping."""
         dx = abs(pos1[0] - pos2[0])
         dy = abs(pos1[1] - pos2[1])
-
         # Consider wrapping
         dx = min(dx, self.game.width - dx)
         dy = min(dy, self.game.height - dy)
-
         return dx + dy

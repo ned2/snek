@@ -230,7 +230,8 @@ class GameScreen(Screen):
         """Restart the game."""
         self.game.reset()
         if self.demo_mode and self.demo_ai:
-            self.demo_ai = DemoAI(self.game)  # Recreate AI for fresh game
+            # Recreate AI for fresh game
+            self.demo_ai = DemoAI(self.game)
         self.interval = self.config.initial_speed_interval
         self._restart_timer()
 
@@ -299,23 +300,13 @@ class GameOverModal(ModalScreen):
 
     BINDINGS = [
         ("space", "restart", "Restart"),
+        ("enter", "menu", "Main Menu"),
         ("q", "quit", "Quit"),
     ]
 
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
-        # Check if we're in demo mode to show appropriate prompt
-        demo_mode = False
-        for screen in self.app.screen_stack:
-            if isinstance(screen, GameScreen):
-                demo_mode = screen.demo_mode
-                break
-
-        prompt_text = (
-            "Press SPACE to return to menu or Q to quit"
-            if demo_mode
-            else "Press SPACE to restart or Q to quit"
-        )
+        prompt_text = "Press SPACE to restart, ENTER for main menu, or Q to quit"
 
         with Vertical(id="death-container"):
             yield FigletWidget(
@@ -329,18 +320,17 @@ class GameOverModal(ModalScreen):
             yield Static(prompt_text, classes="death-prompt")
 
     def action_restart(self) -> None:
-        """Restart the game or return to splash if in demo mode."""
+        """Restart the game in the same mode (user/demo)."""
         for screen in self.app.screen_stack:
             if isinstance(screen, GameScreen):
-                if screen.demo_mode:
-                    # In demo mode, return to splash screen instead of restarting
-                    self.app.pop_screen()  # Remove GameOverModal
-                    self.app.pop_screen()  # Remove GameScreen
-                    return
-                else:
-                    screen.restart_game()
-                    break
+                screen.restart_game()
+                break
         self.dismiss()
+
+    def action_menu(self) -> None:
+        """Return to the main menu (splash screen)."""
+        self.app.pop_screen()  # Remove GameOverModal
+        self.app.pop_screen()  # Remove GameScreen
 
     def action_quit(self) -> None:
         """Quit the application."""
