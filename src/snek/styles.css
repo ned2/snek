@@ -61,6 +61,13 @@ SidePanel {
     margin-bottom: 1;
 }
 
+.version-display {
+    text-align: center;
+    text-style: dim;
+    margin-bottom: 2;
+    color: $accent;
+}
+
 /* Game over modal styling */
 #death-container {
     align: center middle;

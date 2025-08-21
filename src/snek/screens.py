@@ -10,6 +10,7 @@ from textual.timer import Timer
 from textual.widgets import Label, Static
 from textual_pyfiglet import FigletWidget
 
+from . import __version__
 from .config import GameConfig, default_config
 from .demo_ai import DemoAI
 from .game import Game
@@ -35,6 +36,10 @@ class SplashScreen(Screen):
                 classes="title-text",
                 colors=["$primary", "$panel"],
                 animate=True,
+            )
+            yield Static(
+                f"v{__version__}",
+                classes="version-display",
             )
             yield Static(
                 "Press SPACE to start or D for demo mode.", classes="splash-prompt"
