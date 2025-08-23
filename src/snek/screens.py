@@ -125,8 +125,8 @@ class GameScreen(Screen):
 
     def tick(self) -> None:
         """Game tick - advance game state."""
-        # In demo mode, let the AI choose the direction
         if self.demo_ai:
+            # In demo mode, let the AI choose the direction
             ai_direction = self.demo_ai.get_next_direction()
             if ai_direction:
                 self.game.turn(ai_direction)
@@ -135,8 +135,8 @@ class GameScreen(Screen):
         old_world = self.game.current_world
         self.game.step()
 
-        # Update theme if world changed
         if self.game.current_world != old_world:
+            # World changed; update theme
             self.app.theme = self.game.world_path.get_world(
                 self.game.current_world
             ).theme_name
@@ -178,20 +178,16 @@ class GameScreen(Screen):
 
     def action_toggle_sidebar(self) -> None:
         """Toggle sidebar visibility."""
-        if not self.stats_widget:
-            return
         self.sidebar_visible = not self.sidebar_visible
-        if self.sidebar_visible:
-            self.stats_widget.styles.display = "block"
-        else:
-            self.stats_widget.styles.display = "none"
+        self.stats_widget.styles.display = "block" if self.sidebar_visible else "none"
         self.refresh(layout=True)
 
     def action_turn(self, dir_name: str) -> None:
         """Turn the snake in the specified direction."""
-        # Don't allow manual control in demo mode
         if self.demo_ai:
+            # Don't allow manual control in demo mode
             return
+
         self.game.turn(Direction[dir_name])
         if self.view_widget:
             # Force a refresh after key press to show immediate response
@@ -229,11 +225,11 @@ class GameScreen(Screen):
             self.stats_widget.world_index = self.game.current_world
             self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
 
+        # Update theme to initial world before refreshing view
+        self.app.theme = self.game.world_path.get_world(0).theme_name
+
         if self.view_widget:
             self.view_widget.refresh()
-
-        # Update theme to initial world
-        self.app.theme = self.game.world_path.get_world(0).theme_name
 
 
 class PauseModal(ModalScreen):
@@ -286,8 +282,6 @@ class GameOverModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         """Compose the death screen with FigletWidget."""
-        prompt_text = "Press SPACE to restart, ENTER for main menu, or Q to quit"
-
         with Vertical(id="death-container"):
             yield FigletWidget(
                 "GAME OVER",
@@ -297,7 +291,10 @@ class GameOverModal(ModalScreen):
                 classes="title-text",
             )
             yield Static("💀 SNEK DIED! 💀", classes="death-message")
-            yield Static(prompt_text, classes="death-prompt")
+            yield Static(
+                "Press SPACE to restart, ENTER for main menu, or Q to quit",
+                classes="death-prompt",
+            )
 
     def action_restart(self) -> None:
         """Restart the game in the same mode (user/demo)."""
