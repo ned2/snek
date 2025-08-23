@@ -93,14 +93,11 @@ class GameScreen(Screen):
     def __init__(self, config: GameConfig = None, demo_mode: bool = False) -> None:
         super().__init__()
         self.config = config or default_config
-        self.demo_mode = demo_mode
         self.game: Game = Game(config=self.config)
-        self.demo_ai: DemoAI | None = None
-        if self.demo_mode:
-            self.demo_ai = DemoAI(self.game)
+        self.demo_ai: DemoAI | None = DemoAI(self.game) if demo_mode else None
         self.view_widget: SnakeView | None = None
         self.stats_widget: SidePanel | None = None
-        self.timer: Timer  # Always exists, no None state needed
+        self.timer: Timer
         self.interval: float = self.config.initial_speed_interval
         self.sidebar_visible: bool = True
 
@@ -113,7 +110,6 @@ class GameScreen(Screen):
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
-        # Create the timer - it will always exist from this point
         self.timer = self.set_interval(self.interval, self.tick)
 
         if hasattr(self.app, "theme"):
@@ -131,7 +127,7 @@ class GameScreen(Screen):
     def tick(self) -> None:
         """Game tick - advance game state."""
         # In demo mode, let the AI choose the direction
-        if self.demo_mode and self.demo_ai:
+        if self.demo_ai:
             ai_direction = self.demo_ai.get_next_direction()
             if ai_direction:
                 self.game.turn(ai_direction)
@@ -195,7 +191,7 @@ class GameScreen(Screen):
     def action_turn(self, dir_name: str) -> None:
         """Turn the snake in the specified direction."""
         # Don't allow manual control in demo mode
-        if self.demo_mode:
+        if self.demo_ai:
             return
         self.game.turn(Direction[dir_name])
         if self.view_widget:
@@ -215,7 +211,7 @@ class GameScreen(Screen):
     def restart_game(self) -> None:
         """Restart the game."""
         self.game.reset()
-        if self.demo_mode and self.demo_ai:
+        if self.demo_ai:
             # Recreate AI for fresh game
             self.demo_ai = DemoAI(self.game)
         self.interval = self.config.initial_speed_interval
