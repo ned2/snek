@@ -187,8 +187,8 @@ async def test_stats_panel_updates():
         game.symbols_consumed = 10
         game.current_world = 1
 
-        # The stats panel should update when we call update_content
-        stats.update_content()
+        # Trigger reactive field updates (simulating what happens in tick())
+        game_screen._update_reactive_fields()
         await pilot.pause()
 
         # Check if the game state was actually updated

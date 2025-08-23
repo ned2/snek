@@ -55,13 +55,11 @@ class SplashScreen(Screen):
 
     def action_start_game(self) -> None:
         """Start the game."""
-        game_screen = GameScreen()
-        self.app.push_screen(game_screen)
+        self.app.push_screen(GameScreen())
 
     def action_start_demo(self) -> None:
         """Start the game in demo mode."""
-        game_screen = GameScreen(demo_mode=True)
-        self.app.push_screen(game_screen)
+        self.app.push_screen(GameScreen(demo_mode=True))
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -333,6 +331,23 @@ class SnakeView(Static):
         return Text("\n".join(rows))
 
 
+class StatsRow(Static):
+    """A component for displaying a statistics row with label and value."""
+
+    def __init__(self, label: str, value_id: str) -> None:
+        super().__init__()
+        self.label = label
+        self.value_id = value_id
+
+    def compose(self) -> ComposeResult:
+        """Compose the stats row."""
+        yield Horizontal(
+            Label(f"{self.label}:", classes="stat-label"),
+            Label("", id=self.value_id, classes="stat-value"),
+            classes="stat-row",
+        )
+
+
 class SidePanel(Static):
     """Panel showing game statistics."""
 
@@ -351,26 +366,10 @@ class SidePanel(Static):
         """Compose the side panel with FigletWidget at bottom."""
         yield Vertical(
             Vertical(
-                Horizontal(
-                    Label("World:", classes="stat-label"),
-                    Label("", id="world-value", classes="stat-value"),
-                    classes="stat-row",
-                ),
-                Horizontal(
-                    Label("Progress:", classes="stat-label"),
-                    Label("", id="symbols-value", classes="stat-value"),
-                    classes="stat-row",
-                ),
-                Horizontal(
-                    Label("Total foods:", classes="stat-label"),
-                    Label("", id="foods-value", classes="stat-value"),
-                    classes="stat-row",
-                ),
-                Horizontal(
-                    Label("Speed:", classes="stat-label"),
-                    Label("", id="speed-value", classes="stat-value"),
-                    classes="stat-row",
-                ),
+                StatsRow("World", "world-value"),
+                StatsRow("Progress", "symbols-value"),
+                StatsRow("Total foods", "foods-value"),
+                StatsRow("Speed", "speed-value"),
                 id="stats-content",
             ),
             FigletWidget(
@@ -380,22 +379,6 @@ class SidePanel(Static):
                 colors=["$primary"],
             ),
             id="side-panel-container",
-        )
-
-    def on_mount(self) -> None:
-        """Update content when mounted."""
-        self.update_content()
-
-    def update_content(self) -> None:
-        """Update the stats content."""
-        world_name = self.game.world_path.get_world_name(self.game.current_world)
-        self.query_one("#world-value", Label).update(world_name)
-        self.query_one("#symbols-value", Label).update(
-            f"{self.game.symbols_in_current_world}/{self.game.config.symbols_per_world}"
-        )
-        self.query_one("#foods-value", Label).update(str(self.game.symbols_consumed))
-        self.query_one("#speed-value", Label).update(
-            f"{self.game.get_moves_per_second():.1f}/sec"
         )
 
     def watch_foods_eaten(self, value: int) -> None:
