@@ -38,15 +38,15 @@ class SplashScreen(Screen):
                 animate=True,
             )
             yield Static(
-                f"v{__version__}",
-                classes="version-display",
-            )
-            yield Static(
                 "Press SPACE to start or D for demo mode.", classes="splash-prompt"
             )
             yield Static(
                 "Use arrow or WASD keys to move, Space to pause, Q to quit.",
                 classes="splash-prompt",
+            )
+            yield Static(
+                f"v{__version__}",
+                classes="version-display",
             )
 
     def on_mount(self) -> None:

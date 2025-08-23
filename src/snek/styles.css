@@ -64,7 +64,7 @@ SidePanel {
 .version-display {
     text-align: center;
     text-style: dim;
-    margin-bottom: 2;
+    margin-top: 4;
     color: $accent;
 }
 
