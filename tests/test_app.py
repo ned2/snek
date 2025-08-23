@@ -230,7 +230,7 @@ async def test_theme_changes_with_world():
         assert game.current_world == old_world + 1
 
         # Manually trigger theme change since we bypassed the normal game step
-        if game.current_world != old_world and hasattr(app, "theme"):
+        if game.current_world != old_world:
             app.theme = game.world_path.get_world(game.current_world).theme_name
 
         await pilot.pause()

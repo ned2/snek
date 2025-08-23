@@ -112,8 +112,7 @@ class GameScreen(Screen):
         """Start the game timer and set initial theme when the screen mounts."""
         self.timer = self.set_interval(self.interval, self.tick)
 
-        if hasattr(self.app, "theme"):
-            self.app.theme = self.game.world_path.get_world(0).theme_name
+        self.app.theme = self.game.world_path.get_world(0).theme_name
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
@@ -137,7 +136,7 @@ class GameScreen(Screen):
         self.game.step()
 
         # Update theme if world changed
-        if self.game.current_world != old_world and hasattr(self.app, "theme"):
+        if self.game.current_world != old_world:
             self.app.theme = self.game.world_path.get_world(
                 self.game.current_world
             ).theme_name
@@ -233,9 +232,8 @@ class GameScreen(Screen):
         if self.view_widget:
             self.view_widget.refresh()
 
-        if hasattr(self.app, "theme"):
-            # Update theme to initial world
-            self.app.theme = self.game.world_path.get_world(0).theme_name
+        # Update theme to initial world
+        self.app.theme = self.game.world_path.get_world(0).theme_name
 
 
 class PauseModal(ModalScreen):
