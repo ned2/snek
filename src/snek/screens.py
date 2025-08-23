@@ -94,24 +94,18 @@ class GameScreen(Screen):
         super().__init__()
         self.config = config or default_config
         self.game: Game = Game(config=self.config)
-        self.demo_ai: DemoAI | None = DemoAI(self.game) if demo_mode else None
-        self.view_widget: SnakeView | None = None
-        self.stats_widget: SidePanel | None = None
         self.timer: Timer
         self.interval: float = self.config.initial_speed_interval
         self.sidebar_visible: bool = True
+        self.demo_ai: DemoAI | None = DemoAI(self.game) if demo_mode else None
 
     def compose(self) -> ComposeResult:
         """Compose the game screen."""
-        self.view_widget = SnakeView(self.game)
-        self.stats_widget = SidePanel(self.game)
-
-        yield Horizontal(self.view_widget, self.stats_widget, id="game-content")
+        yield Horizontal(SnakeView(self.game), SidePanel(self.game), id="game-content")
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
         self.timer = self.set_interval(self.interval, self.tick)
-
         self.app.theme = self.game.world_path.get_world(0).theme_name
 
     def on_unmount(self) -> None:
@@ -129,10 +123,12 @@ class GameScreen(Screen):
         self.speed = self.game.get_moves_per_second()
         self.world_index = self.game.current_world
         self.symbols_in_world = self.game.symbols_in_current_world
-        self.stats_widget.foods_eaten = self.game.symbols_consumed
-        self.stats_widget.speed = self.game.get_moves_per_second()
-        self.stats_widget.world_index = self.game.current_world
-        self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
+
+        side_panel = self.query_one(SidePanel)
+        side_panel.foods_eaten = self.game.symbols_consumed
+        side_panel.speed = self.game.get_moves_per_second()
+        side_panel.world_index = self.game.current_world
+        side_panel.symbols_in_world = self.game.symbols_in_current_world
 
     def tick(self) -> None:
         """Game tick - advance game state."""
@@ -165,7 +161,7 @@ class GameScreen(Screen):
             self.game.update_speed(self.interval)
 
         self._update_reactive_fields()
-        self.view_widget.refresh()
+        self.query_one(SnakeView).refresh()
 
     def action_pause(self) -> None:
         """Pause the game."""
@@ -177,7 +173,8 @@ class GameScreen(Screen):
     def action_toggle_sidebar(self) -> None:
         """Toggle sidebar visibility."""
         self.sidebar_visible = not self.sidebar_visible
-        self.stats_widget.styles.display = "block" if self.sidebar_visible else "none"
+        side_panel = self.query_one(SidePanel)
+        side_panel.styles.display = "block" if self.sidebar_visible else "none"
         self.refresh(layout=True)
 
     def action_turn(self, dir_name: str) -> None:
@@ -187,9 +184,8 @@ class GameScreen(Screen):
             return
 
         self.game.turn(Direction[dir_name])
-        if self.view_widget:
-            # Force a refresh after key press to show immediate response
-            self.view_widget.refresh()
+        # Force a refresh after key press to show immediate response
+        self.query_one(SnakeView).refresh()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -209,15 +205,10 @@ class GameScreen(Screen):
             self.demo_ai = DemoAI(self.game)
         self.interval = self.config.initial_speed_interval
         self._restart_timer()
-
-        # Update reactive fields
         self._update_reactive_fields()
-
         # Update theme to initial world before refreshing view
         self.app.theme = self.game.world_path.get_world(0).theme_name
-
-        if self.view_widget:
-            self.view_widget.refresh()
+        self.query_one(SnakeView).refresh()
 
 
 class PauseModal(ModalScreen):

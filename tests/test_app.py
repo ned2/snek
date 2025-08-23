@@ -5,7 +5,7 @@ import pytest
 from snek.app import SnakeApp
 from snek.config import GameConfig
 from snek.game_rules import Direction
-from snek.screens import GameScreen, SplashScreen
+from snek.screens import GameScreen, SplashScreen, SnakeView, SidePanel
 
 
 @pytest.mark.asyncio
@@ -31,8 +31,8 @@ async def test_start_game_from_splash():
 
         # Game should be initialized on the screen
         assert app.screen.game is not None
-        assert app.screen.view_widget is not None
-        assert app.screen.stats_widget is not None
+        assert app.screen.query_one(SnakeView) is not None
+        assert app.screen.query_one(SidePanel) is not None
 
 
 @pytest.mark.asyncio
@@ -180,7 +180,7 @@ async def test_stats_panel_updates():
         assert isinstance(game_screen, GameScreen)
 
         # Get initial stats
-        stats = game_screen.stats_widget
+        stats = game_screen.query_one(SidePanel)
         game = game_screen.game
 
         # Update game state
@@ -258,8 +258,8 @@ async def test_resize_handling():
         resize_event = Resize(100, 30, 100, 30)
 
         # Simulate resize on the snake view
-        if game_screen.view_widget:
-            game_screen.view_widget.on_resize(resize_event)
+        snake_view = game_screen.query_one(SnakeView)
+        snake_view.on_resize(resize_event)
         await pilot.pause()
 
         # Game dimensions should update
