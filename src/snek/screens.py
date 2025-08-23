@@ -94,14 +94,13 @@ class GameScreen(Screen):
         super().__init__()
         self.config = config or default_config
         self.demo_mode = demo_mode
-        # Initialize game with default size - will be resized on mount
-        self.game: Game = Game(width=20, height=15, config=self.config)
+        self.game: Game = Game(config=self.config)
         self.demo_ai: DemoAI | None = None
         if self.demo_mode:
             self.demo_ai = DemoAI(self.game)
         self.view_widget: SnakeView | None = None
         self.stats_widget: SidePanel | None = None
-        self.timer: Timer | None = None
+        self.timer: Timer  # Always exists, no None state needed
         self.interval: float = self.config.initial_speed_interval
         self.sidebar_visible: bool = True
 
@@ -114,21 +113,19 @@ class GameScreen(Screen):
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
-        self._restart_timer()
+        # Create the timer - it will always exist from this point
+        self.timer = self.set_interval(self.interval, self.tick)
 
         if hasattr(self.app, "theme"):
             self.app.theme = self.game.world_path.get_world(0).theme_name
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
-        if self.timer:
-            self.timer.stop()
-            self.timer = None
+        self.timer.stop()
 
     def _restart_timer(self) -> None:
-        """Helper to safely restart the game timer."""
-        if self.timer:
-            self.timer.stop()
+        """Helper to restart the game timer with current interval."""
+        self.timer.stop()
         self.timer = self.set_interval(self.interval, self.tick)
 
     def tick(self) -> None:
@@ -151,9 +148,7 @@ class GameScreen(Screen):
 
         if self.game.game_over:
             # Stop the timer to prevent multiple game over modals
-            if self.timer:
-                self.timer.stop()
-                self.timer = None
+            self.timer.stop()
             self.app.push_screen(GameOverModal())
             return
 
@@ -183,8 +178,7 @@ class GameScreen(Screen):
         """Pause the game."""
         if not self.game.game_over:
             self.game.paused = True
-            if self.timer:
-                self.timer.stop()
+            self.timer.pause()
             self.app.push_screen(PauseModal())
 
     def action_toggle_sidebar(self) -> None:
@@ -216,8 +210,7 @@ class GameScreen(Screen):
         """Resume the game after pause."""
         if self.game.paused:
             self.game.paused = False
-            if self.interval:
-                self._restart_timer()
+            self.timer.resume()
 
     def restart_game(self) -> None:
         """Restart the game."""
