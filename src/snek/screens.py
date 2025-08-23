@@ -102,7 +102,7 @@ class GameScreen(Screen):
         self.view_widget: SnakeView | None = None
         self.stats_widget: SidePanel | None = None
         self.timer: Timer | None = None
-        self.interval: float | None = None
+        self.interval: float = self.config.initial_speed_interval
         self.sidebar_visible: bool = True
 
     def compose(self) -> ComposeResult:
@@ -113,16 +113,9 @@ class GameScreen(Screen):
         yield Horizontal(self.view_widget, self.stats_widget, id="game-content")
 
     def on_mount(self) -> None:
-        """Start the game timer when the screen mounts."""
-        # Always start the timer - game dimensions will be set by compose
-        # Use faster speed for demo mode for better visual experience
-        if self.demo_mode:
-            self.interval = self.config.initial_speed_interval * 0.6  # 40% faster
-        else:
-            self.interval = self.config.initial_speed_interval
+        """Start the game timer and set initial theme when the screen mounts."""
         self._restart_timer()
 
-        # Set initial theme
         if hasattr(self.app, "theme"):
             self.app.theme = self.game.world_path.get_world(0).theme_name
 
