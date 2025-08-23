@@ -29,8 +29,8 @@ async def test_start_game_from_splash():
         # Should now be on game screen
         assert isinstance(app.screen, GameScreen)
 
-        # Game should be initialized on the screen
-        assert app.screen.game is not None
+        # Game should be initialized on the app
+        assert app.game is not None
         assert app.screen.query_one(SnakeView) is not None
         assert app.screen.query_one(SidePanel) is not None
 
@@ -44,10 +44,10 @@ async def test_game_controls():
         await pilot.press("space")
         await pilot.pause()
 
-        # Get the game from the screen
+        # Get the game from the app
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
-        game = game_screen.game
+        game = app.game
 
         # Test direction controls
         await pilot.press("up")
@@ -79,7 +79,7 @@ async def test_pause_functionality():
         # Pause game
         await pilot.press("space")
         await pilot.pause()
-        assert game_screen.game.paused is True
+        assert app.game.paused is True
 
         # Should now have a pause modal on the screen stack
         # The pause modal should be the top screen
@@ -94,7 +94,7 @@ async def test_pause_functionality():
         # Unpause by pressing space
         await pilot.press("space")
         await pilot.pause()
-        assert game_screen.game.paused is False
+        assert app.game.paused is False
 
 
 @pytest.mark.asyncio
@@ -110,7 +110,7 @@ async def test_game_over_and_restart():
         assert isinstance(game_screen, GameScreen)
 
         # Force game over
-        game_screen.game.game_over = True
+        app.game.game_over = True
 
         # Manually trigger the game over modal
         from snek.screens import GameOverModal
@@ -139,12 +139,12 @@ async def test_game_over_and_restart():
         assert hasattr(game_screen_in_stack, "restart_game")
 
         # Test restart_game method directly
-        game_screen_in_stack.game.symbols_consumed = 5  # Change state
+        app.game.symbols_consumed = 5  # Change state
         game_screen_in_stack.restart_game()
-        assert game_screen_in_stack.game.symbols_consumed == 0  # Should be reset
-        assert not game_screen_in_stack.game.game_over  # Should not be game over
+        assert app.game.symbols_consumed == 0  # Should be reset
+        assert not app.game.game_over  # Should not be game over
         assert (
-            len(game_screen_in_stack.game.snake) == 1
+            len(app.game.snake) == 1
         )  # Should have initial snake length
 
 
@@ -181,7 +181,7 @@ async def test_stats_panel_updates():
 
         # Get initial stats
         stats = game_screen.query_one(SidePanel)
-        game = game_screen.game
+        game = app.game
 
         # Update game state
         game.symbols_consumed = 10
@@ -196,8 +196,8 @@ async def test_stats_panel_updates():
         assert game.current_world == 1
 
         # Check the stats panel's internal state
-        assert stats.game.symbols_consumed == 10
-        assert stats.game.current_world == 1
+        assert app.game.symbols_consumed == 10
+        assert app.game.current_world == 1
 
 
 @pytest.mark.asyncio
@@ -213,7 +213,7 @@ async def test_theme_changes_with_world():
 
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
-        game = game_screen.game
+        game = app.game
 
         # Store initial theme and old world for comparison
         initial_theme = app.theme
@@ -263,8 +263,8 @@ async def test_resize_handling():
         await pilot.pause()
 
         # Game dimensions should update
-        assert game_screen.game.width > 0
-        assert game_screen.game.height > 0
+        assert app.game.width > 0
+        assert app.game.height > 0
 
 
 class TestWorldProgression:

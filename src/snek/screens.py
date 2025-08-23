@@ -11,9 +11,7 @@ from textual.widgets import Label, Static
 from textual_pyfiglet import FigletWidget
 
 from . import __version__
-from .config import GameConfig, default_config
 from .demo_ai import DemoAI
-from .game import Game
 from .game_rules import Direction
 
 
@@ -44,10 +42,7 @@ class SplashScreen(Screen):
                 "Use arrow or WASD keys to move, Space to pause, Q to quit.",
                 classes="splash-prompt",
             )
-            yield Static(
-                f"v{__version__}",
-                classes="version-display",
-            )
+            yield Static(f"v{__version__}", classes="version-display")
 
     def on_mount(self) -> None:
         """Fade in the splash screen on load."""
@@ -55,11 +50,15 @@ class SplashScreen(Screen):
 
     def action_start_game(self) -> None:
         """Start the game."""
-        self.app.push_screen(GameScreen())
+        game_screen = self.app.get_screen("game")
+        game_screen.set_user_mode()
+        self.app.push_screen("game")
 
     def action_start_demo(self) -> None:
         """Start the game in demo mode."""
-        self.app.push_screen(GameScreen(demo_mode=True))
+        game_screen = self.app.get_screen("game")
+        game_screen.set_demo_mode()
+        self.app.push_screen("game")
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -88,45 +87,45 @@ class GameScreen(Screen):
     world_index = reactive(0)
     symbols_in_world = reactive(0)
 
-    def __init__(self, config: GameConfig = None, demo_mode: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.config = config or default_config
-        self.game: Game = Game(config=self.config)
-        self.timer: Timer
-        self.interval: float = self.config.initial_speed_interval
+        self.timer: Timer | None = None
+        self.interval: float = self.app.config.initial_speed_interval
         self.sidebar_visible: bool = True
-        self.demo_ai: DemoAI | None = DemoAI(self.game) if demo_mode else None
+        self.demo_ai: DemoAI | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the game screen."""
-        yield Horizontal(SnakeView(self.game), SidePanel(self.game), id="game-content")
+        yield Horizontal(SnakeView(), SidePanel(), id="game-content")
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
         self.timer = self.set_interval(self.interval, self.tick)
-        self.app.theme = self.game.world_path.get_world(0).theme_name
+        self.app.theme = self.app.game.world_path.get_world(0).theme_name
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
-        self.timer.stop()
+        if self.timer:
+            self.timer.stop()
 
     def _restart_timer(self) -> None:
         """Helper to restart the game timer with current interval."""
-        self.timer.stop()
+        if self.timer:
+            self.timer.stop()
         self.timer = self.set_interval(self.interval, self.tick)
 
     def _update_reactive_fields(self) -> None:
         """Update all reactive fields from game state."""
-        self.foods_eaten = self.game.symbols_consumed
-        self.speed = self.game.get_moves_per_second()
-        self.world_index = self.game.current_world
-        self.symbols_in_world = self.game.symbols_in_current_world
+        self.foods_eaten = self.app.game.symbols_consumed
+        self.speed = self.app.game.get_moves_per_second()
+        self.world_index = self.app.game.current_world
+        self.symbols_in_world = self.app.game.symbols_in_current_world
 
         side_panel = self.query_one(SidePanel)
-        side_panel.foods_eaten = self.game.symbols_consumed
-        side_panel.speed = self.game.get_moves_per_second()
-        side_panel.world_index = self.game.current_world
-        side_panel.symbols_in_world = self.game.symbols_in_current_world
+        side_panel.foods_eaten = self.app.game.symbols_consumed
+        side_panel.speed = self.app.game.get_moves_per_second()
+        side_panel.world_index = self.app.game.current_world
+        side_panel.symbols_in_world = self.app.game.symbols_in_current_world
 
     def tick(self) -> None:
         """Game tick - advance game state."""
@@ -134,39 +133,41 @@ class GameScreen(Screen):
             # In demo mode, let the AI choose the direction
             ai_direction = self.demo_ai.get_next_direction()
             if ai_direction:
-                self.game.turn(ai_direction)
+                self.app.game.turn(ai_direction)
 
-        pre_length = len(self.game.snake)
-        old_world = self.game.current_world
-        self.game.step()
+        pre_length = len(self.app.game.snake)
+        old_world = self.app.game.current_world
+        self.app.game.step()
 
-        if self.game.current_world != old_world:
+        if self.app.game.current_world != old_world:
             # World changed; update theme
-            self.app.theme = self.game.world_path.get_world(
-                self.game.current_world
+            self.app.theme = self.app.game.world_path.get_world(
+                self.app.game.current_world
             ).theme_name
 
-        if self.game.game_over:
+        if self.app.game.game_over:
             # Stop the timer to prevent multiple game over modals
-            self.timer.stop()
-            self.app.push_screen(GameOverModal())
+            if self.timer:
+                self.timer.stop()
+            self.app.push_screen("game_over")
             return
 
-        if len(self.game.snake) > pre_length:
+        if len(self.app.game.snake) > pre_length:
             # Snake ate food; increase speed
-            self.interval *= self.config.speed_increase_factor
+            self.interval *= self.app.config.speed_increase_factor
             self._restart_timer()
-            self.game.update_speed(self.interval)
+            self.app.game.update_speed(self.interval)
 
         self._update_reactive_fields()
         self.query_one(SnakeView).refresh()
 
     def action_pause(self) -> None:
         """Pause the game."""
-        if not self.game.game_over:
-            self.game.paused = True
-            self.timer.pause()
-            self.app.push_screen(PauseModal())
+        if not self.app.game.game_over:
+            self.app.game.paused = True
+            if self.timer:
+                self.timer.pause()
+            self.app.push_screen("pause")
 
     def action_toggle_sidebar(self) -> None:
         """Toggle sidebar visibility."""
@@ -181,7 +182,7 @@ class GameScreen(Screen):
             # Don't allow manual control in demo mode
             return
 
-        self.game.turn(Direction[dir_name])
+        self.app.game.turn(Direction[dir_name])
         # Force a refresh after key press to show immediate response
         self.query_one(SnakeView).refresh()
 
@@ -191,22 +192,32 @@ class GameScreen(Screen):
 
     def resume_game(self) -> None:
         """Resume the game after pause."""
-        if self.game.paused:
-            self.game.paused = False
-            self.timer.resume()
+        if self.app.game.paused:
+            self.app.game.paused = False
+            if self.timer:
+                self.timer.resume()
 
     def restart_game(self) -> None:
         """Restart the game."""
-        self.game.reset()
+        self.app.game.reset()
         if self.demo_ai:
             # Recreate AI for fresh game
-            self.demo_ai = DemoAI(self.game)
-        self.interval = self.config.initial_speed_interval
+            self.demo_ai = DemoAI(self.app.game)
+        self.interval = self.app.config.initial_speed_interval
         self._restart_timer()
         self._update_reactive_fields()
         # Update theme to initial world before refreshing view
-        self.app.theme = self.game.world_path.get_world(0).theme_name
+        self.app.theme = self.app.game.world_path.get_world(0).theme_name
         self.query_one(SnakeView).refresh()
+
+    def set_demo_mode(self) -> None:
+        """Enable demo mode with AI control."""
+        if not self.demo_ai:
+            self.demo_ai = DemoAI(self.app.game)
+
+    def set_user_mode(self) -> None:
+        """Disable demo mode - user controls."""
+        self.demo_ai = None
 
 
 class PauseModal(ModalScreen):
@@ -237,11 +248,9 @@ class PauseModal(ModalScreen):
 
     def action_resume(self) -> None:
         """Resume the game."""
-        for screen in self.app.screen_stack:
-            if isinstance(screen, GameScreen):
-                screen.resume_game()
-                break
-        self.dismiss()
+        game_screen = self.app.get_screen("game")
+        game_screen.resume_game()
+        self.app.pop_screen()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -275,16 +284,15 @@ class GameOverModal(ModalScreen):
 
     def action_restart(self) -> None:
         """Restart the game in the same mode (user/demo)."""
-        for screen in self.app.screen_stack:
-            if isinstance(screen, GameScreen):
-                screen.restart_game()
-                break
-        self.dismiss()
+        game_screen = self.app.get_screen("game")
+        game_screen.restart_game()
+        self.app.pop_screen()
+        self.app.pop_screen()
 
     def action_menu(self) -> None:
         """Return to the main menu (splash screen)."""
-        self.app.pop_screen()  # Remove GameOverModal
-        self.app.pop_screen()  # Remove GameScreen
+        self.app.pop_screen()
+        self.app.pop_screen()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -294,28 +302,24 @@ class GameOverModal(ModalScreen):
 class SnakeView(Static):
     """Renders the game as text."""
 
-    def __init__(self, game: Game) -> None:
-        super().__init__()
-        self.game = game
-
     def on_resize(self, event: events.Resize) -> None:
         """React to available space changes."""
-        if self.game and self.size.width > 0 and self.size.height > 0:
+        if self.app.game and self.size.width > 0 and self.size.height > 0:
             # Calculate grid size based on available space
-            game_width = max(self.game.config.min_game_width, self.size.width // 2)
-            game_height = max(self.game.config.min_game_height, self.size.height)
-            self.game.resize(game_width, game_height)
+            game_width = max(self.app.config.min_game_width, self.size.width // 2)
+            game_height = max(self.app.config.min_game_height, self.size.height)
+            self.app.app.game.resize(game_width, game_height)
             self.refresh()
 
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
-        width, height = self.game.width, self.game.height
-        empty_cell = self.game.config.empty_cell
-        food_emoji = self.game.food_emoji
-        snake_block = self.game.config.snake_block
-        food_pos = self.game.food
+        width, height = self.app.game.width, self.app.game.height
+        empty_cell = self.app.config.empty_cell
+        food_emoji = self.app.game.food_emoji
+        snake_block = self.app.game.config.snake_block
+        food_pos = self.app.game.food
 
-        snake_positions = set(self.game.snake)
+        snake_positions = set(self.app.game.snake)
         rows = []
         for y in range(height):
             row_parts = []
@@ -356,11 +360,10 @@ class SidePanel(Static):
     world_index = reactive(0)
     symbols_in_world = reactive(0)
 
-    def __init__(self, game: Game) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.game = game
-        self.styles.width = self.game.config.side_panel_width
-        self.styles.min_width = self.game.config.side_panel_width
+        self.styles.width = self.app.config.side_panel_width
+        self.styles.min_width = self.app.config.side_panel_width
 
     def compose(self) -> ComposeResult:
         """Compose the side panel with FigletWidget at bottom."""
@@ -391,11 +394,11 @@ class SidePanel(Static):
 
     def watch_world_index(self, value: int) -> None:
         """React to world index changes."""
-        world_name = self.game.world_path.get_world_name(value)
+        world_name = self.app.game.world_path.get_world_name(value)
         self.query_one("#world-value", Label).update(world_name)
 
     def watch_symbols_in_world(self, value: int) -> None:
         """React to symbols in current world changes."""
         self.query_one("#symbols-value", Label).update(
-            f"{value}/{self.game.config.symbols_per_world}"
+            f"{value}/{self.app.config.symbols_per_world}"
         )

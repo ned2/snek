@@ -3,7 +3,8 @@
 from textual.app import App
 
 from .config import GameConfig, default_config
-from .screens import SplashScreen
+from .game import Game
+from .screens import SplashScreen, GameScreen, PauseModal, GameOverModal
 from .themes import THEME_MAP
 
 
@@ -12,9 +13,17 @@ class SnakeApp(App):
 
     CSS_PATH = "styles.css"
 
+    SCREENS = {
+        "splash": SplashScreen,
+        "game": GameScreen,
+        "pause": PauseModal,
+        "game_over": GameOverModal,
+    }
+
     def __init__(self, config: GameConfig = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.config = config or default_config
+        self.game = Game(config=self.config)
 
     def on_load(self) -> None:
         """Register all themes when the app loads."""
@@ -24,4 +33,4 @@ class SnakeApp(App):
 
     def on_mount(self) -> None:
         """Start with the splash screen."""
-        self.push_screen(SplashScreen())
+        self.push_screen("splash")
