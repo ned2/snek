@@ -123,6 +123,17 @@ class GameScreen(Screen):
         self.timer.stop()
         self.timer = self.set_interval(self.interval, self.tick)
 
+    def _update_reactive_fields(self) -> None:
+        """Update all reactive fields from game state."""
+        self.foods_eaten = self.game.symbols_consumed
+        self.speed = self.game.get_moves_per_second()
+        self.world_index = self.game.current_world
+        self.symbols_in_world = self.game.symbols_in_current_world
+        self.stats_widget.foods_eaten = self.game.symbols_consumed
+        self.stats_widget.speed = self.game.get_moves_per_second()
+        self.stats_widget.world_index = self.game.current_world
+        self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
+
     def tick(self) -> None:
         """Game tick - advance game state."""
         if self.demo_ai:
@@ -153,21 +164,8 @@ class GameScreen(Screen):
             self._restart_timer()
             self.game.update_speed(self.interval)
 
-        # Update reactive fields
-        self.foods_eaten = self.game.symbols_consumed
-        self.speed = self.game.get_moves_per_second()
-        self.world_index = self.game.current_world
-        self.symbols_in_world = self.game.symbols_in_current_world
-
-        # Update stats-panel reactive fields
-        if self.stats_widget:
-            self.stats_widget.foods_eaten = self.game.symbols_consumed
-            self.stats_widget.speed = self.game.get_moves_per_second()
-            self.stats_widget.world_index = self.game.current_world
-            self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
-
-        if self.view_widget:
-            self.view_widget.refresh()
+        self._update_reactive_fields()
+        self.view_widget.refresh()
 
     def action_pause(self) -> None:
         """Pause the game."""
@@ -213,17 +211,7 @@ class GameScreen(Screen):
         self._restart_timer()
 
         # Update reactive fields
-        self.foods_eaten = self.game.symbols_consumed
-        self.speed = self.game.get_moves_per_second()
-        self.world_index = self.game.current_world
-        self.symbols_in_world = self.game.symbols_in_current_world
-
-        # Update stats-panel
-        if self.stats_widget:
-            self.stats_widget.foods_eaten = self.game.symbols_consumed
-            self.stats_widget.speed = self.game.get_moves_per_second()
-            self.stats_widget.world_index = self.game.current_world
-            self.stats_widget.symbols_in_world = self.game.symbols_in_current_world
+        self._update_reactive_fields()
 
         # Update theme to initial world before refreshing view
         self.app.theme = self.game.world_path.get_world(0).theme_name
