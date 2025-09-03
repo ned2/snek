@@ -105,13 +105,11 @@ class GameScreen(Screen):
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
-        if self.timer:
-            self.timer.stop()
+        self.timer.stop()
 
     def _restart_timer(self) -> None:
         """Helper to restart the game timer with current interval."""
-        if self.timer:
-            self.timer.stop()
+        self.timer.stop()
         self.timer = self.set_interval(self.interval, self.tick)
 
     def _update_reactive_fields(self) -> None:
@@ -147,8 +145,7 @@ class GameScreen(Screen):
 
         if self.app.game.game_over:
             # Stop the timer to prevent multiple game over modals
-            if self.timer:
-                self.timer.stop()
+            self.timer.stop()
             self.app.push_screen("game_over")
             return
 
@@ -165,8 +162,7 @@ class GameScreen(Screen):
         """Pause the game."""
         if not self.app.game.game_over:
             self.app.game.paused = True
-            if self.timer:
-                self.timer.pause()
+            self.timer.pause()
             self.app.push_screen("pause")
 
     def action_toggle_sidebar(self) -> None:
@@ -194,8 +190,7 @@ class GameScreen(Screen):
         """Resume the game after pause."""
         if self.app.game.paused:
             self.app.game.paused = False
-            if self.timer:
-                self.timer.resume()
+            self.timer.resume()
 
     def restart_game(self) -> None:
         """Restart the game."""
@@ -276,7 +271,7 @@ class GameOverModal(ModalScreen):
                 colors=["$primary"],
                 classes="title-text",
             )
-            yield Static("💀 SNEK DIED! 💀", classes="death-message")
+            yield Static("💀 SNEK DED! 💀", classes="death-message")
             yield Static(
                 "Press SPACE to restart, ENTER for main menu, or Q to quit",
                 classes="death-prompt",

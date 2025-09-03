@@ -22,7 +22,6 @@ class Game:
         self.width = width or self.config.default_grid_width
         self.height = height or self.config.default_grid_height
         self.rng = rng or random.Random()
-
         self.world_path = WorldPath()
         self.reset()
 
@@ -34,8 +33,7 @@ class Game:
         self.symbols_consumed = 0
         self.current_world = 0
         self.symbols_in_current_world = 0
-        self.initial_interval = self.config.initial_speed_interval
-        self.current_interval = self.initial_interval
+        self.current_interval = self.config.initial_speed_interval
         self.game_over = False
         self.paused = False
         self.place_food()
