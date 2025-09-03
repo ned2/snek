@@ -273,6 +273,10 @@ class GameOverModal(ModalScreen):
             )
             yield Static("💀 SNEK DED! 💀", classes="death-message")
             yield Static(
+                f"Foods collected: {self.app.game.symbols_consumed}",
+                classes="death-prompt",
+            )
+            yield Static(
                 "Press SPACE to restart, ENTER for main menu, or Q to quit",
                 classes="death-prompt",
             )

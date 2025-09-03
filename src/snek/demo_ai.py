@@ -1,45 +1,38 @@
 """Demo AI that automatically plays the snake game using pathfinding heuristics."""
 
 from collections import deque
-from typing import Optional
 
 from .game_rules import Direction, GameRules, Position
 
 
 class DemoAI:
-    """AI player that automatically plays the snake game using pathfinding."""
+    """Heuristic-based automated Snek player."""
 
     def __init__(self, game) -> None:
         """Initialize the demo AI with a reference to the game."""
         self.game = game
         self.path: list[Position] = []
 
-    def get_next_direction(self) -> Optional[Direction]:
+    def get_next_direction(self) -> Direction:
         """Get the next optimal direction for the snake to move."""
-        if not self.game.is_running:
-            return None
-
         head = self.game.snake[0]
         food = self.game.food
-
         if len(self.path) > 1 and self._is_path_still_safe():
             # we have a valid path and the next position is still safe, so follow it
-            next_pos = self.path[1]  # Skip current head position
+            next_pos = self.path[1]
             direction = self._get_direction_to_position(head, next_pos)
             if direction and GameRules.is_valid_turn(self.game.direction, direction):
-                self.path.pop(0)  # Remove current position from path
+                self.path.pop(0)
                 return direction
-
         # Calculate new path to food
         self.path = self._find_path_to_food(head, food)
 
         if len(self.path) > 1:
-            next_pos = self.path[1]  # Skip current head position
+            next_pos = self.path[1]
             direction = self._get_direction_to_position(head, next_pos)
             if direction and GameRules.is_valid_turn(self.game.direction, direction):
-                self.path.pop(0)  # Remove current position from path
+                self.path.pop(0)
                 return direction
-
         # Fallback: try to avoid immediate collision
         return self._avoid_collision()
 
@@ -47,43 +40,29 @@ class DemoAI:
         """Check if the current path is still safe to follow."""
         if len(self.path) < 2:
             return False
-
         # Check if any part of the path intersects with snake body (excluding the head)
         snake_set = set(self.game.snake[1:])
-        for pos in self.path[1:]:  # Skip current head position
+        for pos in self.path[1:]:
             if pos in snake_set:
                 return False
         return True
 
     def _find_path_to_food(self, start: Position, goal: Position) -> list[Position]:
         """Find optimal path from start to goal using BFS with safety considerations."""
-        if start == goal:
-            return [start]
-
         # First try to find a direct path
-        path = self._bfs_path(start, goal, avoid_body=True)
+        path = self._bfs_path(start, goal)
         if path:
             return path
-
-        # If no direct path, try with more lenient collision avoidance
-        path = self._bfs_path(start, goal, avoid_body=False)
-        if path:
-            return path
-
         # Last resort: just move towards food
         return self._greedy_path_to_food(start, goal)
 
-    def _bfs_path(
-        self, start: Position, goal: Position, avoid_body: bool = True
-    ) -> Optional[list[Position]]:
-        """Use BFS to find shortest path, optionally avoiding snake body."""
-        queue = deque([(start, [start])])
+    def _bfs_path(self, start: Position, goal: Position) -> list[Position] | None:
+        """Use breadth-first search to find shortest path to food."""
+        # queue data structure: [current_pos, current_path, current_snake]
+        queue = deque([(start, [start], self.game.snake.copy())])
         visited = {start}
-        snake_set = set(self.game.snake[1:]) if avoid_body else set()
-
         while queue:
-            current, path = queue.popleft()
-
+            current, path, snake = queue.popleft()
             if current == goal:
                 return path
 
@@ -91,41 +70,21 @@ class DemoAI:
                 next_pos = GameRules.calculate_new_position(
                     current, direction, self.game.width, self.game.height
                 )
-                if (
-                    next_pos not in visited
-                    and next_pos not in snake_set
-                    and self._is_safe_move(current, next_pos, len(path))
-                ):
+                if next_pos not in visited and next_pos not in snake:
                     visited.add(next_pos)
-                    queue.append((next_pos, path + [next_pos]))
+                    queue.append((next_pos, path + [next_pos], [next_pos] + snake[:-1]))
         return None
-
-    def _is_safe_move(
-        self, current: Position, next_pos: Position, path_length: int
-    ) -> bool:
-        """Check if a move is safe considering future snake positions."""
-        # Basic safety: don't hit the snake body immediately
-        if next_pos in self.game.snake:
-            return False
-        # Advanced safety: consider if the tail will move
-        # If we haven't eaten recently, the tail will move away
-        if path_length > len(self.game.snake) // 2:
-            return True
-        return True
 
     def _greedy_path_to_food(self, start: Position, goal: Position) -> list[Position]:
         """Create a simple greedy path towards the food."""
         path = [start]
         current = start
-
         for _ in range(max(self.game.width, self.game.height) * 2):
             if current == goal:
                 break
-
             # Find direction that reduces distance to food
             best_direction = None
             best_distance = float("inf")
-
             for direction in Direction:
                 next_pos = GameRules.calculate_new_position(
                     current, direction, self.game.width, self.game.height
@@ -146,38 +105,26 @@ class DemoAI:
                 path.append(current)
             else:
                 break
-
         return path
 
-    def _avoid_collision(self) -> Optional[Direction]:
+    def _avoid_collision(self) -> Direction | None:
         """Try to avoid immediate collision when no path to food exists."""
         head = self.game.snake[0]
         snake_set = set(self.game.snake)
-
-        # Try directions in order of preference
-        preferred_directions = [
-            Direction.UP,
-            Direction.RIGHT,
-            Direction.DOWN,
-            Direction.LEFT,
-        ]
-
-        for direction in preferred_directions:
+        for direction in Direction:
             if not GameRules.is_valid_turn(self.game.direction, direction):
                 continue
 
             next_pos = GameRules.calculate_new_position(
                 head, direction, self.game.width, self.game.height
             )
-
             if next_pos not in snake_set:
                 return direction
-
         return None
 
     def _get_direction_to_position(
         self, current: Position, target: Position
-    ) -> Optional[Direction]:
+    ) -> Direction | None:
         """Get the direction needed to move from current position to target position."""
         dx = target[0] - current[0]
         dy = target[1] - current[1]
