@@ -15,26 +15,21 @@ class DemoAI:
 
     def get_next_direction(self) -> Direction:
         """Get the next optimal direction for the snake to move."""
-        head = self.game.snake[0]
-        food = self.game.food
         if len(self.path) > 1 and self._is_path_still_safe():
-            # we have a valid path and the next position is still safe, so follow it
-            next_pos = self.path[1]
-            direction = self._get_direction_to_position(head, next_pos)
-            if direction and GameRules.is_valid_turn(self.game.direction, direction):
-                self.path.pop(0)
-                return direction
-        # Calculate new path to food
-        self.path = self._find_path_to_food(head, food)
-
+            return self._follow_path()
+        self.path = self._find_path_to_food(self.game.snake[0], self.game.food)
         if len(self.path) > 1:
-            next_pos = self.path[1]
-            direction = self._get_direction_to_position(head, next_pos)
-            if direction and GameRules.is_valid_turn(self.game.direction, direction):
-                self.path.pop(0)
-                return direction
-        # Fallback: try to avoid immediate collision
+            return self._follow_path()
+        # Fallback: just try to avoid immediate collision
         return self._avoid_collision()
+
+    def _follow_path(self):
+        head = self.game.snake[0]
+        next_pos = self.path[1]
+        direction = self._get_direction_to_position(head, next_pos)
+        if direction and GameRules.is_valid_turn(self.game.direction, direction):
+            self.path.pop(0)
+            return direction
 
     def _is_path_still_safe(self) -> bool:
         """Check if the current path is still safe to follow."""
@@ -48,7 +43,7 @@ class DemoAI:
         return True
 
     def _find_path_to_food(self, start: Position, goal: Position) -> list[Position]:
-        """Find optimal path from start to goal using BFS with safety considerations."""
+        """Find optimal path from start to goal using BFS then fallback."""
         # First try to find a direct path
         path = self._bfs_path(start, goal)
         if path:
@@ -56,7 +51,7 @@ class DemoAI:
         # Last resort: just move towards food
         return self._greedy_path_to_food(start, goal)
 
-    def _bfs_path(self, start: Position, goal: Position) -> list[Position] | None:
+    def _bfs_path(self, start: Position, goal: Position) -> list[Position]:
         """Use breadth-first search to find shortest path to food."""
         # queue data structure: [current_pos, current_path, current_snake]
         queue = deque([(start, [start], self.game.snake.copy())])
@@ -73,7 +68,7 @@ class DemoAI:
                 if next_pos not in visited and next_pos not in snake:
                     visited.add(next_pos)
                     queue.append((next_pos, path + [next_pos], [next_pos] + snake[:-1]))
-        return None
+        return []
 
     def _greedy_path_to_food(self, start: Position, goal: Position) -> list[Position]:
         """Create a simple greedy path towards the food."""
@@ -89,7 +84,6 @@ class DemoAI:
                 next_pos = GameRules.calculate_new_position(
                     current, direction, self.game.width, self.game.height
                 )
-
                 if next_pos not in self.game.snake and GameRules.is_valid_turn(
                     self._pos_to_direction(current, next_pos), direction
                 ):
@@ -97,7 +91,6 @@ class DemoAI:
                     if distance < best_distance:
                         best_distance = distance
                         best_direction = direction
-
             if best_direction:
                 current = GameRules.calculate_new_position(
                     current, best_direction, self.game.width, self.game.height
@@ -114,7 +107,6 @@ class DemoAI:
         for direction in Direction:
             if not GameRules.is_valid_turn(self.game.direction, direction):
                 continue
-
             next_pos = GameRules.calculate_new_position(
                 head, direction, self.game.width, self.game.height
             )
@@ -128,7 +120,6 @@ class DemoAI:
         """Get the direction needed to move from current position to target position."""
         dx = target[0] - current[0]
         dy = target[1] - current[1]
-
         # Handle wrapping
         if abs(dx) > self.game.width // 2:
             dx = -dx / abs(dx) if dx != 0 else 0
@@ -154,7 +145,7 @@ class DemoAI:
         """Calculate Manhattan distance between two positions with wrapping."""
         dx = abs(pos1[0] - pos2[0])
         dy = abs(pos1[1] - pos2[1])
-        # Consider wrapping
+        # Handle wrapping
         dx = min(dx, self.game.width - dx)
         dy = min(dy, self.game.height - dy)
         return dx + dy
