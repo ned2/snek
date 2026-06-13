@@ -307,7 +307,7 @@ class SnakeView(Static):
             # Calculate grid size based on available space
             game_width = max(self.app.config.min_game_width, self.size.width // 2)
             game_height = max(self.app.config.min_game_height, self.size.height)
-            self.app.app.game.resize(game_width, game_height)
+            self.app.game.resize(game_width, game_height)
             self.refresh()
 
     def render(self) -> Text:

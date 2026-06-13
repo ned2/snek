@@ -24,8 +24,9 @@ class World:
 class WorldPath:
     """Manages the progression of food characters through worlds."""
 
-    def __init__(self):
+    def __init__(self, rng: random.Random | None = None):
         """Initialize the world path."""
+        self._rng = rng or random.Random()
         self.worlds = self._create_journey_worlds()
         self._world_character_pool: dict[int, list[str]] = {}
 
@@ -102,7 +103,7 @@ class WorldPath:
             self._world_character_pool[world_index] = self.worlds[
                 world_index
             ].characters.copy()
-            random.shuffle(self._world_character_pool[world_index])
+            self._rng.shuffle(self._world_character_pool[world_index])
 
         # Pop a character from the pool
         return self._world_character_pool[world_index].pop()

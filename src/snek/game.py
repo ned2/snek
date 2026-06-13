@@ -22,7 +22,7 @@ class Game:
         self.width = width or self.config.default_grid_width
         self.height = height or self.config.default_grid_height
         self.rng = rng or random.Random()
-        self.world_path = WorldPath()
+        self.world_path = WorldPath(rng=self.rng)
         self.reset()
 
     def reset(self) -> None:

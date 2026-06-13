@@ -1,5 +1,7 @@
 """Unit tests for the Game class."""
 
+import random
+
 import pytest
 
 from snek.game import Game
@@ -72,6 +74,43 @@ class TestFoodPlacement:
         # Food should be in one of the remaining cells
         assert game.food not in game.snake
         assert game.food[1] == 4  # Only row 4 is free
+
+
+class TestDeterminism:
+    """Test that a seeded game is fully reproducible in position and symbol."""
+
+    def _food_sequence(
+        self, seed: int, steps: int
+    ) -> list[tuple[tuple[int, int], str]]:
+        """Collect the (food_position, food_emoji) pairs a seeded game produces.
+
+        Walks through every world so each world's shuffled character pool is exercised,
+        not just world 0's.
+        """
+        game = Game(width=10, height=10, rng=random.Random(seed))
+        sequence = [(game.food, game.food_emoji)]
+        for index in range(steps):
+            game.current_world = index % len(game.world_path.worlds)
+            game.place_food()
+            sequence.append((game.food, game.food_emoji))
+        return sequence
+
+    def test_same_seed_reproduces_position_and_symbol(self):
+        """Two same-seed games produce identical food position+symbol streams.
+
+        Guards the rng threading through WorldPath: before WorldPath shared the game's
+        rng, food *symbol* selection used the module-level random and diverged even for a
+        fixed seed.
+        """
+        first = self._food_sequence(1234, 40)
+        second = self._food_sequence(1234, 40)
+        assert first == second
+        # The equality is only meaningful if symbols actually vary across placements.
+        assert len({emoji for _, emoji in first}) > 1
+
+    def test_different_seeds_diverge(self):
+        """Distinct seeds produce distinct streams, so the rng is genuinely consulted."""
+        assert self._food_sequence(1, 40) != self._food_sequence(2, 40)
 
 
 class TestMovement:
