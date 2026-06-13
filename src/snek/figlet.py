@@ -10,7 +10,6 @@ from pyfiglet import figlet_format
 from rich.style import Style
 from rich.text import Text
 from textual.color import Color, Gradient
-from textual.theme import Theme
 from textual.timer import Timer
 from textual.widgets import Static
 
@@ -63,11 +62,8 @@ class FigletText(Static):
         )
 
     def on_mount(self) -> None:
-        """Build the colored renderable and react to later theme changes."""
+        """Build the colored renderable and start the animation if enabled."""
         self._rebuild()
-        # Re-resolve theme tokens (e.g. $primary) when the app theme changes; the game
-        # swaps themes per world, so persistent titles must recolor live.
-        self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
         if self._animate:
             self._timer = self.set_interval(1 / _ANIMATION_FPS, self._tick)
 
@@ -76,8 +72,15 @@ class FigletText(Static):
         if self._timer is not None:
             self._timer.stop()
 
-    def _on_theme_change(self, theme: Theme) -> None:
-        """Rebuild with the new theme's colors."""
+    def notify_style_update(self) -> None:
+        """Re-resolve theme tokens when the stylesheet or app theme changes.
+
+        Textual calls this after (re)applying styles — including on `app.theme`
+        switches — so the baked-in figlet colors recolor live without
+        subscribing to `theme_changed_signal`. The game swaps themes per world,
+        so persistent titles depend on this. The animation timer is unaffected.
+        """
+        super().notify_style_update()
         self._rebuild()
 
     def _tick(self) -> None:

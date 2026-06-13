@@ -82,10 +82,12 @@ class GameScreen(Screen):
         ("q", "quit", "Quit"),
     ]
 
-    foods_eaten = reactive(0)
-    speed = reactive(0.0)
-    world_index = reactive(0)
-    symbols_in_world = reactive(0)
+    # Display-ready stat strings — the single UI source of truth for the panel.
+    # `data_bind` projects each onto a `StatDisplay` (parent → child, read-only).
+    world_name: reactive[str] = reactive("")
+    progress: reactive[str] = reactive("")
+    foods_label: reactive[str] = reactive("")
+    speed_label: reactive[str] = reactive("")
 
     def __init__(self) -> None:
         super().__init__()
@@ -94,13 +96,29 @@ class GameScreen(Screen):
         self.demo_ai: DemoAI | None = None
 
     def compose(self) -> ComposeResult:
-        """Compose the game screen."""
-        yield Horizontal(SnakeView(), SidePanel(), id="game-content")
+        """Compose the game screen.
+
+        The `StatDisplay`s are created here, not in `SidePanel`, so that each
+        `data_bind` resolves against *this screen's* reactives — the binding
+        parent is whichever node is actively composing. `SidePanel` only lays
+        them out.
+        """
+        yield Horizontal(
+            SnakeView(),
+            SidePanel(
+                StatDisplay("World").data_bind(value=GameScreen.world_name),
+                StatDisplay("Progress").data_bind(value=GameScreen.progress),
+                StatDisplay("Total foods").data_bind(value=GameScreen.foods_label),
+                StatDisplay("Speed").data_bind(value=GameScreen.speed_label),
+            ),
+            id="game-content",
+        )
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
         self.timer = self.set_interval(self.app.game.current_interval, self.tick)
         self.app.theme = self.app.game.world_path.get_world(0).theme_name
+        self._sync_reactives()
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
@@ -111,18 +129,20 @@ class GameScreen(Screen):
         self.timer.stop()
         self.timer = self.set_interval(self.app.game.current_interval, self.tick)
 
-    def _update_reactive_fields(self) -> None:
-        """Update all reactive fields from game state."""
-        self.foods_eaten = self.app.game.symbols_consumed
-        self.speed = self.app.game.get_moves_per_second()
-        self.world_index = self.app.game.current_world
-        self.symbols_in_world = self.app.game.symbols_in_current_world
+    def _sync_reactives(self) -> None:
+        """Recompute the display-ready stat strings from the game model.
 
-        side_panel = self.query_one(SidePanel)
-        side_panel.foods_eaten = self.app.game.symbols_consumed
-        side_panel.speed = self.app.game.get_moves_per_second()
-        side_panel.world_index = self.app.game.current_world
-        side_panel.symbols_in_world = self.app.game.symbols_in_current_world
+        These reactives are the single UI source of truth; `data_bind`
+        propagates them to the panel's `StatDisplay`s. Formatting that needs the
+        world *name* or units lives here, on the screen, not in the widget.
+        """
+        game = self.app.game
+        self.world_name = game.world_path.get_world_name(game.current_world)
+        self.progress = (
+            f"{game.symbols_in_current_world}/{self.app.config.symbols_per_world}"
+        )
+        self.foods_label = str(game.symbols_consumed)
+        self.speed_label = f"{game.get_moves_per_second():.1f}/sec"
 
     def tick(self) -> None:
         """Advance the game one step and react to the result."""
@@ -150,7 +170,7 @@ class GameScreen(Screen):
             # The model already scaled current_interval; restart at the new rate.
             self._restart_timer()
 
-        self._update_reactive_fields()
+        self._sync_reactives()
         self.query_one(SnakeView).refresh()
 
     def action_pause(self) -> None:
@@ -194,7 +214,7 @@ class GameScreen(Screen):
             # Recreate AI for fresh game
             self.demo_ai = DemoAI(self.app.game)
         self._restart_timer()
-        self._update_reactive_fields()
+        self._sync_reactives()
         # Update theme to initial world before refreshing view
         self.app.theme = self.app.game.world_path.get_world(0).theme_name
         self.query_one(SnakeView).refresh()
@@ -328,46 +348,46 @@ class SnakeView(Static):
         return Text("\n".join(rows))
 
 
-class StatsRow(Static):
-    """A component for displaying a statistics row with label and value."""
+class StatDisplay(Horizontal):
+    """A labelled statistic whose value is driven by a bound reactive.
 
-    def __init__(self, label: str, value_id: str) -> None:
+    The screen owns the (display-ready) value and binds it in via `data_bind`;
+    this widget only renders the label and the latest value.
+    """
+
+    value: reactive[str] = reactive("")
+
+    def __init__(self, label: str) -> None:
         super().__init__()
-        self.label = label
-        self.value_id = value_id
+        self._label = label
 
     def compose(self) -> ComposeResult:
-        """Compose the stats row."""
-        yield Horizontal(
-            Label(f"{self.label}:", classes="stat-label"),
-            Label("", id=self.value_id, classes="stat-value"),
-            classes="stat-row",
-        )
+        """Compose the label and its value cell."""
+        yield Label(f"{self._label}:", classes="stat-label")
+        yield Label("", classes="stat-value")
+
+    def watch_value(self, value: str) -> None:
+        """React to the bound value changing."""
+        self.query_one(".stat-value", Label).update(value, layout=False)
 
 
 class SidePanel(Static):
-    """Panel showing game statistics."""
+    """Panel laying out the stat displays and the persistent figlet title.
 
-    foods_eaten = reactive(0)
-    speed = reactive(0.0)
-    world_index = reactive(0)
-    symbols_in_world = reactive(0)
+    The `StatDisplay`s are built by `GameScreen` (so their bindings resolve to
+    the screen's reactives) and handed in here purely for layout.
+    """
 
-    def __init__(self) -> None:
+    def __init__(self, *stats: StatDisplay) -> None:
         super().__init__()
+        self._stats = stats
         self.styles.width = self.app.config.side_panel_width
         self.styles.min_width = self.app.config.side_panel_width
 
     def compose(self) -> ComposeResult:
         """Compose the side panel with the figlet title at bottom."""
         yield Vertical(
-            Vertical(
-                StatsRow("World", "world-value"),
-                StatsRow("Progress", "symbols-value"),
-                StatsRow("Total foods", "foods-value"),
-                StatsRow("Speed", "speed-value"),
-                id="stats-content",
-            ),
+            Vertical(*self._stats, id="stats-content"),
             FigletText(
                 "SNEK",
                 font="small",
@@ -375,23 +395,4 @@ class SidePanel(Static):
                 colors=["$primary"],
             ),
             id="side-panel-container",
-        )
-
-    def watch_foods_eaten(self, value: int) -> None:
-        """React to foods eaten changes."""
-        self.query_one("#foods-value", Label).update(str(value))
-
-    def watch_speed(self, value: float) -> None:
-        """React to speed changes."""
-        self.query_one("#speed-value", Label).update(f"{value:.1f}/sec")
-
-    def watch_world_index(self, value: int) -> None:
-        """React to world index changes."""
-        world_name = self.app.game.world_path.get_world_name(value)
-        self.query_one("#world-value", Label).update(world_name)
-
-    def watch_symbols_in_world(self, value: int) -> None:
-        """React to symbols in current world changes."""
-        self.query_one("#symbols-value", Label).update(
-            f"{value}/{self.app.config.symbols_per_world}"
         )

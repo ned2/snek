@@ -1,11 +1,12 @@
 """Integration tests for the Snek app."""
 
 import pytest
+from textual.widgets import Label
 
 from snek.app import SnakeApp
 from snek.config import GameConfig
 from snek.game_rules import Direction
-from snek.screens import GameScreen, SplashScreen, SnakeView, SidePanel
+from snek.screens import GameScreen, SplashScreen, SnakeView, SidePanel, StatDisplay
 
 
 @pytest.mark.asyncio
@@ -169,7 +170,7 @@ async def test_quit_from_game():
 
 @pytest.mark.asyncio
 async def test_stats_panel_updates():
-    """Test stats panel updates with game state."""
+    """Stats panel labels update from game state through the data binding."""
     app = SnakeApp()
     async with app.run_test() as pilot:
         # Start game
@@ -178,24 +179,38 @@ async def test_stats_panel_updates():
 
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
-
         game = app.game
 
-        # Update game state
-        game.symbols_consumed = 10
-        game.current_world = 1
+        displays = {d._label: d for d in game_screen.query(StatDisplay)}
 
-        # Trigger reactive field updates (simulating what happens in tick())
-        game_screen._update_reactive_fields()
+        def value_label(label: str) -> str:
+            """The text actually rendered in a stat's value cell."""
+            return str(displays[label].query_one(".stat-value", Label).content)
+
+        # Initial state is pushed to the panel by on_mount -> _sync_reactives.
+        assert displays["Total foods"].value == "0"
+        assert value_label("Total foods") == "0"
+        assert value_label("Progress") == "0/10"
+        assert value_label("World") == "Basic Symbols"
+
+        # Eat one food: tick() advances the model and calls _sync_reactives(),
+        # whose GameScreen reactives propagate to the StatDisplays via data_bind.
+        head_x, head_y = game.snake[0]
+        game.direction = Direction.RIGHT
+        game.set_food_position((head_x + 1, head_y))
+        game_screen.tick()
         await pilot.pause()
 
-        # Check if the game state was actually updated
-        assert game.symbols_consumed == 10
-        assert game.current_world == 1
+        assert game.symbols_consumed == 1
+        assert displays["Total foods"].value == "1"
+        assert value_label("Total foods") == "1"
+        assert value_label("Progress") == "1/10"
 
-        # Check the stats panel's internal state
-        assert app.game.symbols_consumed == 10
-        assert app.game.current_world == 1
+        # A world jump re-formats the World label through the same binding.
+        game.current_world = 1
+        game_screen._sync_reactives()
+        await pilot.pause()
+        assert value_label("World") == "Ancient Egypt"
 
 
 @pytest.mark.asyncio

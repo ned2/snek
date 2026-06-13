@@ -113,6 +113,41 @@ async def test_theme_token_resolution_and_live_recolor() -> None:
         assert ocean_primary.rgb != classic_primary.rgb
 
 
+def _baked_color(widget: FigletText) -> Color:
+    """The concrete color baked into the widget's rendered figlet art."""
+    for span in widget.content.spans:
+        if span.style.color is not None:
+            return Color.from_rich_color(span.style.color)
+    raise AssertionError("no colored span in rendered content")
+
+
+@pytest.mark.asyncio
+async def test_panel_title_rendered_content_recolors_with_theme() -> None:
+    """The persistent panel title's *rendered* art recolors when the world/theme changes.
+
+    Guards the `notify_style_update` hook that replaced the `theme_changed_signal`
+    subscription: `_resolve_colors()` alone always reads the live theme, so this
+    asserts the baked-in render (what's actually drawn) is rebuilt, not just the
+    resolver.
+    """
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        # The panel title lives on the game screen, not the splash.
+        await pilot.press("space")
+        await pilot.pause()
+        title = app.screen.query_one("#panel-title", FigletText)
+
+        classic_primary = Color.parse(app.theme_variables["primary"])
+        assert _baked_color(title).rgb == classic_primary.rgb
+
+        # A mid-game world change swaps app.theme; the rendered art must follow.
+        app.theme = "snek-ocean"
+        await pilot.pause()
+        ocean_primary = Color.parse(app.theme_variables["primary"])
+        assert ocean_primary.rgb != classic_primary.rgb
+        assert _baked_color(title).rgb == ocean_primary.rgb
+
+
 @pytest.mark.asyncio
 async def test_title_does_not_wrap_in_layout() -> None:
     """The mounted splash title is its natural art height, not a wrapped multiple."""
