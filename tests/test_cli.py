@@ -1,11 +1,58 @@
-"""Tests for the `snek` CLI, including the `--demo-strategy` selector."""
+"""Tests for the `snek` CLI: the `--speed` and `--demo-strategy` selectors."""
 
 import pytest
 
 from snek.app import SnakeApp
-from snek.cli import _build_parser
+from snek.cli import DEFAULT_SPEED, _build_parser, main
+from snek.config import default_config
 from snek.demo import DEFAULT_STRATEGY, STRATEGIES
 from snek.screens import GameScreen
+
+
+def test_parser_default_speed_matches_config():
+    """With no flag, `--speed` defaults to the config's starting moves-per-second."""
+    assert _build_parser().parse_args([]).speed == DEFAULT_SPEED
+    assert DEFAULT_SPEED == pytest.approx(1.0 / default_config.initial_speed_interval)
+
+
+def test_parser_accepts_explicit_speed():
+    """A positive `--speed` is parsed as a float."""
+    assert _build_parser().parse_args(["--speed", "20"]).speed == pytest.approx(20.0)
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "abc", ""])
+def test_parser_rejects_non_positive_or_invalid_speed(value):
+    """Zero, negative, and non-numeric speeds are rejected (exit non-zero)."""
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["--speed", value])
+
+
+def test_main_translates_speed_into_interval(monkeypatch):
+    """`main` converts moves-per-second into the model's seconds-per-move interval."""
+    captured = {}
+
+    class FakeApp:
+        def __init__(self, config=None, demo_strategy=None):
+            captured["config"] = config
+            captured["demo_strategy"] = demo_strategy
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
+    main(["--speed", "20"])
+    assert captured["config"].initial_speed_interval == pytest.approx(1.0 / 20.0)
+    # Overriding speed must not disturb the other config fields.
+    assert (
+        captured["config"].speed_increase_factor == default_config.speed_increase_factor
+    )
+
+
+def test_app_starts_at_requested_speed():
+    """A custom interval flows through to the game's starting speed."""
+    config = SnakeApp().config
+    fast = type(config)(initial_speed_interval=1.0 / 25.0)
+    assert SnakeApp(config=fast).game.get_moves_per_second() == pytest.approx(25.0)
 
 
 def test_parser_default_is_default_strategy():
