@@ -2,7 +2,6 @@
 
 from enum import Enum, auto
 
-
 Position = tuple[int, int]
 
 
@@ -43,7 +42,6 @@ class GameRules:
             Direction.LEFT: (-1, 0),
             Direction.RIGHT: (1, 0),
         }[direction]
-
         new_x = (head[0] + delta[0]) % width
         new_y = (head[1] + delta[1]) % height
         return (new_x, new_y)

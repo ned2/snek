@@ -17,7 +17,7 @@ class DemoAI:
         """Get the next optimal direction for the snake to move."""
         if len(self.path) > 1 and self._is_path_still_safe():
             return self._follow_path()
-        self.path = self._find_path_to_food(self.game.snake[0], self.game.food)
+        self.path = self._find_path_to_food()
         if len(self.path) > 1:
             return self._follow_path()
         # Fallback: just try to avoid immediate collision
@@ -42,14 +42,16 @@ class DemoAI:
                 return False
         return True
 
-    def _find_path_to_food(self, start: Position, goal: Position) -> list[Position]:
+    def _find_path_to_food(self) -> list[Position]:
         """Find optimal path from start to goal using BFS then fallback."""
+        head = self.game.snake[0]
+        goal = self.game.food
         # First try to find a direct path
-        path = self._bfs_path(start, goal)
+        path = self._bfs_path(head, goal)
         if path:
             return path
         # Last resort: just move towards food
-        return self._greedy_path_to_food(start, goal)
+        return self._greedy_path_to_food(head, goal, self.game.direction)
 
     def _bfs_path(self, start: Position, goal: Position) -> list[Position]:
         """Use breadth-first search to find shortest path to food."""
@@ -70,34 +72,41 @@ class DemoAI:
                     queue.append((next_pos, path + [next_pos], [next_pos] + snake[:-1]))
         return []
 
-    def _greedy_path_to_food(self, start: Position, goal: Position) -> list[Position]:
+    def _greedy_path_to_food(
+        self, start: Position, goal: Position, current_direction: Direction
+    ) -> list[Position]:
         """Create a simple greedy path towards the food."""
+        # TODO: keep track of where snake would be as it moves along path
+        # TODO: why do we check the direction against the derived new
+        # direction, instead of the direction we *are* traveling?
         path = [start]
-        current = start
+        current_position = start
+        current_direction = current_direction
         for _ in range(max(self.game.width, self.game.height) * 2):
-            if current == goal:
+            if current_position == goal:
                 break
             # Find direction that reduces distance to food
             best_direction = None
             best_distance = float("inf")
             for direction in Direction:
+                if not GameRules.is_valid_turn(current_direction, direction):
+                    continue
                 next_pos = GameRules.calculate_new_position(
-                    current, direction, self.game.width, self.game.height
+                    current_position, direction, self.game.width, self.game.height
                 )
-                if next_pos not in self.game.snake and GameRules.is_valid_turn(
-                    self._pos_to_direction(current, next_pos), direction
-                ):
+                if next_pos not in self.game.snake:
                     distance = self._manhattan_distance(next_pos, goal)
                     if distance < best_distance:
                         best_distance = distance
                         best_direction = direction
-            if best_direction:
-                current = GameRules.calculate_new_position(
-                    current, best_direction, self.game.width, self.game.height
-                )
-                path.append(current)
-            else:
+            if not best_direction:
+                # no valid move that gets us closer
                 break
+            current_position = GameRules.calculate_new_position(
+                current_position, best_direction, self.game.width, self.game.height
+            )
+            path.append(current_position)
+            current_direction = direction
         return path
 
     def _avoid_collision(self) -> Direction | None:
@@ -125,6 +134,9 @@ class DemoAI:
             dx = -dx / abs(dx) if dx != 0 else 0
         if abs(dy) > self.game.height // 2:
             dy = -dy / abs(dy) if dy != 0 else 0
+
+        # dx = -1 if abs(dx) > self.game.width // 2 else dx
+        # dy = -1 if abs(dy) > self.game.height // 2 else dy
 
         if dx > 0:
             return Direction.RIGHT
