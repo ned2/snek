@@ -55,7 +55,11 @@ class Game:
         self.symbols_consumed = 0
         self.current_world = 0
         self.symbols_in_current_world = 0
-        self.current_interval = self.config.initial_speed_interval
+        # Honour the floor even at the start, so a fast `--speed` can't begin
+        # the game already past the safe tick rate (see `min_speed_interval`).
+        self.current_interval = max(
+            self.config.min_speed_interval, self.config.initial_speed_interval
+        )
         self.game_over = False
         self.won = False
         self.paused = False
@@ -136,7 +140,13 @@ class Game:
         previous_world = self.current_world
         self.check_world_transition()
         world_changed = self.current_world != previous_world
-        self.current_interval *= self.config.speed_increase_factor
+        # Clamp to the floor: the geometric speed-up is otherwise unbounded and
+        # would eventually outrun the event loop and crash the app (see
+        # `config.min_speed_interval`).
+        self.current_interval = max(
+            self.config.min_speed_interval,
+            self.current_interval * self.config.speed_increase_factor,
+        )
         # A board with no empty cell left is a win: the snake covers every cell.
         # End here, before `place_food()` (which has no empty cell to find and
         # would otherwise spin), so a board-solving player terminates cleanly.

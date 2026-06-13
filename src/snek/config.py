@@ -15,6 +15,21 @@ class GameConfig:
     initial_speed_interval: float = 0.1
     speed_increase_factor: float = 0.98
 
+    # Hard floor on the tick interval — the fastest the snake may ever move.
+    # Without it, `speed_increase_factor` compounds on every food with no bound,
+    # and on a large board the demo AI eats enough food (~376) to drive the
+    # interval down to ~50 us (~19,800 moves/sec). At that point the requested
+    # tick rate is faster than the asyncio event loop can process one
+    # `Game.step()` + board re-render, so the loop saturates (never sleeps, never
+    # yields to input/repaint) and the app falls over mid-game.
+    #
+    # A big-board step+render costs ~0.4 ms here; 4 ms (250 moves/sec) leaves the
+    # loop ~10x headroom, so it stays healthy even on machines several times
+    # slower or with coarser timer resolution. This is well above what a human
+    # can use — a later change may split this into separate human/demo caps — but
+    # for now a single floor keeps every game safe across machines.
+    min_speed_interval: float = 0.004
+
     # Symbols needed to advance to next world
     symbols_per_world: int = 10
 

@@ -4,6 +4,7 @@ import random
 
 import pytest
 
+from snek.config import GameConfig
 from snek.game import Game, StepResult
 from snek.game_rules import Direction
 
@@ -343,6 +344,55 @@ class TestStepResult:
         game.step()
 
         assert game.current_interval == before * game.config.speed_increase_factor
+
+
+class TestSpeedFloor:
+    """The tick interval is clamped so the speed-up can't outrun the event loop.
+
+    Without a floor the geometric speed-up is unbounded; on a large board the
+    demo eats enough food to drive the interval into the tens of microseconds,
+    far faster than the event loop can service a step + render, and the app
+    crashes mid-game. See `config.min_speed_interval`.
+    """
+
+    def _eat_foods(self, game: Game, n: int) -> None:
+        """Eat `n` foods by always parking the next food in front of the head.
+
+        The board wraps and the snake grows (tail stays put) each food, so a
+        single wide, short board lets us eat far more foods than the geometric
+        speed-up needs to reach the floor — without any self-collision.
+        """
+        for _ in range(n):
+            head = game.snake[0]
+            game.food = ((head[0] + 1) % game.width, head[1])
+            game.step()
+
+    def test_interval_clamps_to_floor_and_no_crash_path(self):
+        """Eating well past the floor pins the interval at the floor, game alive."""
+        game = Game(width=400, height=3)
+        # ~160 foods reaches the 0.004s floor from 0.1s; 300 is comfortably past.
+        self._eat_foods(game, 300)
+        assert game.game_over is False
+        assert game.current_interval == pytest.approx(game.config.min_speed_interval)
+
+    def test_speed_never_exceeds_cap(self):
+        """No matter how many foods are eaten, moves/sec stays under the cap."""
+        game = Game(width=400, height=3)
+        cap = 1.0 / game.config.min_speed_interval
+        for _ in range(300):
+            head = game.snake[0]
+            game.food = ((head[0] + 1) % game.width, head[1])
+            game.step()
+            assert game.get_moves_per_second() <= cap + 1e-9
+
+    def test_fast_start_speed_is_floored(self):
+        """A tiny initial interval (e.g. a huge `--speed`) is floored at reset."""
+        cfg = GameConfig(initial_speed_interval=0.00001)  # ~100k moves/sec requested
+        game = Game(config=cfg)
+        assert game.current_interval == cfg.min_speed_interval
+        assert game.get_moves_per_second() == pytest.approx(
+            1.0 / cfg.min_speed_interval
+        )
 
 
 class TestWinState:
