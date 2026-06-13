@@ -13,6 +13,7 @@ from . import __version__
 from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game_rules import Direction
+from .rendering import compute_grid_size, compute_scale, render_board
 
 
 class SplashScreen(Screen):
@@ -343,39 +344,54 @@ class GameOverModal(ModalScreen):
 
 
 class SnakeView(Static):
-    """Renders the game as text."""
+    """Renders the game as text.
+
+    The logical grid is capped (see `config.max_grid_*`); this widget chooses how
+    big to draw each cell so the bounded board fills the terminal. CSS
+    (`content-align: center middle`) centres the scaled board in the leftover
+    space.
+    """
+
+    # How many terminal characters draw one logical cell, per axis-unit. Updated
+    # on resize; the board is drawn at this scale.
+    _scale: int = 1
 
     def on_resize(self, event: events.Resize) -> None:
-        """React to available space changes."""
+        """Re-fit the board: pick the logical grid and the visual scale.
+
+        The logical grid only changes when the terminal crosses a size threshold;
+        resizes that merely change the *scale* must not call `Game.resize`, which
+        rescales snake/food positions (and can round two cells onto one). So we
+        resize the model only when the logical size actually changes, and always
+        refresh at the new scale.
+        """
         if self.app.game and self.size.width > 0 and self.size.height > 0:
-            # Calculate grid size based on available space
-            game_width = max(self.app.config.min_game_width, self.size.width // 2)
-            game_height = max(self.app.config.min_game_height, self.size.height)
-            self.app.game.resize(game_width, game_height)
+            config = self.app.config
+            grid_width, grid_height = compute_grid_size(
+                self.size.width, self.size.height, config
+            )
+            self._scale = compute_scale(
+                self.size.width, self.size.height, grid_width, grid_height, config
+            )
+            if (grid_width, grid_height) != (self.app.game.width, self.app.game.height):
+                self.app.game.resize(grid_width, grid_height)
             self.refresh()
 
     def render(self) -> Text:
         """Render the game grid using solid block symbols for the snake."""
-        width, height = self.app.game.width, self.app.game.height
-        empty_cell = self.app.config.empty_cell
-        food_symbol = self.app.game.food_symbol
-        snake_block = self.app.game.config.snake_block
-        food_pos = self.app.game.food
-
-        snake_positions = set(self.app.game.snake)
-        rows = []
-        for y in range(height):
-            row_parts = []
-            for x in range(width):
-                pos = (x, y)
-                if pos in snake_positions:
-                    row_parts.append(snake_block)
-                elif pos == food_pos:
-                    row_parts.append(f"{food_symbol} ")
-                else:
-                    row_parts.append(empty_cell)
-            rows.append("".join(row_parts))
-        return Text("\n".join(rows))
+        game = self.app.game
+        return Text(
+            render_board(
+                game.width,
+                game.height,
+                set(game.snake),
+                game.food,
+                game.food_symbol,
+                game.config.snake_block,
+                self.app.config.empty_cell,
+                self._scale,
+            )
+        )
 
 
 class StatDisplay(Horizontal):

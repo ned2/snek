@@ -16,6 +16,8 @@ SnakeView {
     width: 1fr;
     overflow: hidden;
     color: $primary;
+    /* The board is a fixed, capped size; centre it in the leftover space. */
+    content-align: center middle;
 }
 
 /* Side-panel things */

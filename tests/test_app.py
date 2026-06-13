@@ -435,6 +435,64 @@ async def test_resize_handling():
         assert app.game.height > 0
 
 
+@pytest.mark.asyncio
+async def test_logical_grid_capped_on_small_terminal():
+    """An 80x24 terminal lands on the cap and draws at scale 1."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        cfg = app.config
+        assert (app.game.width, app.game.height) == (
+            cfg.max_grid_width,
+            cfg.max_grid_height,
+        )
+        assert app.screen.query_one(SnakeView)._scale == 1
+
+
+@pytest.mark.asyncio
+async def test_board_scales_up_but_grid_stays_capped_on_large_terminal():
+    """A large terminal keeps the capped logical grid but scales cells up."""
+    app = SnakeApp()
+    async with app.run_test(size=(220, 70)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        cfg = app.config
+        # Logical grid is still the cap — difficulty doesn't grow with the window.
+        assert (app.game.width, app.game.height) == (
+            cfg.max_grid_width,
+            cfg.max_grid_height,
+        )
+        # ...but cells are drawn larger, never past the cap.
+        scale = app.screen.query_one(SnakeView)._scale
+        assert 1 < scale <= cfg.max_cell_scale
+
+
+@pytest.mark.asyncio
+async def test_scale_only_resize_does_not_rescale_snake():
+    """Growing the terminal (scale change, same logical grid) leaves snake intact."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        app.screen.timer.stop()
+        snake_view = app.screen.query_one(SnakeView)
+        before = list(app.game.snake)
+        assert snake_view._scale == 1
+
+        # Both sizes map to the capped 20x15 grid, so this is a scale-only change:
+        # positions must be untouched (Game.resize, which rescales them, is skipped).
+        await pilot.resize_terminal(220, 70)
+        await pilot.pause()
+
+        assert (app.game.width, app.game.height) == (
+            app.config.max_grid_width,
+            app.config.max_grid_height,
+        )
+        assert snake_view._scale > 1  # the scale really did change
+        assert app.game.snake == before  # ...but the snake was not rescaled
+
+
 class TestWorldProgression:
     """Test world progression."""
 

@@ -370,7 +370,7 @@ class TestSpeedFloor:
     def test_interval_clamps_to_floor_and_no_crash_path(self):
         """Eating well past the floor pins the interval at the floor, game alive."""
         game = Game(width=400, height=3)
-        # ~160 foods reaches the 0.004s floor from 0.1s; 300 is comfortably past.
+        # ~195 foods reaches the 0.002s floor from 0.1s; 300 is comfortably past.
         self._eat_foods(game, 300)
         assert game.game_over is False
         assert game.current_interval == pytest.approx(game.config.min_speed_interval)
