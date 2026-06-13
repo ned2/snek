@@ -24,8 +24,8 @@ classifiers = [
     "Topic :: Games/Entertainment :: Arcade",
 ]
 dependencies = [
-    "textual>=5.0.1",
-    "textual-pyfiglet>=1.1.0",
+    "textual>=8.0.0",
+    "pyfiglet>=1.0.4",
 ]
 
 [project.urls]

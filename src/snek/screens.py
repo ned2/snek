@@ -8,10 +8,10 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Label, Static
-from textual_pyfiglet import FigletWidget
 
 from . import __version__
 from .demo_ai import DemoAI
+from .figlet import FigletText
 from .game_rules import Direction
 
 
@@ -25,9 +25,9 @@ class SplashScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        """Compose the splash screen with FigletWidget."""
+        """Compose the splash screen with the figlet title."""
         with Vertical(id="splash-container"):
-            yield FigletWidget(
+            yield FigletText(
                 "SNEK",
                 font="doh",
                 id="splash-title",
@@ -224,9 +224,9 @@ class PauseModal(ModalScreen):
     ]
 
     def compose(self) -> ComposeResult:
-        """Compose the pause screen with FigletWidget."""
+        """Compose the pause screen with the figlet title."""
         with Vertical(id="pause-container"):
-            yield FigletWidget(
+            yield FigletText(
                 "PAUSED",
                 font="doom",
                 id="pause-title",
@@ -262,9 +262,9 @@ class GameOverModal(ModalScreen):
     ]
 
     def compose(self) -> ComposeResult:
-        """Compose the death screen with FigletWidget."""
+        """Compose the death screen with the figlet title."""
         with Vertical(id="death-container"):
-            yield FigletWidget(
+            yield FigletText(
                 "GAME OVER",
                 font="doom",
                 id="death-title",
@@ -365,7 +365,7 @@ class SidePanel(Static):
         self.styles.min_width = self.app.config.side_panel_width
 
     def compose(self) -> ComposeResult:
-        """Compose the side panel with FigletWidget at bottom."""
+        """Compose the side panel with the figlet title at bottom."""
         yield Vertical(
             Vertical(
                 StatsRow("World", "world-value"),
@@ -374,7 +374,7 @@ class SidePanel(Static):
                 StatsRow("Speed", "speed-value"),
                 id="stats-content",
             ),
-            FigletWidget(
+            FigletText(
                 "SNEK",
                 font="small",
                 id="panel-title",

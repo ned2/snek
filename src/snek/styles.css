@@ -46,13 +46,15 @@ SidePanel {
 }
 
 .title-text {
-    width: 100%;
-    margin-bottom: 5;    
+    width: auto;
+    margin-bottom: 5;
 }
 
 /* Splash screen styling */
 #splash-container {
     height: auto;
+    width: auto;
+    align-horizontal: center;
 }
 
 .splash-prompt {
@@ -71,6 +73,7 @@ SidePanel {
 /* Game over modal styling */
 #death-container {
     align: center middle;
+    width: auto;
     height: auto;
 }
 
@@ -89,6 +92,7 @@ SidePanel {
 /* Pause modal styling */
 #pause-container {
     align: center middle;
+    width: auto;
     height: auto;
 }
 
@@ -106,6 +110,7 @@ SidePanel {
 
 #controls-container {
     align: center middle;
+    width: auto;
     height: auto;
 }
 

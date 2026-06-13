@@ -179,8 +179,6 @@ async def test_stats_panel_updates():
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
 
-        # Get initial stats
-        stats = game_screen.query_one(SidePanel)
         game = app.game
 
         # Update game state
