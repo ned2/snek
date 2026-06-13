@@ -1,12 +1,43 @@
 """Integration tests for the Snek app."""
 
 import pytest
-from textual.widgets import Label
+from textual.widgets import Label, Static
 
 from snek.app import SnakeApp
 from snek.config import GameConfig
 from snek.game_rules import Direction
-from snek.screens import GameScreen, SplashScreen, SnakeView, SidePanel, StatDisplay
+from snek.screens import (
+    GameScreen,
+    GameOverModal,
+    SplashScreen,
+    SnakeView,
+    SidePanel,
+    StatDisplay,
+)
+
+
+def _arm_self_collision(game) -> None:
+    """Park a snake that self-collides on its next (UP) step, food out of the way."""
+    game.set_snake_position([(5, 5), (4, 5), (4, 4), (5, 4), (6, 4)])
+    game.direction = Direction.UP
+    game.set_food_position((0, 0))
+
+
+def _death_message(app) -> str:
+    """The rendered text of the game-over modal's banner line."""
+    return str(app.screen.query_one(".death-message", Static).render())
+
+
+def _foods_line(app) -> str:
+    """The rendered 'Foods collected: N' line on the game-over modal."""
+    for static in app.screen.query(Static):
+        try:
+            text = str(static.render())
+        except Exception:
+            continue
+        if "Foods collected" in text:
+            return text
+    return ""
 
 
 @pytest.mark.asyncio
@@ -161,6 +192,116 @@ async def test_game_over_and_restart():
         assert app.game.symbols_consumed == 0  # Should be reset
         assert not app.game.game_over  # Should not be game over
         assert len(app.game.snake) == 1  # Should have initial snake length
+
+
+@pytest.mark.asyncio
+async def test_restart_returns_to_playable_game():
+    """SPACE on the game-over modal restarts and lands back on the GAME screen.
+
+    Regression: `action_restart` used to pop twice, dropping through to the splash
+    while the restarted game ticked on invisibly underneath.
+    """
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+
+        # Real death via a self-colliding snake (so tick() pushes the modal).
+        app.game.symbols_consumed = 9
+        _arm_self_collision(app.game)
+        app.screen.tick()
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverModal)
+
+        # SPACE -> restart: back on the game screen with a fresh, live game.
+        await pilot.press("space")
+        await pilot.pause()
+        assert isinstance(app.screen, GameScreen)
+        assert app.game.game_over is False
+        assert app.game.symbols_consumed == 0
+        assert len(app.game.snake) == 1
+        head = app.game.snake[0]
+        app.screen.tick()
+        assert app.game.snake[0] != head  # not frozen
+
+
+@pytest.mark.asyncio
+async def test_new_game_from_menu_resets_and_plays():
+    """Starting a game from the splash after a finished game starts clean.
+
+    `GameScreen` and `Game` are reused singletons, so without an explicit reset the
+    second game would inherit the previous game's `game_over`/`won`/score and the
+    board would freeze (`Game.step` early-returns while `game_over`).
+    """
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+
+        # Finish game 1 as a WIN with a stale score, show the modal.
+        app.game.won = True
+        app.game.game_over = True
+        app.game.symbols_consumed = 42
+        game_screen.timer.stop()
+        app.push_screen(GameOverModal())
+        await pilot.pause()
+
+        # ENTER -> main menu, then D -> a fresh demo game.
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+        await pilot.press("d")
+        await pilot.pause()
+
+        assert isinstance(app.screen, GameScreen)
+        assert app.game.game_over is False
+        assert app.game.won is False
+        assert app.game.symbols_consumed == 0
+        assert len(app.game.snake) == 1
+        assert app.screen.demo_ai is not None
+        head = app.game.snake[0]
+        app.screen.tick()
+        assert app.game.snake[0] != head  # live, not frozen
+
+
+@pytest.mark.asyncio
+async def test_game_over_banner_reflects_current_game():
+    """The win/death banner and food count always reflect the game that ended.
+
+    `GameOverModal` is pushed as a fresh instance each game-over, so a death after
+    a prior win never shows a stale "you win" banner or a stale score.
+    """
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+
+        # Game 1: a WIN.
+        app.game.won = True
+        app.game.game_over = True
+        app.game.symbols_consumed = 99
+        game_screen.timer.stop()
+        app.push_screen(GameOverModal())
+        await pilot.pause()
+        assert "BOARD FILLED" in _death_message(app)
+        assert "99" in _foods_line(app)
+
+        # Restart, then die a normal death.
+        await pilot.press("space")
+        await pilot.pause()
+        assert isinstance(app.screen, GameScreen)
+        assert app.game.won is False
+        app.game.symbols_consumed = 4
+        _arm_self_collision(app.game)
+        app.screen.tick()
+        await pilot.pause()
+
+        assert isinstance(app.screen, GameOverModal)
+        assert "SNEK DED" in _death_message(app)
+        assert "BOARD FILLED" not in _death_message(app)
+        assert "4" in _foods_line(app)  # current score, not the stale 99
 
 
 @pytest.mark.asyncio

@@ -345,6 +345,50 @@ class TestStepResult:
         assert game.current_interval == before * game.config.speed_increase_factor
 
 
+class TestWinState:
+    """Filling the board is a win, not an infinite loop in `place_food`."""
+
+    def test_full_board_is_a_win(self):
+        """Eating the last food fills the board and ends the game as a win.
+
+        3x2 board: the snake covers all but (2,1); food sits on (2,1); stepping
+        DOWN onto it grows the snake to cover every cell.
+        """
+        game = Game(width=3, height=2, rng=random.Random(0))
+        game.snake = [(2, 0), (1, 0), (0, 0), (0, 1), (1, 1)]
+        game.direction = Direction.DOWN
+        game.set_food_position((2, 1))
+
+        result = game.step()
+
+        assert result.won is True
+        assert result.game_over is True
+        assert result.ate_food is True
+        assert game.won is True
+        assert game.game_over is True
+        assert len(game.snake) == game.width * game.height
+
+    def test_place_food_on_full_board_does_not_hang(self):
+        """The defensive guard makes `place_food` a no-op on a full board.
+
+        Without the guard this would spin forever searching for an empty cell;
+        the call must return promptly and leave the (now meaningless) food alone.
+        """
+        game = Game(width=3, height=2, rng=random.Random(0))
+        game.snake = [(x, y) for y in range(2) for x in range(3)]  # every cell
+        game.set_food_position((0, 0))
+
+        game.place_food()  # must return immediately, not hang
+
+        assert game.food == (0, 0)  # untouched — the guard short-circuited
+
+    def test_won_defaults_false(self):
+        """A fresh game and a plain StepResult are not in a won state."""
+        assert Game().won is False
+        assert StepResult().won is False
+        assert StepResult(moved=True).won is False
+
+
 class TestResize:
     """Test game resizing functionality."""
 

@@ -4,7 +4,7 @@ from textual.app import App
 
 from .config import GameConfig, default_config
 from .game import Game
-from .screens import SplashScreen, GameScreen, PauseModal, GameOverModal
+from .screens import SplashScreen, GameScreen, PauseModal
 from .themes import THEME_MAP
 
 
@@ -17,8 +17,10 @@ class SnakeApp(App):
         "splash": SplashScreen,
         "game": GameScreen,
         "pause": PauseModal,
-        "game_over": GameOverModal,
     }
+    # `GameOverModal` is intentionally NOT a registered (singleton) screen: it is
+    # pushed as a fresh instance each game-over (see `GameScreen.tick`) so its
+    # banner and final score always reflect the game that just ended.
 
     def __init__(self, config: GameConfig = None, **kwargs) -> None:
         super().__init__(**kwargs)

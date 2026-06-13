@@ -10,7 +10,7 @@ from textual.timer import Timer
 from textual.widgets import Label, Static
 
 from . import __version__
-from .demo_ai import DemoAI
+from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game_rules import Direction
 
@@ -49,15 +49,15 @@ class SplashScreen(Screen):
         self.styles.animate("opacity", value=1.0, duration=1.0)
 
     def action_start_game(self) -> None:
-        """Start the game."""
+        """Start a fresh game under user control."""
         game_screen = self.app.get_screen("game")
-        game_screen.set_user_mode()
+        game_screen.start_new_game(demo=False)
         self.app.push_screen("game")
 
     def action_start_demo(self) -> None:
-        """Start the game in demo mode."""
+        """Start a fresh game in demo mode."""
         game_screen = self.app.get_screen("game")
-        game_screen.set_demo_mode()
+        game_screen.start_new_game(demo=True)
         self.app.push_screen("game")
 
     def action_quit(self) -> None:
@@ -93,7 +93,7 @@ class GameScreen(Screen):
         super().__init__()
         self.timer: Timer | None = None
         self.sidebar_visible: bool = True
-        self.demo_ai: DemoAI | None = None
+        self.demo_ai: DemoStrategy | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the game screen.
@@ -161,9 +161,12 @@ class GameScreen(Screen):
             ).theme_name
 
         if result.game_over:
-            # Stop the timer to prevent multiple game over modals
+            # Stop the timer to prevent multiple game over modals.
             self.timer.stop()
-            self.app.push_screen("game_over")
+            # Push a FRESH modal instance (not the registered singleton) so its
+            # compose() re-reads the current game: the win/death banner and the
+            # final food count reflect *this* game, not a cached earlier one.
+            self.app.push_screen(GameOverModal())
             return
 
         if result.ate_food:
@@ -212,21 +215,33 @@ class GameScreen(Screen):
         self.app.game.reset()
         if self.demo_ai:
             # Recreate AI for fresh game
-            self.demo_ai = DemoAI(self.app.game)
+            self.demo_ai = make_demo_ai(self.app.game)
         self._restart_timer()
         self._sync_reactives()
         # Update theme to initial world before refreshing view
         self.app.theme = self.app.game.world_path.get_world(0).theme_name
         self.query_one(SnakeView).refresh()
 
-    def set_demo_mode(self) -> None:
-        """Enable demo mode with AI control."""
-        if not self.demo_ai:
-            self.demo_ai = DemoAI(self.app.game)
+    def start_new_game(self, demo: bool) -> None:
+        """Begin a fresh game from the splash, clearing any prior end-state.
 
-    def set_user_mode(self) -> None:
-        """Disable demo mode - user controls."""
-        self.demo_ai = None
+        The `GameScreen` is an installed singleton — mounted once and reused — so
+        `on_mount` does NOT run again when the screen is re-shown after a game
+        ends, and the timer stopped on game-over is never restarted on its own.
+        Without an explicit reset a second game would inherit the previous game's
+        `game_over`/`won`/score: the board freezes (`Game.step` early-returns
+        while `game_over`) and a stale "you win" banner can appear. So reset the
+        model, set the mode, and — if the screen is already mounted — re-establish
+        the timer, theme and view. (On the very first start the timer is still
+        `None`; `on_mount` does this once the screen is pushed.)
+        """
+        self.app.game.reset()
+        self.demo_ai = make_demo_ai(self.app.game) if demo else None
+        if self.timer is not None:
+            self._restart_timer()
+            self.app.theme = self.app.game.world_path.get_world(0).theme_name
+            self._sync_reactives()
+            self.query_one(SnakeView).refresh()
 
 
 class PauseModal(ModalScreen):
@@ -276,16 +291,24 @@ class GameOverModal(ModalScreen):
     ]
 
     def compose(self) -> ComposeResult:
-        """Compose the death screen with the figlet title."""
+        """Compose the end-of-game screen with the figlet title.
+
+        The same modal serves death and victory: when the board has been filled
+        (`app.game.won`) it shows a win banner instead of the death message.
+        """
+        won = self.app.game.won
         with Vertical(id="death-container"):
             yield FigletText(
-                "GAME OVER",
+                "YOU WIN" if won else "GAME OVER",
                 font="doom",
                 id="death-title",
                 colors=["$primary"],
                 classes="title-text",
             )
-            yield Static("💀 SNEK DED! 💀", classes="death-message")
+            yield Static(
+                "🎉 BOARD FILLED! 🎉" if won else "💀 SNEK DED! 💀",
+                classes="death-message",
+            )
             yield Static(
                 f"Foods collected: {self.app.game.symbols_consumed}",
                 classes="death-prompt",
@@ -296,14 +319,18 @@ class GameOverModal(ModalScreen):
             )
 
     def action_restart(self) -> None:
-        """Restart the game in the same mode (user/demo)."""
+        """Restart the game in the same mode (user/demo).
+
+        Pop only this modal so we land back on the (now reset) GameScreen and
+        resume play. Popping twice would drop through to the splash while the
+        restarted game ticks on invisibly underneath.
+        """
         game_screen = self.app.get_screen("game")
         game_screen.restart_game()
         self.app.pop_screen()
-        self.app.pop_screen()
 
     def action_menu(self) -> None:
-        """Return to the main menu (splash screen)."""
+        """Return to the main menu (splash): pop this modal and the GameScreen."""
         self.app.pop_screen()
         self.app.pop_screen()
 

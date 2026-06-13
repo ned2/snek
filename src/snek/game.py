@@ -22,6 +22,7 @@ class StepResult:
     world_changed: bool = False
     new_world: int | None = None
     game_over: bool = False
+    won: bool = False
 
 
 class Game:
@@ -56,11 +57,18 @@ class Game:
         self.symbols_in_current_world = 0
         self.current_interval = self.config.initial_speed_interval
         self.game_over = False
+        self.won = False
         self.paused = False
         self.place_food()
 
     def place_food(self) -> None:
         """Place food at a random empty position on the grid."""
+        # Defensive guard: a full board has no empty cell, so the search below
+        # would spin forever. `step()` ends the game as a win before ever calling
+        # this on a full board (see below); this is belt-and-suspenders so the
+        # method can never hang even if mis-called.
+        if len(self.snake) >= self.width * self.height:
+            return
         while True:
             pos = (self.rng.randrange(self.width), self.rng.randrange(self.height))
             if pos not in self.snake:
@@ -129,6 +137,20 @@ class Game:
         self.check_world_transition()
         world_changed = self.current_world != previous_world
         self.current_interval *= self.config.speed_increase_factor
+        # A board with no empty cell left is a win: the snake covers every cell.
+        # End here, before `place_food()` (which has no empty cell to find and
+        # would otherwise spin), so a board-solving player terminates cleanly.
+        if len(self.snake) == self.width * self.height:
+            self.game_over = True
+            self.won = True
+            return StepResult(
+                moved=True,
+                ate_food=True,
+                world_changed=world_changed,
+                new_world=self.current_world if world_changed else None,
+                game_over=True,
+                won=True,
+            )
         self.place_food()
         return StepResult(
             moved=True,
