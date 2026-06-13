@@ -44,6 +44,7 @@ dev = [
     "ruff>=0.12.9",
     "textual-dev>=1.7.0",
     "coverage[toml]>=7.0.0",
+    "python-lsp-server>=1.13.1",
 ]
 
 [build-system]
