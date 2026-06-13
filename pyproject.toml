@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Games/Entertainment",
     "Topic :: Games/Entertainment :: Arcade",
 ]
@@ -45,6 +46,7 @@ dev = [
     "textual-dev>=1.7.0",
     "coverage[toml]>=7.0.0",
     "python-lsp-server>=1.13.1",
+    "pytest-textual-snapshot>=1.0.0",
 ]
 
 [build-system]

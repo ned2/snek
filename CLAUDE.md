@@ -9,6 +9,14 @@ Snek is a terminal-based Snake game built using the
 [Textual](https://textual.textualize.io) framework. The game features progressive themes
 with different Unicode characters that unlock as the player advances through worlds.
 
+## Tracking & Notes
+
+**Do not write to the agent memory store. Ever.** This project tracks durable context
+exclusively in the local issue tracker under `issues/` (see `issues/README.md`) — research
+notes, plans, and design decisions all live there as markdown. Never create or update files
+under the `.claude/.../memory/` directory or a `MEMORY.md`. If something is worth remembering,
+record it in the relevant `issues/NNNN-*/` directory instead.
+
 ## Development Commands
 
 **Setup and Installation:**
@@ -44,33 +52,52 @@ uv run coverage erase             # Clear previous coverage data
 **Development server (if using textual-dev):**
 
 ```bash
-textual dev snek.app:SnekApp  # Run with dev tools
+textual dev snek.app:SnakeApp  # Run with dev tools
 ```
 
 ## Architecture
 
 ### Core Components
 
-- **`app.py`**: Main Textual application with `SplashView` and `SnekApp` classes
-- **`game.py`**: Core game logic and state (`Game` class)
-- **`state_manager.py`**: Game state transitions (`StateManager` class)
-- **`game_rules.py`**: Game mechanics, movement, collision detection
-- **`worlds.py`**: World/theme progression system (`WorldPath` class)
-- **`themes.py`**: Unicode character themes and visual styling
-- **`config.py`**: Game configuration and settings
+- **`app.py`**: `SnakeApp`, the Textual `App`. Registers the screens in `SCREENS` and pushes
+  the splash on startup.
+- **`cli.py`**: `main()`, the console entry point (`uv run snek`).
+- **`screens.py`**: the screens-as-states UI — `SplashScreen`, `GameScreen` (the game loop +
+  side panel), `PauseModal`, `GameOverModal`, plus the `SnakeView` board and the `SidePanel`
+  / `StatDisplay` panel widgets.
+- **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
+  model→view contract returned by `Game.step()`.
+- **`game_rules.py`**: pure game mechanics — movement, collision detection.
+- **`worlds.py`**: world/theme progression (`WorldPath`) — tracks the current world and hands
+  out themed food symbols.
+- **`themes.py`**: per-world Textual themes (colors) and Unicode symbol sets.
+- **`figlet.py`**: `FigletText`, the in-repo ASCII-art title widget (recolors on theme change
+  by overriding `notify_style_update`).
+- **`demo_ai.py`**: `DemoAI` — drives the snake automatically in demo mode.
+- **`config.py`**: `GameConfig` — tunable settings (speed, symbols-per-world, render glyphs).
 
 ### Game Progression System
 
 The game uses a world-based progression system where:
-- Every 5 foods consumed advances to the next world
-- Each world has different theme colors and Unicode themes for food symbols
+- Every `symbols_per_world` foods consumed (10 by default, see `config.py`) advances to the
+  next world
+- Each world has its own Textual theme (colors) and Unicode symbol set for food
 
-### Key Data Flow
+### State & data flow
 
-1. `SnekApp` manages overall application state via `StateManager`
-2. `Game` class handles core game logic and world progression
-3. `WorldPath` tracks current world and provides themed symbols
-4. Game state flows: SPLASH → PLAYING → PAUSED → PLAYING → GAME_OVER → back to SPLASH
+State is the **Textual screen stack**, not a separate state machine — each state is a screen:
+`SplashScreen` → `GameScreen` → (`PauseModal` / `GameOverModal`), registered in
+`SnakeApp.SCREENS` and navigated with `push_screen` / `pop_screen` / `dismiss`.
+
+Within the game loop:
+1. `GameScreen.tick` (the interval timer) calls `Game.step()`, which returns a `StepResult`
+   describing the consequences of the tick (moved / ate food / world changed / game over). The
+   view *reacts* to those flags rather than sniffing model deltas.
+2. `Game` owns world progression via `WorldPath`, which provides the themed food symbols.
+3. The stats panel is a single source of truth: `GameScreen` holds display-ready string
+   reactives (`world_name`, `progress`, `foods_label`, `speed_label`), each `data_bind`'d
+   (parent → child, read-only) to a `StatDisplay` in the `SidePanel`. `tick` calls
+   `_sync_reactives()` once; the bindings propagate to the panel.
 
 ## Code Conventions
 
