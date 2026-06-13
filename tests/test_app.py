@@ -7,6 +7,7 @@ from snek.app import SnakeApp
 from snek.config import GameConfig
 from snek.game_rules import Direction
 from snek.screens import (
+    DiagnosticsModal,
     GameScreen,
     GameOverModal,
     SplashScreen,
@@ -436,10 +437,10 @@ async def test_resize_handling():
 
 
 @pytest.mark.asyncio
-async def test_logical_grid_capped_on_small_terminal():
-    """An 80x24 terminal lands on the cap and draws at scale 1."""
+async def test_logical_grid_reaches_cap_at_scale_one():
+    """A terminal just big enough lands on the cap and still draws at scale 1."""
     app = SnakeApp()
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(120, 32)) as pilot:
         await pilot.press("space")
         await pilot.pause()
         cfg = app.config
@@ -447,6 +448,19 @@ async def test_logical_grid_capped_on_small_terminal():
             cfg.max_grid_width,
             cfg.max_grid_height,
         )
+        assert app.screen.query_one(SnakeView)._scale == 1
+
+
+@pytest.mark.asyncio
+async def test_grid_shrinks_below_cap_on_small_terminal():
+    """A terminal too small for the cap gets a smaller (clamped) board."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        cfg = app.config
+        # 80 cols can't fit the cap's width at scale 1, so it shrinks.
+        assert app.game.width < cfg.max_grid_width
         assert app.screen.query_one(SnakeView)._scale == 1
 
 
@@ -465,32 +479,208 @@ async def test_board_scales_up_but_grid_stays_capped_on_large_terminal():
         )
         # ...but cells are drawn larger, never past the cap.
         scale = app.screen.query_one(SnakeView)._scale
-        assert 1 < scale <= cfg.max_cell_scale
+        assert 1 < scale <= cfg.cell_scale
+
+
+@pytest.mark.asyncio
+async def test_fill_mode_grows_grid_to_fill_terminal():
+    """'fill' mode grows the logical grid past the cap and keeps the fixed scale."""
+    app = SnakeApp(config=GameConfig(sizing_mode="fill", cell_scale=1))
+    async with app.run_test(size=(172, 48)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        snake_view = app.screen.query_one(SnakeView)
+        # At scale 1 the grid fills the view (~width/2 cells), well past the cap.
+        assert app.game.width > app.config.max_grid_width
+        assert app.game.width == snake_view.size.width // 2
+        assert snake_view._scale == 1
+
+
+def _board_text(snake_view) -> str:
+    """Flatten a SnakeView's rendered Segments to plain text."""
+    return "".join(seg.text for seg in snake_view.render().segments)
+
+
+@pytest.mark.asyncio
+async def test_food_uses_glyph_at_scale_one():
+    """On a small terminal (scale 1) food is the themed glyph, not a sprite."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        app.screen.timer.stop()
+        game = app.game
+        game.reset()
+        hx, hy = game.snake[0]
+        game.set_food_position((hx + 3, hy))
+        text = _board_text(app.screen.query_one(SnakeView))
+        assert game.food_symbol in text  # glyph drawn
+        assert "▄" not in text  # no sprite pixels
+
+
+@pytest.mark.asyncio
+async def test_food_uses_sprite_at_large_scale():
+    """On a large terminal (scale >= 2) food is drawn as a pixel sprite."""
+    app = SnakeApp()
+    async with app.run_test(size=(280, 70)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        app.screen.timer.stop()
+        game = app.game
+        game.reset()
+        hx, hy = game.snake[0]
+        game.set_food_position((hx + 3, hy))
+        snake_view = app.screen.query_one(SnakeView)
+        assert snake_view._scale >= 2
+        text = _board_text(snake_view)
+        assert "▄" in text  # sprite pixels drawn
+        assert game.food_symbol not in text  # glyph replaced
+
+
+@pytest.mark.asyncio
+async def test_food_sprites_can_be_disabled():
+    """With food_sprites off, even a large terminal keeps the glyph."""
+    app = SnakeApp(config=GameConfig(food_sprites=False))
+    async with app.run_test(size=(280, 70)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        app.screen.timer.stop()
+        game = app.game
+        game.reset()
+        hx, hy = game.snake[0]
+        game.set_food_position((hx + 3, hy))
+        text = _board_text(app.screen.query_one(SnakeView))
+        assert game.food_symbol in text
+        assert "▄" not in text
 
 
 @pytest.mark.asyncio
 async def test_scale_only_resize_does_not_rescale_snake():
     """Growing the terminal (scale change, same logical grid) leaves snake intact."""
     app = SnakeApp()
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(180, 50)) as pilot:
         await pilot.press("space")
         await pilot.pause()
         app.screen.timer.stop()
         snake_view = app.screen.query_one(SnakeView)
+        scale_before = snake_view._scale
         before = list(app.game.snake)
-        assert snake_view._scale == 1
 
-        # Both sizes map to the capped 20x15 grid, so this is a scale-only change:
+        # Both sizes map to the capped grid, so this is a scale-only change:
         # positions must be untouched (Game.resize, which rescales them, is skipped).
-        await pilot.resize_terminal(220, 70)
+        await pilot.resize_terminal(280, 70)
         await pilot.pause()
 
         assert (app.game.width, app.game.height) == (
             app.config.max_grid_width,
             app.config.max_grid_height,
         )
-        assert snake_view._scale > 1  # the scale really did change
+        assert snake_view._scale > scale_before  # the scale really did change
         assert app.game.snake == before  # ...but the snake was not rescaled
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_opens_and_pauses_and_resumes():
+    """`?` opens the diagnostics overlay and pauses; SPACE returns and resumes."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        assert isinstance(app.screen, GameScreen)
+
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert isinstance(app.screen, DiagnosticsModal)
+        assert app.game.paused is True
+
+        await pilot.press("space")
+        await pilot.pause()
+        assert isinstance(app.screen, GameScreen)
+        assert app.game.paused is False
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_shows_live_config_and_state():
+    """The overlay reports key config/state pairs reflecting the live game."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        text = app.screen._params_text()
+        # A few representative pairs, including the ones that explain board sizing.
+        assert "grid cap" in text
+        assert "cell scale (k)" in text
+        assert f"{app.game.width} x {app.game.height}" in text  # logical grid value
+        assert "demo strategy" in text
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_copy_to_clipboard(monkeypatch):
+    """Pressing C copies the diagnostics text to the clipboard.
+
+    Force the OSC 52 path (no local clipboard tool) so the result is observable
+    via `app.clipboard` regardless of what's installed in the test environment.
+    """
+    monkeypatch.setattr("snek.clipboard._system_clipboard_command", lambda: None)
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        expected = app.screen._params_text()
+
+        await pilot.press("c")
+        await pilot.pause()
+        assert app.clipboard == expected
+
+
+async def _open_diagnostics_capturing_notify(app, pilot):
+    """Open the diagnostics overlay and capture its `notify` calls."""
+    await pilot.press("space")
+    await pilot.pause()
+    await pilot.press("question_mark")
+    await pilot.pause()
+    calls: list[tuple[tuple, dict]] = []
+    app.screen.notify = lambda *a, **k: calls.append((a, k))
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_copy_warns_on_osc52_fallback(monkeypatch):
+    """When no local clipboard tool exists, the copy toast warns about it."""
+    monkeypatch.setattr("snek.clipboard._system_clipboard_command", lambda: None)
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        calls = await _open_diagnostics_capturing_notify(app, pilot)
+        await pilot.press("c")
+        await pilot.pause()
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs.get("severity") == "warning"
+    message = args[0]
+    assert "OSC 52" in message
+    assert "clipboard tool" in message
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_copy_confirms_system_clipboard(monkeypatch):
+    """When a local tool is used, the toast confirms it without warning."""
+    monkeypatch.setattr("snek.clipboard._system_clipboard_command", lambda: ["wl-copy"])
+    monkeypatch.setattr("snek.clipboard.subprocess.run", lambda *a, **k: None)
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        calls = await _open_diagnostics_capturing_notify(app, pilot)
+        await pilot.press("c")
+        await pilot.pause()
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs.get("severity") != "warning"
+    assert "system clipboard" in args[0]
 
 
 class TestWorldProgression:

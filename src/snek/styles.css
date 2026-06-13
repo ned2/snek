@@ -121,3 +121,22 @@ StatDisplay {
     text-align: left;
     text-style: dim;
 }
+
+/* Diagnostics modal styling */
+#diagnostics-container {
+    align: center middle;
+    width: auto;
+    height: auto;
+}
+
+#diagnostics-prompt {
+    text-align: center;
+    text-style: bold dim;
+    margin-bottom: 2;
+}
+
+#diagnostics-params {
+    width: auto;
+    text-align: left;
+    text-style: dim;
+}

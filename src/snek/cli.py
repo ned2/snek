@@ -24,6 +24,29 @@ def _positive_speed(value: str) -> float:
     return speed
 
 
+def _positive_int(value: str) -> int:
+    """Parse `--scale` as a positive integer (argparse type)."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not an integer")
+    if number < 1:
+        raise argparse.ArgumentTypeError("scale must be at least 1")
+    return number
+
+
+def _grid_dims(value: str) -> tuple[int, int]:
+    """Parse `--grid` as ``WIDTHxHEIGHT`` into a positive (width, height) tuple."""
+    parts = value.lower().split("x")
+    try:
+        width, height = (int(part) for part in parts)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} must be WIDTHxHEIGHT, e.g. 36x20")
+    if width < 1 or height < 1:
+        raise argparse.ArgumentTypeError("grid width and height must be at least 1")
+    return width, height
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the `snek` argument parser (factored out so it can be unit-tested)."""
     parser = argparse.ArgumentParser(
@@ -38,6 +61,36 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "starting snake speed in moves per second; higher is faster. The "
             "snake still accelerates as it eats (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
+        "--sizing",
+        choices=("cap", "fill"),
+        default=default_config.sizing_mode,
+        help=(
+            "how the board is sized: 'cap' keeps a fixed, consistent grid scaled "
+            "to fill up to --scale; 'fill' grows the grid to fill the terminal at "
+            "exactly --scale (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
+        "--grid",
+        type=_grid_dims,
+        default=None,
+        metavar="WIDTHxHEIGHT",
+        help=(
+            "logical grid cap for --sizing cap, e.g. 36x20 "
+            f"(default: {default_config.max_grid_width}x{default_config.max_grid_height})"
+        ),
+    )
+    parser.add_argument(
+        "--scale",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help=(
+            "cell magnification (k): the max in 'cap' mode, the exact size in "
+            f"'fill' mode; k>=2 enables food sprites (default: {default_config.cell_scale})"
         ),
     )
     parser.add_argument(
@@ -57,5 +110,13 @@ def main(argv: list[str] | None = None) -> None:
     """Parse arguments and launch the app."""
     args = _build_parser().parse_args(argv)
     # `--speed` is moves per second; the game model works in seconds per move.
-    config = replace(default_config, initial_speed_interval=1.0 / args.speed)
+    overrides = {
+        "initial_speed_interval": 1.0 / args.speed,
+        "sizing_mode": args.sizing,
+    }
+    if args.grid is not None:
+        overrides["max_grid_width"], overrides["max_grid_height"] = args.grid
+    if args.scale is not None:
+        overrides["cell_scale"] = args.scale
+    config = replace(default_config, **overrides)
     SnakeApp(config=config, demo_strategy=args.demo_strategy).run()

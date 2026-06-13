@@ -1,6 +1,6 @@
 """Screen implementations for the Snek game using Textual's Screen system."""
 
-from rich.text import Text
+from rich.segment import Segment, Segments
 from textual import events
 from textual.app import ComposeResult
 from textual.reactive import reactive
@@ -10,10 +10,21 @@ from textual.timer import Timer
 from textual.widgets import Label, Static
 
 from . import __version__
+from . import clipboard
 from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game_rules import Direction
-from .rendering import compute_grid_size, compute_scale, render_board
+from . import sprites
+from .rendering import (
+    CELL_BASE_WIDTH,
+    compute_layout,
+    frame_board,
+    glyph_food_tile,
+    render_board,
+)
+
+# Reused row separator for the Segments stream returned by SnakeView.render.
+_NEWLINE = Segment("\n")
 
 
 class SplashScreen(Screen):
@@ -81,6 +92,7 @@ class GameScreen(Screen):
         ("d", "turn('RIGHT')", None),
         ("space", "pause", "Pause"),
         ("enter", "toggle_sidebar", "Toggle Sidebar"),
+        ("question_mark", "diagnostics", "Diagnostics"),
         ("q", "quit", "Quit"),
     ]
 
@@ -185,6 +197,17 @@ class GameScreen(Screen):
             self.timer.pause()
             self.app.push_screen("pause")
 
+    def action_diagnostics(self) -> None:
+        """Pause the game and show the live diagnostics overlay.
+
+        Pushed as a fresh instance (not a registered singleton) so its key/value
+        snapshot reflects the game's current state each time it's opened.
+        """
+        if not self.app.game.game_over:
+            self.app.game.paused = True
+            self.timer.pause()
+            self.app.push_screen(DiagnosticsModal())
+
     def action_toggle_sidebar(self) -> None:
         """Toggle sidebar visibility."""
         self.sidebar_visible = not self.sidebar_visible
@@ -285,6 +308,118 @@ class PauseModal(ModalScreen):
         self.app.exit()
 
 
+class DiagnosticsModal(ModalScreen):
+    """A pause-style overlay that shows live config and game state for debugging.
+
+    Opened with `?` from the game (which also pauses); SPACE resumes, mirroring
+    the pause modal. Parameters are read in `compose`, so each open reflects the
+    current state.
+    """
+
+    BINDINGS = [
+        ("space", "resume", "Resume"),
+        ("c", "copy", "Copy"),
+        ("q", "quit", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        """Compose the diagnostics screen: figlet title, prompt, and key/vals."""
+        with Vertical(id="diagnostics-container"):
+            yield FigletText(
+                "DIAGNOSTICS",
+                font="doom",
+                id="diagnostics-title",
+                colors=["$primary"],
+                classes="title-text",
+            )
+            yield Static("Press C to copy · SPACE to continue", id="diagnostics-prompt")
+            yield Static(self._params_text(), id="diagnostics-params")
+
+    def _params_text(self) -> str:
+        """Build the aligned key/value snapshot of config and live game state."""
+        app = self.app
+        game = app.game
+        config = app.config
+        game_screen = app.get_screen("game")
+        view = game_screen.query_one(SnakeView)
+
+        # `None` entries render as blank spacer lines between sections.
+        rows: list[tuple[str, str] | None] = [
+            ("terminal (cells)", f"{app.size.width} x {app.size.height}"),
+            ("snake view", f"{view.size.width} x {view.size.height}"),
+            ("cell scale (k)", str(view._scale)),
+            None,
+            ("sizing mode", config.sizing_mode),
+            ("cell scale setting", str(config.cell_scale)),
+            ("logical grid", f"{game.width} x {game.height}"),
+            ("grid cap", f"{config.max_grid_width} x {config.max_grid_height}"),
+            ("grid min", f"{config.min_game_width} x {config.min_game_height}"),
+            (
+                "grid default",
+                f"{config.default_grid_width} x {config.default_grid_height}",
+            ),
+            ("food sprites", str(config.food_sprites)),
+            None,
+            ("interval", f"{game.current_interval:.4f} s"),
+            ("speed", f"{game.get_moves_per_second():.1f} /sec"),
+            ("initial interval", f"{config.initial_speed_interval} s"),
+            ("speed factor", str(config.speed_increase_factor)),
+            ("min interval", f"{config.min_speed_interval} s"),
+            None,
+            (
+                "world",
+                f"{game.current_world}  "
+                f"{game.world_path.get_world_name(game.current_world)}",
+            ),
+            ("symbols / world", str(config.symbols_per_world)),
+            ("in world", str(game.symbols_in_current_world)),
+            ("total foods", str(game.symbols_consumed)),
+            None,
+            ("snake length", str(len(game.snake))),
+            ("direction", game.direction.name),
+            ("max buffered turns", str(config.max_buffered_turns)),
+            ("demo strategy", app.demo_strategy),
+            ("demo active", str(game_screen.demo_ai is not None)),
+        ]
+
+        key_width = max(len(row[0]) for row in rows if row is not None)
+        lines = [
+            "" if row is None else f"{row[0]:>{key_width}} : {row[1]}" for row in rows
+        ]
+        return "\n".join(lines)
+
+    def action_copy(self) -> None:
+        """Copy the diagnostics text to the system clipboard.
+
+        Prefers a local clipboard utility and falls back to OSC 52 (see
+        `clipboard.copy_text`), so it works even where the terminal ignores OSC
+        52. The toast names the method used.
+        """
+        method = clipboard.copy_text(self.app, self._params_text())
+        if method == clipboard.METHOD_OSC52:
+            # OSC 52 is often ignored (no local clipboard tool, tmux, etc.), so
+            # warn rather than silently claim success.
+            self.notify(
+                "Copied via terminal escape (OSC 52) — if it didn't stick, "
+                "install a clipboard tool (e.g. wl-clipboard or xclip).",
+                title="Clipboard",
+                severity="warning",
+                timeout=6,
+            )
+        else:
+            self.notify(f"Diagnostics copied to {method}", timeout=2)
+
+    def action_resume(self) -> None:
+        """Resume the game (mirrors the pause modal)."""
+        game_screen = self.app.get_screen("game")
+        game_screen.resume_game()
+        self.app.pop_screen()
+
+    def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
+
+
 class GameOverModal(ModalScreen):
     """Modal screen shown when snek dies."""
 
@@ -366,31 +501,60 @@ class SnakeView(Static):
         refresh at the new scale.
         """
         if self.app.game and self.size.width > 0 and self.size.height > 0:
-            config = self.app.config
-            grid_width, grid_height = compute_grid_size(
-                self.size.width, self.size.height, config
+            grid_width, grid_height, scale = compute_layout(
+                self.size.width, self.size.height, self.app.config
             )
-            self._scale = compute_scale(
-                self.size.width, self.size.height, grid_width, grid_height, config
-            )
+            self._scale = scale
             if (grid_width, grid_height) != (self.app.game.width, self.app.game.height):
                 self.app.game.resize(grid_width, grid_height)
             self.refresh()
 
-    def render(self) -> Text:
-        """Render the game grid using solid block symbols for the snake."""
+    def render(self) -> Segments:
+        """Render the game grid: solid blocks for the snake, sprite/glyph food."""
         game = self.app.game
-        return Text(
-            render_board(
-                game.width,
-                game.height,
-                set(game.snake),
-                game.food,
-                game.food_symbol,
-                game.config.snake_block,
-                self.app.config.empty_cell,
-                self._scale,
+        empty_cell = self.app.config.empty_cell
+        food_tile = self._food_tile(game)
+        lines = render_board(
+            game.width,
+            game.height,
+            set(game.snake),
+            game.food,
+            self._scale,
+            game.config.snake_block,
+            empty_cell,
+            food_tile,
+        )
+        # Frame the capped board to make its boundary (and the wrap-around)
+        # visible inside the letterbox margin. "fill" mode covers the terminal
+        # edge-to-edge, so there's no margin to frame.
+        board_cols = CELL_BASE_WIDTH * game.width * self._scale
+        board_rows = game.height * self._scale
+        if (
+            self.app.config.sizing_mode == "cap"
+            and self.size.width >= board_cols + 2
+            and self.size.height >= board_rows + 2
+        ):
+            lines = frame_board(lines, board_cols)
+        flat: list[Segment] = []
+        for line in lines:
+            flat.extend(line)
+            flat.append(_NEWLINE)
+        if flat:
+            flat.pop()  # no trailing newline after the last row
+        return Segments(flat)
+
+    def _food_tile(self, game) -> list[list[Segment]]:
+        """Pick the food rendering: a pixel sprite when big enough, else the glyph.
+
+        At scale 1 (and when sprites are disabled) the cell is too small for pixel
+        art, so we keep the themed Unicode glyph.
+        """
+        if self.app.config.food_sprites and self._scale >= sprites.MIN_SPRITE_SCALE:
+            return sprites.food_tile(
+                sprites.get_food_sprite(game.current_world), self._scale
             )
+        return glyph_food_tile(
+            game.food_symbol, self.app.config.empty_cell, self._scale
         )
 
 

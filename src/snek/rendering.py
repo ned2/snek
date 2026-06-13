@@ -1,20 +1,32 @@
 """Pure helpers for sizing and drawing the board.
 
-These are deliberately framework-free (no Textual, no widget state) so the
-layout maths and the scaled-board string can be unit-tested directly. The board
-decouples two quantities:
+These are deliberately framework-free (no Textual widgets, no widget state) so the
+layout maths and the board contents can be unit-tested directly. The board
+decouples two quantities — the *logical grid* (game cells, which fix difficulty)
+and the *visual scale* (characters per cell). `compute_layout` resolves both from
+the available space according to the sizing mode:
 
-- the *logical grid* (`compute_grid_size`): how many game cells there are, which
-  fixes difficulty and how much the snake must eat to fill the board, and
-- the *visual scale* (`compute_scale`): how many terminal characters draw one
-  cell, which only affects how much of the terminal the board covers.
+- "cap": fix the grid (clamped to `max_grid_*`), then take the largest scale that
+  fits up to `cell_scale` — a consistent, bounded board that may be letterboxed.
+- "fill": fix the scale at `cell_scale`, then grow the grid to fill the space —
+  fills the terminal, but the grid (and difficulty) vary with the window.
 
-`render_board` turns a game state plus a scale factor into the text the
-`SnakeView` displays.
+`render_board` turns a game state into Rich `Segment`s (so individual cells can
+carry their own colour — e.g. a food sprite). The food cell is supplied as a
+pre-built *tile* so the board walker stays independent of how food is drawn:
+`glyph_food_tile` keeps the single themed glyph; a sprite tile (see `sprites`)
+swaps in pixel art. Both are `scale` rows tall and `2*scale` columns wide.
 """
+
+from rich.segment import Segment
+from rich.style import Style
 
 from .config import GameConfig
 from .game_rules import Position
+
+# Subtle frame around the play area; dim so it reads as chrome, not as snake.
+# No explicit colour, so it inherits the widget's colour (theme primary).
+_BORDER_STYLE = Style(dim=True)
 
 # A logical cell is drawn `CELL_BASE_WIDTH` columns wide by one row tall at
 # scale 1. Terminal character cells are roughly twice as tall as wide, so two
@@ -22,17 +34,32 @@ from .game_rules import Position
 # glyphs ("██" / "  ") already rely on.
 CELL_BASE_WIDTH = 2
 
+# A food cell tile: `scale` rows, each a list of Segments spanning `2*scale`
+# columns. Kept as a type alias for readability at call sites.
+FoodTile = list[list[Segment]]
 
-def compute_grid_size(
+
+def compute_layout(
     avail_cols: int, avail_rows: int, config: GameConfig
-) -> tuple[int, int]:
-    """Pick the logical grid (in cells) for the space the board may use.
+) -> tuple[int, int, int]:
+    """Resolve ``(grid_width, grid_height, cell_scale)`` for the available space.
 
-    Clamped to ``[min_game_*, max_grid_*]`` using the scale-1 footprint (each
-    cell is `CELL_BASE_WIDTH` columns wide). Any terminal large enough lands on
-    the cap exactly, so the board is identical everywhere; only windows too small
-    for the cap shrink it.
+    A cell occupies ``CELL_BASE_WIDTH * k`` columns and ``k`` rows. The two modes
+    are orthogonal: "cap" fixes the grid and derives the scale; "fill" fixes the
+    scale and derives the grid. Grid dimensions are floored at `min_game_*` (a
+    tiny terminal overflows rather than vanishing).
     """
+    scale_setting = max(1, config.cell_scale)
+
+    if config.sizing_mode == "fill":
+        # Fixed cell size; the grid grows to fill the space.
+        width = max(
+            config.min_game_width, avail_cols // (CELL_BASE_WIDTH * scale_setting)
+        )
+        height = max(config.min_game_height, avail_rows // scale_setting)
+        return width, height, scale_setting
+
+    # "cap": fixed grid (clamped to the cap), cells grow up to `scale_setting`.
     width = max(
         config.min_game_width,
         min(config.max_grid_width, avail_cols // CELL_BASE_WIDTH),
@@ -41,25 +68,25 @@ def compute_grid_size(
         config.min_game_height,
         min(config.max_grid_height, avail_rows),
     )
-    return width, height
+    fit = min(avail_cols // (CELL_BASE_WIDTH * width), avail_rows // height)
+    scale = max(1, min(fit, scale_setting))
+    return width, height, scale
 
 
-def compute_scale(
-    avail_cols: int,
-    avail_rows: int,
-    grid_width: int,
-    grid_height: int,
-    config: GameConfig,
-) -> int:
-    """Largest integer cell scale that fits the grid in the space, capped.
+def glyph_food_tile(food_symbol: str, empty_cell: str, scale: int) -> FoodTile:
+    """A food tile that centres the single themed glyph in its block.
 
-    A cell occupies ``CELL_BASE_WIDTH * k`` columns and ``k`` rows, so we take
-    the largest ``k`` that fits both axes, floor it at 1 (the board may overflow
-    a tiny terminal rather than vanish) and cap it at ``max_cell_scale``.
+    This is the unscaled look generalised to any scale, and the fallback when no
+    sprite applies (notably scale 1, where the cell is too small for pixel art).
     """
-    fit_cols = avail_cols // (CELL_BASE_WIDTH * grid_width)
-    fit_rows = avail_rows // grid_height
-    return max(1, min(fit_cols, fit_rows, config.max_cell_scale))
+    block_width = CELL_BASE_WIDTH * scale
+    mid_row = scale // 2
+    return [
+        [Segment((food_symbol + " ").center(block_width))]
+        if r == mid_row
+        else [Segment(empty_cell * scale)]
+        for r in range(scale)
+    ]
 
 
 def render_board(
@@ -67,42 +94,63 @@ def render_board(
     height: int,
     snake: set[Position],
     food: Position,
-    food_symbol: str,
+    scale: int,
     snake_block: str,
     empty_cell: str,
-    scale: int,
-) -> str:
-    """Draw the board as text, each logical cell a ``(2*scale) x scale`` block.
+    food_tile: FoodTile,
+) -> list[list[Segment]]:
+    """Draw the board as Segments: one inner list per terminal row.
 
-    Snake and empty cells tile their base glyph (`snake_block` / `empty_cell`,
-    each `CELL_BASE_WIDTH` columns) `scale` times across and down. The food glyph
-    is centred in its block — placed on the block's middle row, padded to the
-    block width — matching the single-width-glyph assumption the unscaled
-    renderer already made.
+    Each logical cell becomes a ``(2*scale) x scale`` block. Snake and empty
+    cells tile their base glyph (`snake_block` / `empty_cell`) and stay unstyled
+    so they inherit the widget colour; the food cell uses `food_tile`, whose rows
+    already span the block width and may carry their own styles.
     """
-    block_width = CELL_BASE_WIDTH * scale
-    mid_row = scale // 2
-    empty_row = empty_cell * scale
+    snake_text = snake_block * scale
+    empty_text = empty_cell * scale
 
-    # Pre-build the `scale` rows for a food cell once; the glyph never moves.
-    food_rows = [
-        (food_symbol + " ").center(block_width) if r == mid_row else empty_row
-        for r in range(scale)
-    ]
-
-    lines: list[str] = []
+    lines: list[list[Segment]] = []
     for y in range(height):
-        block_rows = ["" for _ in range(scale)]
+        block_rows: list[list[Segment]] = [[] for _ in range(scale)]
         for x in range(width):
             pos = (x, y)
             if pos in snake:
                 for r in range(scale):
-                    block_rows[r] += snake_block * scale
+                    block_rows[r].append(Segment(snake_text))
             elif pos == food:
                 for r in range(scale):
-                    block_rows[r] += food_rows[r]
+                    block_rows[r].extend(food_tile[r])
             else:
                 for r in range(scale):
-                    block_rows[r] += empty_row
+                    block_rows[r].append(Segment(empty_text))
         lines.extend(block_rows)
-    return "\n".join(lines)
+    return lines
+
+
+def frame_board(
+    lines: list[list[Segment]], board_cols: int, style: Style | None = None
+) -> list[list[Segment]]:
+    """Wrap rendered board rows in a box-drawing frame.
+
+    Makes the play-area boundary explicit so that toroidal wrapping reads as
+    "through the wall" rather than the snake splitting across empty margin. The
+    framed block is `board_cols + 2` wide and two rows taller; callers draw it
+    only when there's room to spare (i.e. the capped board sits inside a larger
+    terminal — see `SnakeView`).
+    """
+    style = _BORDER_STYLE if style is None else style
+    horizontal = "─" * board_cols
+    framed: list[list[Segment]] = [[Segment(f"┌{horizontal}┐", style)]]
+    side = Segment("│", style)
+    for line in lines:
+        framed.append([side, *line, side])
+    framed.append([Segment(f"└{horizontal}┘", style)])
+    return framed
+
+
+def board_to_text(lines: list[list[Segment]]) -> str:
+    """Flatten rendered Segment rows to plain text (styles dropped).
+
+    Useful for asserting board dimensions/content without inspecting styles.
+    """
+    return "\n".join("".join(seg.text for seg in line) for line in lines)

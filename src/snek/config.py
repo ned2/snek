@@ -11,14 +11,27 @@ class GameConfig:
     default_grid_width: int = 20
     default_grid_height: int = 10
 
-    # Hard cap on the *logical* grid (game cells, which set difficulty and the
-    # length needed to fill the board). The board no longer grows to fill the
-    # terminal; instead the logical grid is clamped to this size and the renderer
-    # scales each cell up visually (see `max_cell_scale`). 20x15 fits at scale 1
-    # in an 80x24 terminal (minus the side panel), so essentially every terminal
-    # gets the same board — difficulty stops depending on window size.
-    max_grid_width: int = 20
-    max_grid_height: int = 15
+    # How the board is sized to the terminal. Two orthogonal strategies:
+    #   "cap"  — fixed logical grid (clamped to `max_grid_*`); cells then grow up
+    #            to `cell_scale` to fill the rest, leaving a framed letterbox.
+    #            Difficulty is consistent across terminals; mid-size windows can
+    #            sit below the next scale step (small board, wide margins).
+    #   "fill" — fixed cell size (`cell_scale`); the logical grid grows to fill
+    #            the whole terminal. No dead zone / margins, but difficulty and
+    #            the length needed to win scale with the window size.
+    sizing_mode: str = "cap"
+
+    # Logical grid cap for "cap" mode (game cells = difficulty). The board grows
+    # with the terminal up to this size, then stops. 36x20 (widescreen 9:5) fills
+    # a ~280-col terminal at scale 3. Unused in "fill" mode.
+    max_grid_width: int = 36
+    max_grid_height: int = 20
+
+    # Cell magnification factor (k): each logical cell is drawn (2*k) x k glyphs.
+    #   "cap" mode  — the *ceiling*; cells grow up to this as space allows.
+    #   "fill" mode — the *exact* size; the grid fills the terminal at this scale.
+    # k >= 2 is required for food sprites (a k=1 cell is only 2x1 characters).
+    cell_scale: int = 3
 
     # Speed settings
     initial_speed_interval: float = 0.1
@@ -57,12 +70,10 @@ class GameConfig:
     snake_block: str = "██"
     empty_cell: str = "  "
 
-    # Largest integer factor the renderer may scale a cell by to fill the
-    # terminal. Each logical cell is drawn as a (2*k) x k block of glyphs, so the
-    # board uses available space without enlarging the logical grid. Capped so
-    # cells never get grotesquely chunky on very large terminals; small terminals
-    # are forced to k=1 regardless.
-    max_cell_scale: int = 3
+    # Draw food as pixel-art sprites when the cell is big enough (scale >=
+    # sprites.MIN_SPRITE_SCALE); otherwise fall back to the themed glyph. Set
+    # False to always use the glyph.
+    food_sprites: bool = True
 
 
 default_config = GameConfig()
