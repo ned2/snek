@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from snek.game import Game
+from snek.game import Game, StepResult
 from snek.game_rules import Direction
 
 
@@ -82,17 +82,17 @@ class TestDeterminism:
     def _food_sequence(
         self, seed: int, steps: int
     ) -> list[tuple[tuple[int, int], str]]:
-        """Collect the (food_position, food_emoji) pairs a seeded game produces.
+        """Collect the (food_position, food_symbol) pairs a seeded game produces.
 
         Walks through every world so each world's shuffled character pool is exercised,
         not just world 0's.
         """
         game = Game(width=10, height=10, rng=random.Random(seed))
-        sequence = [(game.food, game.food_emoji)]
+        sequence = [(game.food, game.food_symbol)]
         for index in range(steps):
             game.current_world = index % len(game.world_path.worlds)
             game.place_food()
-            sequence.append((game.food, game.food_emoji))
+            sequence.append((game.food, game.food_symbol))
         return sequence
 
     def test_same_seed_reproduces_position_and_symbol(self):
@@ -106,7 +106,7 @@ class TestDeterminism:
         second = self._food_sequence(1234, 40)
         assert first == second
         # The equality is only meaningful if symbols actually vary across placements.
-        assert len({emoji for _, emoji in first}) > 1
+        assert len({symbol for _, symbol in first}) > 1
 
     def test_different_seeds_diverge(self):
         """Distinct seeds produce distinct streams, so the rng is genuinely consulted."""
@@ -201,6 +201,73 @@ class TestMovement:
 
         # Snake didn't move
         assert game.snake[0] == initial_position
+
+
+class TestStepResult:
+    """Test the StepResult contract that Game.step() returns to the view."""
+
+    def _game_with_food_ahead(self) -> Game:
+        """A roomy game with food directly in front of the right-moving head."""
+        game = Game(width=40, height=40, rng=random.Random(0))
+        head = game.snake[0]
+        game.food = (head[0] + 1, head[1])
+        return game
+
+    def test_noop_when_paused(self):
+        """A paused game reports that nothing happened."""
+        game = Game()
+        game.paused = True
+        assert game.step() == StepResult()
+
+    def test_noop_when_game_over(self):
+        """A finished game reports that nothing happened."""
+        game = Game()
+        game.game_over = True
+        assert game.step() == StepResult()
+
+    def test_plain_move(self):
+        """A move into empty space reports moved only."""
+        game = Game(width=40, height=40)
+        head = game.snake[0]
+        game.food = (head[0], head[1] + 2)  # not where a RIGHT step lands
+        assert game.step() == StepResult(moved=True)
+
+    def test_self_collision_reports_game_over(self):
+        """Running into the body reports game_over and sets the flag."""
+        game = Game()
+        game.snake = [(5, 5), (4, 5), (4, 4), (5, 4), (6, 4)]
+        game.direction = Direction.UP  # steps back into (5, 4)
+        game.food = (0, 0)  # keep food out of the way
+        assert game.step() == StepResult(game_over=True)
+        assert game.game_over is True
+
+    def test_eat_without_world_change(self):
+        """Eating mid-world reports ate_food but not world_changed."""
+        game = self._game_with_food_ahead()
+        assert game.step() == StepResult(
+            moved=True, ate_food=True, world_changed=False, new_world=None
+        )
+
+    def test_eat_crossing_world_boundary(self):
+        """Eating a world's final food reports world_changed and the new index."""
+        game = self._game_with_food_ahead()
+        game.symbols_in_current_world = game.config.symbols_per_world - 1
+
+        result = game.step()
+
+        assert result.ate_food is True
+        assert result.world_changed is True
+        assert result.new_world == 1
+        assert game.current_world == 1
+
+    def test_eat_scales_speed(self):
+        """Eating speeds the game up by the configured factor (model owns the rule)."""
+        game = self._game_with_food_ahead()
+        before = game.current_interval
+
+        game.step()
+
+        assert game.current_interval == before * game.config.speed_increase_factor
 
 
 class TestResize:

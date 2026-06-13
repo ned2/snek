@@ -1,10 +1,27 @@
 """Core game logic and state management for Snek."""
 
+from dataclasses import dataclass
 import random
 
 from .config import GameConfig, default_config
 from .game_rules import Direction, GameRules, Position
 from .worlds import WorldPath
+
+
+@dataclass(frozen=True)
+class StepResult:
+    """The consequences of a single `Game.step()`, for the view to react to.
+
+    The model owns what a tick *means* (movement, world transition, speed-up,
+    game-over); the view reads these flags instead of sniffing deltas in snake
+    length or world index.
+    """
+
+    moved: bool = False
+    ate_food: bool = False
+    world_changed: bool = False
+    new_world: int | None = None
+    game_over: bool = False
 
 
 class Game:
@@ -44,7 +61,9 @@ class Game:
             pos = (self.rng.randrange(self.width), self.rng.randrange(self.height))
             if pos not in self.snake:
                 self.food = pos
-                self.food_emoji = self.world_path.get_food_character(self.current_world)
+                self.food_symbol = self.world_path.get_food_character(
+                    self.current_world
+                )
                 return
 
     def turn(self, new_direction: Direction) -> None:
@@ -52,10 +71,15 @@ class Game:
         if GameRules.is_valid_turn(self.direction, new_direction):
             self.direction = new_direction
 
-    def step(self) -> None:
-        """Advance the game by one step: move snake, check collisions, handle food."""
+    def step(self) -> StepResult:
+        """Advance the game by one step and report what happened.
+
+        Owns every consequence of a tick — movement, world transition, speed-up,
+        and game-over — returning a `StepResult` for the view to react to instead
+        of leaving it to infer them from changes in snake length or world index.
+        """
         if self.game_over or self.paused:
-            return
+            return StepResult()
         new_head_pos = GameRules.calculate_new_position(
             self.snake[0], self.direction, self.width, self.height
         )
@@ -64,26 +88,32 @@ class Game:
         body_to_check = self.snake if grows else self.snake[:-1]
         if GameRules.is_self_collision(new_head_pos, body_to_check):
             self.game_over = True
-            return
+            return StepResult(game_over=True)
 
         self.snake.insert(0, new_head_pos)
-        if grows:
-            self.symbols_consumed += 1
-            self.symbols_in_current_world += 1
-            self.check_world_transition()
-            self.place_food()
-        else:
+        if not grows:
             self.snake.pop()
+            return StepResult(moved=True)
+
+        self.symbols_consumed += 1
+        self.symbols_in_current_world += 1
+        previous_world = self.current_world
+        self.check_world_transition()
+        world_changed = self.current_world != previous_world
+        self.current_interval *= self.config.speed_increase_factor
+        self.place_food()
+        return StepResult(
+            moved=True,
+            ate_food=True,
+            world_changed=world_changed,
+            new_world=self.current_world if world_changed else None,
+        )
 
     def check_world_transition(self) -> None:
         """Check if player should move to next world."""
         if self.symbols_in_current_world >= self.config.symbols_per_world:
             self.current_world += 1
             self.symbols_in_current_world = 0
-
-    def update_speed(self, new_interval: float) -> None:
-        """Update the current speed interval."""
-        self.current_interval = new_interval
 
     def get_moves_per_second(self) -> float:
         """Get current speed as moves per second."""
@@ -120,11 +150,11 @@ class Game:
                 raise ValueError(f"Snake position {pos} is out of bounds")
         self.snake = positions
 
-    def set_food_position(self, position: Position, emoji: str = None) -> None:
+    def set_food_position(self, position: Position, symbol: str = None) -> None:
         """Set food position for testing."""
         if not self._is_valid_position(position):
             raise ValueError(f"Food position {position} is out of bounds")
         self.food = position
-        self.food_emoji = emoji or self.world_path.get_food_character(
+        self.food_symbol = symbol or self.world_path.get_food_character(
             self.current_world
         )

@@ -90,7 +90,6 @@ class GameScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self.timer: Timer | None = None
-        self.interval: float = self.app.config.initial_speed_interval
         self.sidebar_visible: bool = True
         self.demo_ai: DemoAI | None = None
 
@@ -100,7 +99,7 @@ class GameScreen(Screen):
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
-        self.timer = self.set_interval(self.interval, self.tick)
+        self.timer = self.set_interval(self.app.game.current_interval, self.tick)
         self.app.theme = self.app.game.world_path.get_world(0).theme_name
 
     def on_unmount(self) -> None:
@@ -108,9 +107,9 @@ class GameScreen(Screen):
         self.timer.stop()
 
     def _restart_timer(self) -> None:
-        """Helper to restart the game timer with current interval."""
+        """Restart the game timer at the game's current speed interval."""
         self.timer.stop()
-        self.timer = self.set_interval(self.interval, self.tick)
+        self.timer = self.set_interval(self.app.game.current_interval, self.tick)
 
     def _update_reactive_fields(self) -> None:
         """Update all reactive fields from game state."""
@@ -126,34 +125,30 @@ class GameScreen(Screen):
         side_panel.symbols_in_world = self.app.game.symbols_in_current_world
 
     def tick(self) -> None:
-        """Game tick - advance game state."""
+        """Advance the game one step and react to the result."""
         if self.demo_ai:
             # In demo mode, let the AI choose the direction
             ai_direction = self.demo_ai.get_next_direction()
             if ai_direction:
                 self.app.game.turn(ai_direction)
 
-        pre_length = len(self.app.game.snake)
-        old_world = self.app.game.current_world
-        self.app.game.step()
+        result = self.app.game.step()
 
-        if self.app.game.current_world != old_world:
-            # World changed; update theme
+        if result.world_changed:
+            # Chrome follows the world: swap the app theme (kept intentionally).
             self.app.theme = self.app.game.world_path.get_world(
-                self.app.game.current_world
+                result.new_world
             ).theme_name
 
-        if self.app.game.game_over:
+        if result.game_over:
             # Stop the timer to prevent multiple game over modals
             self.timer.stop()
             self.app.push_screen("game_over")
             return
 
-        if len(self.app.game.snake) > pre_length:
-            # Snake ate food; increase speed
-            self.interval *= self.app.config.speed_increase_factor
+        if result.ate_food:
+            # The model already scaled current_interval; restart at the new rate.
             self._restart_timer()
-            self.app.game.update_speed(self.interval)
 
         self._update_reactive_fields()
         self.query_one(SnakeView).refresh()
@@ -198,7 +193,6 @@ class GameScreen(Screen):
         if self.demo_ai:
             # Recreate AI for fresh game
             self.demo_ai = DemoAI(self.app.game)
-        self.interval = self.app.config.initial_speed_interval
         self._restart_timer()
         self._update_reactive_fields()
         # Update theme to initial world before refreshing view
@@ -314,7 +308,7 @@ class SnakeView(Static):
         """Render the game grid using solid block symbols for the snake."""
         width, height = self.app.game.width, self.app.game.height
         empty_cell = self.app.config.empty_cell
-        food_emoji = self.app.game.food_emoji
+        food_symbol = self.app.game.food_symbol
         snake_block = self.app.game.config.snake_block
         food_pos = self.app.game.food
 
@@ -327,7 +321,7 @@ class SnakeView(Static):
                 if pos in snake_positions:
                     row_parts.append(snake_block)
                 elif pos == food_pos:
-                    row_parts.append(f"{food_emoji} ")
+                    row_parts.append(f"{food_symbol} ")
                 else:
                     row_parts.append(empty_cell)
             rows.append("".join(row_parts))

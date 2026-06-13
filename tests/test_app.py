@@ -283,20 +283,6 @@ class TestWorldProgression:
         game.check_world_transition()
         assert game.current_world == 2
 
-    def test_update_speed(self):
-        """Test speed update mechanism."""
-        from snek.game import Game
-
-        game = Game()
-        initial_interval = game.current_interval
-
-        # Update speed
-        new_interval = 0.05
-        game.update_speed(new_interval)
-
-        assert game.current_interval == new_interval
-        assert game.current_interval < initial_interval
-
     def test_get_moves_per_second(self):
         """Test moves per second calculation."""
         from snek.game import Game
