@@ -3,6 +3,7 @@
 from textual.app import App
 
 from .config import GameConfig, default_config
+from .demo import DEFAULT_STRATEGY
 from .game import Game
 from .screens import SplashScreen, GameScreen, PauseModal
 from .themes import THEME_MAP
@@ -22,9 +23,17 @@ class SnakeApp(App):
     # pushed as a fresh instance each game-over (see `GameScreen.tick`) so its
     # banner and final score always reflect the game that just ended.
 
-    def __init__(self, config: GameConfig = None, **kwargs) -> None:
+    def __init__(
+        self,
+        config: GameConfig = None,
+        demo_strategy: str | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self.config = config or default_config
+        # Which demo strategy to construct (set by the `--demo-strategy` CLI flag);
+        # the game screen reads this when entering demo mode. Falls back to default.
+        self.demo_strategy = demo_strategy or DEFAULT_STRATEGY
         self.game = Game(config=self.config)
 
     def on_load(self) -> None:

@@ -36,7 +36,8 @@ class SplashScreen(Screen):
                 animate=True,
             )
             yield Static(
-                "Press SPACE to start or D for demo mode.", classes="splash-prompt"
+                f"Press SPACE to start or D for the {self.app.demo_strategy} demo.",
+                classes="splash-prompt",
             )
             yield Static(
                 "Use arrow or WASD keys to move, Space to pause, Q to quit.",
@@ -147,7 +148,7 @@ class GameScreen(Screen):
     def tick(self) -> None:
         """Advance the game one step and react to the result."""
         if self.demo_ai:
-            # In demo mode, let the AI choose the direction
+            # In demo mode, let the demo strategy choose the direction
             ai_direction = self.demo_ai.get_next_direction()
             if ai_direction:
                 self.app.game.turn(ai_direction)
@@ -214,8 +215,8 @@ class GameScreen(Screen):
         """Restart the game."""
         self.app.game.reset()
         if self.demo_ai:
-            # Recreate AI for fresh game
-            self.demo_ai = make_demo_ai(self.app.game)
+            # Recreate the demo strategy for a fresh game, keeping the selection.
+            self.demo_ai = make_demo_ai(self.app.game, self.app.demo_strategy)
         self._restart_timer()
         self._sync_reactives()
         # Update theme to initial world before refreshing view
@@ -236,7 +237,9 @@ class GameScreen(Screen):
         `None`; `on_mount` does this once the screen is pushed.)
         """
         self.app.game.reset()
-        self.demo_ai = make_demo_ai(self.app.game) if demo else None
+        self.demo_ai = (
+            make_demo_ai(self.app.game, self.app.demo_strategy) if demo else None
+        )
         if self.timer is not None:
             self._restart_timer()
             self.app.theme = self.app.game.world_path.get_world(0).theme_name
