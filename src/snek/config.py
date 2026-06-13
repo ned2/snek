@@ -18,6 +18,11 @@ class GameConfig:
     # Symbols needed to advance to next world
     symbols_per_world: int = 10
 
+    # How many queued turns may wait to be applied (one per tick). Buffering keeps
+    # several keys pressed within a single tick from compounding into a reversal,
+    # while still honouring a fast "up then left" as a two-step L-turn.
+    max_buffered_turns: int = 2
+
     # UI settings
     side_panel_width: int = 30
     min_game_width: int = 10

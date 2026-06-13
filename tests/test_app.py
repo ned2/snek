@@ -50,19 +50,35 @@ async def test_game_controls():
         assert isinstance(game_screen, GameScreen)
         game = app.game
 
-        # Test direction controls
+        # Stop the auto-timer so only our explicit ticks advance the model; the
+        # 0.1s interval would otherwise drain the turn buffer between key presses.
+        game_screen.timer.stop()
+
+        # Park a length-1 snake with food out of the way so each step is a plain
+        # move and never ends the game while we exercise the controls.
+        game.set_snake_position([(5, 5)])
+        game.set_food_position((0, 0))
+        game.direction = Direction.RIGHT
+
+        # A key press buffers a turn; the committed heading updates on the step.
         await pilot.press("up")
+        game_screen.tick()
         assert game.direction == Direction.UP
 
-        await pilot.press("right")
-        assert game.direction == Direction.RIGHT
-
-        await pilot.press("down")
-        assert game.direction == Direction.DOWN
-
-        # Now we can turn left (from down)
         await pilot.press("left")
+        game_screen.tick()
         assert game.direction == Direction.LEFT
+
+        # Two opposing turns within one tick can't reverse the snake: heading
+        # RIGHT, an immediate UP+LEFT applies UP now and defers LEFT, rather than
+        # stepping straight back onto the body.
+        game.set_snake_position([(5, 5), (4, 5), (3, 5)])
+        game.direction = Direction.RIGHT
+        await pilot.press("up")
+        await pilot.press("left")
+        game_screen.tick()
+        assert game.direction == Direction.UP
+        assert game.game_over is False
 
 
 @pytest.mark.asyncio
@@ -144,9 +160,7 @@ async def test_game_over_and_restart():
         game_screen_in_stack.restart_game()
         assert app.game.symbols_consumed == 0  # Should be reset
         assert not app.game.game_over  # Should not be game over
-        assert (
-            len(app.game.snake) == 1
-        )  # Should have initial snake length
+        assert len(app.game.snake) == 1  # Should have initial snake length
 
 
 @pytest.mark.asyncio

@@ -46,7 +46,11 @@ class Game:
         """Reset the game to initial state with snake at center."""
         mid = (self.width // 2, self.height // 2)
         self.snake: list[Position] = [mid]
+        # `direction` is the *committed* heading — the way the last step actually
+        # moved. Pending turns are queued in `_pending_turns` and applied one per
+        # step so that rapid keys can never compound into a reversal.
         self.direction = Direction.RIGHT
+        self._pending_turns: list[Direction] = []
         self.symbols_consumed = 0
         self.current_world = 0
         self.symbols_in_current_world = 0
@@ -67,9 +71,29 @@ class Game:
                 return
 
     def turn(self, new_direction: Direction) -> None:
-        """Change snake direction if the turn is valid (not reversing)."""
-        if GameRules.is_valid_turn(self.direction, new_direction):
-            self.direction = new_direction
+        """Queue a direction change to be applied on an upcoming step.
+
+        Turns are buffered rather than applied immediately: several keys pressed
+        within a single tick must not compound into a 180° reversal. Snake heading
+        RIGHT, then UP then LEFT pressed in quick succession would each be a legal
+        turn relative to the previous *input* (RIGHT→UP, UP→LEFT) yet leave the
+        snake about to step LEFT into its own neck.
+
+        Each turn is validated against the heading it will actually follow — the
+        last already-queued turn, or the committed `direction` if the queue is
+        empty — so the snake can never reverse onto itself no matter how fast the
+        keys arrive. Redundant or reversing turns are dropped, as is anything past
+        `config.max_buffered_turns` (kept small so the snake doesn't keep turning
+        long after the player stops pressing keys).
+        """
+        reference = self._pending_turns[-1] if self._pending_turns else self.direction
+        if new_direction == reference:
+            return
+        if not GameRules.is_valid_turn(reference, new_direction):
+            return
+        if len(self._pending_turns) >= self.config.max_buffered_turns:
+            return
+        self._pending_turns.append(new_direction)
 
     def step(self) -> StepResult:
         """Advance the game by one step and report what happened.
@@ -80,6 +104,10 @@ class Game:
         """
         if self.game_over or self.paused:
             return StepResult()
+        # Commit at most one buffered turn per step; this is what guarantees a
+        # single tick can never reverse the snake (see `turn`).
+        if self._pending_turns:
+            self.direction = self._pending_turns.pop(0)
         new_head_pos = GameRules.calculate_new_position(
             self.snake[0], self.direction, self.width, self.height
         )

@@ -117,27 +117,29 @@ class TestMovement:
     """Test snake movement mechanics."""
 
     def test_turn_valid(self):
-        """Test valid turn changes direction."""
+        """A valid turn is buffered and applied on the next step."""
         game = Game()
         game.direction = Direction.RIGHT
 
         game.turn(Direction.UP)
+        # The committed heading only changes once the step consumes the turn.
+        assert game.direction == Direction.RIGHT
+        game.step()
         assert game.direction == Direction.UP
 
-        game.turn(Direction.LEFT)
-        assert game.direction == Direction.LEFT
-
     def test_turn_invalid(self):
-        """Test invalid turn is ignored."""
+        """A reversing turn is ignored; a perpendicular one is accepted."""
         game = Game()
         game.direction = Direction.RIGHT
 
-        # Can't turn to opposite direction
+        # Can't turn to the opposite direction...
         game.turn(Direction.LEFT)
+        game.step()
         assert game.direction == Direction.RIGHT
 
-        # But can turn perpendicular
+        # ...but can turn perpendicular.
         game.turn(Direction.UP)
+        game.step()
         assert game.direction == Direction.UP
 
     def test_step_normal_movement(self):
@@ -201,6 +203,79 @@ class TestMovement:
 
         # Snake didn't move
         assert game.snake[0] == initial_position
+
+
+class TestTurnBuffering:
+    """Rapid key presses must never reverse the snake onto its own neck."""
+
+    def _rightward_snake(self) -> Game:
+        """A length-3 snake heading RIGHT with its body trailing to the left."""
+        game = Game(width=20, height=10)
+        game.set_snake_position([(10, 5), (9, 5), (8, 5)])
+        game.direction = Direction.RIGHT
+        game.set_food_position((0, 0))  # keep food well out of the way
+        return game
+
+    def test_perpendicular_then_reverse_does_not_kill(self):
+        """UP then LEFT in one tick (heading RIGHT) must not be a 180° reversal.
+
+        This is the reported bug: each turn is legal relative to the previous
+        *input*, but applied together they step the head back into the neck.
+        """
+        game = self._rightward_snake()
+
+        game.turn(Direction.UP)
+        game.turn(Direction.LEFT)
+        result = game.step()
+
+        # First buffered turn wins this tick; the snake goes UP, not back LEFT.
+        assert game.direction == Direction.UP
+        assert game.game_over is False
+        assert result.game_over is False
+        assert game.snake[0] == (10, 4)
+
+    def test_buffered_turns_apply_one_per_step(self):
+        """A fast L-turn is honoured: UP this step, the queued LEFT the next."""
+        game = self._rightward_snake()
+
+        game.turn(Direction.UP)
+        game.turn(Direction.LEFT)
+
+        game.step()
+        assert game.direction == Direction.UP
+
+        game.step()
+        assert game.direction == Direction.LEFT
+        assert game.game_over is False
+
+    def test_direct_reversal_is_dropped(self):
+        """A single key opposite the heading is ignored outright."""
+        game = self._rightward_snake()
+
+        game.turn(Direction.LEFT)  # straight reversal of RIGHT
+        game.step()
+
+        assert game.direction == Direction.RIGHT
+        assert game.game_over is False
+
+    def test_buffer_is_bounded(self):
+        """No more than `max_buffered_turns` turns are ever queued."""
+        game = self._rightward_snake()
+
+        # A rotating sequence where each turn is legal relative to the last.
+        game.turn(Direction.UP)
+        game.turn(Direction.LEFT)
+        game.turn(Direction.DOWN)  # would be a valid 3rd turn, but the buffer is full
+
+        assert len(game._pending_turns) == game.config.max_buffered_turns
+
+    def test_redundant_turn_is_not_queued(self):
+        """Pressing the current heading again does nothing."""
+        game = self._rightward_snake()
+
+        game.turn(Direction.RIGHT)
+
+        assert game._pending_turns == []
 
 
 class TestStepResult:
