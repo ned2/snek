@@ -22,6 +22,9 @@ Application Development framework.
 
     snek
 
+The supported minimum terminal size is **80 columns × 24 rows**. The game model remains safe if
+the terminal is made smaller, but interface elements may be clipped.
+
 ### Controls
 
 - **Arrow keys** or **WASD**: Move the snake

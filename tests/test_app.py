@@ -5,6 +5,7 @@ from textual.widgets import Label, Static
 
 from snek.app import SnakeApp
 from snek.config import GameConfig
+from snek.figlet import FigletText
 from snek.game_rules import Direction
 from snek.screens import (
     DiagnosticsModal,
@@ -47,6 +48,17 @@ def _assert_game_invariants(game) -> None:
     assert game.food not in game.snake
 
 
+def _assert_fully_in_view(widget: Static, width: int, height: int) -> None:
+    """Assert a displayed widget has non-empty geometry inside the terminal."""
+    assert widget.display
+    assert widget.region.width > 0
+    assert widget.region.height > 0
+    assert widget.region.x >= 0
+    assert widget.region.y >= 0
+    assert widget.region.right <= width
+    assert widget.region.bottom <= height
+
+
 def _death_message(app) -> str:
     """The rendered text of the game-over modal's banner line."""
     return str(app.screen.query_one(".death-message", Static).render())
@@ -71,6 +83,72 @@ async def test_app_startup():
     async with app.run_test():
         # Should show splash screen as the current screen
         assert isinstance(app.screen, SplashScreen)
+
+
+@pytest.mark.asyncio
+async def test_splash_is_fully_usable_at_80_by_24() -> None:
+    """The supported minimum shows compact branding and every essential action."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, SplashScreen)
+
+        large_title = screen.query_one("#splash-title", FigletText)
+        compact_title = screen.query_one("#splash-title-compact", FigletText)
+        start_prompt = screen.query_one("#splash-start-prompt", Static)
+        controls_prompt = screen.query_one("#splash-controls-prompt", Static)
+        version = screen.query_one("#splash-version", Static)
+
+        assert not large_title.display
+        assert compact_title.display
+        assert large_title._timer is None
+        assert compact_title._timer is None
+        for widget in (compact_title, start_prompt, controls_prompt, version):
+            _assert_fully_in_view(widget, 80, 24)
+
+        assert compact_title.region.height == len(compact_title._lines) == 5
+        assert start_prompt.region.height == controls_prompt.region.height == 1
+        assert "SPACE to start" in str(start_prompt.render())
+        assert "Q to quit" in str(controls_prompt.render())
+
+
+@pytest.mark.asyncio
+async def test_splash_retains_large_title_at_120_by_40() -> None:
+    """A roomy viewport keeps the original large-title visual hierarchy."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, SplashScreen)
+
+        large_title = screen.query_one("#splash-title", FigletText)
+        compact_title = screen.query_one("#splash-title-compact", FigletText)
+        assert large_title.display
+        assert not compact_title.display
+        _assert_fully_in_view(large_title, 120, 40)
+        _assert_fully_in_view(screen.query_one("#splash-start-prompt"), 120, 40)
+        _assert_fully_in_view(screen.query_one("#splash-controls-prompt"), 120, 40)
+        _assert_fully_in_view(screen.query_one("#splash-version"), 120, 40)
+        assert large_title.region.height == len(large_title._lines) == 25
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("animation_level", "expected"),
+    [("none", False), ("basic", False), ("full", True)],
+)
+async def test_splash_animation_respects_preference(
+    animation_level: str, expected: bool
+) -> None:
+    """Continuous splash decoration runs only at Textual's full animation level."""
+    app = SnakeApp()
+    app.animation_level = animation_level
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        title = app.screen.query_one("#splash-title", FigletText)
+        assert title._animate is expected
+        assert (title._timer is not None) is expected
 
 
 @pytest.mark.asyncio

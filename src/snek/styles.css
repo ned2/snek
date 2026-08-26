@@ -55,8 +55,26 @@ StatDisplay {
 /* Splash screen styling */
 #splash-container {
     height: auto;
-    width: auto;
+    width: 100%;
     align-horizontal: center;
+}
+
+/* Compact is the safe default. The 85x25 title needs both dimensions roomy. */
+#splash-title {
+    display: none;
+}
+
+#splash-title-compact {
+    display: block;
+    margin-bottom: 2;
+}
+
+SplashScreen.-wide.-tall #splash-title {
+    display: block;
+}
+
+SplashScreen.-wide.-tall #splash-title-compact {
+    display: none;
 }
 
 .splash-prompt {
@@ -68,8 +86,12 @@ StatDisplay {
 .version-display {
     text-align: center;
     text-style: dim;
-    margin-top: 4;
+    margin-top: 2;
     color: $accent;
+}
+
+SplashScreen.-wide.-tall .version-display {
+    margin-top: 4;
 }
 
 /* Game over modal styling */

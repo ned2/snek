@@ -31,6 +31,14 @@ _NEWLINE = Segment("\n")
 class SplashScreen(Screen):
     """Splash screen for Snek."""
 
+    # The large `doh` title is 85x25 before prompts and spacing. It is shown
+    # only when *both* roomy breakpoint classes apply; compact terminals get a
+    # 19x5 `small` title instead.
+    _ROOMY_WIDTH = 100
+    _ROOMY_HEIGHT = 40
+    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (_ROOMY_WIDTH, "-wide")]
+    VERTICAL_BREAKPOINTS = [(0, "-short"), (_ROOMY_HEIGHT, "-tall")]
+
     BINDINGS = [
         ("space", "start_game", "Start Game"),
         ("d", "start_demo", "Start Demo"),
@@ -46,21 +54,35 @@ class SplashScreen(Screen):
                 id="splash-title",
                 classes="title-text",
                 colors=["$primary", "$panel"],
-                animate=True,
+                # Continuous decoration is reserved for Textual's full
+                # animation level on a viewport where this title is visible;
+                # basic/reduced, none, and compact layouts remain stable.
+                animate=(
+                    self.app.animation_level == "full"
+                    and self.app.size.width >= self._ROOMY_WIDTH
+                    and self.app.size.height >= self._ROOMY_HEIGHT
+                ),
+            )
+            yield FigletText(
+                "SNEK",
+                font="small",
+                id="splash-title-compact",
+                classes="title-text",
+                colors=["$primary", "$panel"],
             )
             yield Static(
                 f"Press SPACE to start or D for the {self.app.demo_strategy} demo.",
+                id="splash-start-prompt",
                 classes="splash-prompt",
             )
             yield Static(
                 "Use arrow or WASD keys to move, Space to pause, Q to quit.",
+                id="splash-controls-prompt",
                 classes="splash-prompt",
             )
-            yield Static(f"v{__version__}", classes="version-display")
-
-    def on_mount(self) -> None:
-        """Fade in the splash screen on load."""
-        self.styles.animate("opacity", value=1.0, duration=1.0)
+            yield Static(
+                f"v{__version__}", id="splash-version", classes="version-display"
+            )
 
     def action_start_game(self) -> None:
         """Start a fresh game under user control."""
