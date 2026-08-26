@@ -2,9 +2,10 @@
 
 import argparse
 from dataclasses import replace
+import math
 
 from .app import SnakeApp
-from .config import default_config
+from .config import default_config, validate_dimensions
 from .demo import DEFAULT_STRATEGY, STRATEGIES
 
 # The default starting speed, expressed in the same moves-per-second units the
@@ -19,8 +20,15 @@ def _positive_speed(value: str) -> float:
         speed = float(value)
     except ValueError:
         raise argparse.ArgumentTypeError(f"{value!r} is not a number")
-    if speed <= 0:
-        raise argparse.ArgumentTypeError("speed must be greater than 0")
+    if not math.isfinite(speed) or speed <= 0:
+        raise argparse.ArgumentTypeError("speed must be finite and greater than 0")
+    max_speed = 1.0 / default_config.min_speed_interval
+    if speed > max_speed:
+        raise argparse.ArgumentTypeError(
+            f"speed must not exceed {max_speed:g} moves per second"
+        )
+    if not math.isfinite(1.0 / speed):
+        raise argparse.ArgumentTypeError("speed is too small to represent safely")
     return speed
 
 
@@ -36,14 +44,21 @@ def _positive_int(value: str) -> int:
 
 
 def _grid_dims(value: str) -> tuple[int, int]:
-    """Parse `--grid` as ``WIDTHxHEIGHT`` into a positive (width, height) tuple."""
+    """Parse `--grid`, applying model rules and the UI's layout floor."""
     parts = value.lower().split("x")
     try:
         width, height = (int(part) for part in parts)
     except ValueError:
         raise argparse.ArgumentTypeError(f"{value!r} must be WIDTHxHEIGHT, e.g. 36x20")
-    if width < 1 or height < 1:
-        raise argparse.ArgumentTypeError("grid width and height must be at least 1")
+    try:
+        validate_dimensions(width, height)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+    if width < default_config.min_game_width or height < default_config.min_game_height:
+        raise argparse.ArgumentTypeError(
+            "grid must be at least "
+            f"{default_config.min_game_width}x{default_config.min_game_height}"
+        )
     return width, height
 
 

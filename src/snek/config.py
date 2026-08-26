@@ -1,6 +1,42 @@
 """Configuration settings and defaults for the Snek game."""
 
 from dataclasses import dataclass
+import math
+
+from rich.cells import cell_len
+
+
+def _require_positive_int(name: str, value: object) -> int:
+    """Return a positive integer or raise an actionable configuration error."""
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1, got {value}")
+    return value
+
+
+def _require_positive_finite(name: str, value: object) -> float:
+    """Return a finite positive number or raise an actionable error."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"{name} must be a number, got {value!r}")
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{name} must be finite and greater than 0, got {value!r}")
+    return number
+
+
+def validate_dimensions(width: object, height: object) -> None:
+    """Validate supported model dimensions.
+
+    One-cell-wide or one-cell-high boards are valid, but a 1x1 board cannot
+    contain both the initial snake and food and is rejected before construction.
+    """
+    valid_width = _require_positive_int("width", width)
+    valid_height = _require_positive_int("height", height)
+    if valid_width * valid_height < 2:
+        raise ValueError(
+            f"board must contain at least 2 cells, got {valid_width}x{valid_height}"
+        )
 
 
 @dataclass
@@ -74,6 +110,82 @@ class GameConfig:
     # sprites.MIN_SPRITE_SCALE); otherwise fall back to the themed glyph. Set
     # False to always use the glyph.
     food_sprites: bool = True
+
+    def __post_init__(self) -> None:
+        """Reject invalid configuration at its construction boundary."""
+        if not isinstance(self.sizing_mode, str) or self.sizing_mode not in {
+            "cap",
+            "fill",
+        }:
+            raise ValueError(
+                f"sizing_mode must be 'cap' or 'fill', got {self.sizing_mode!r}"
+            )
+
+        dimensions = {
+            name: _require_positive_int(name, value)
+            for name, value in (
+                ("default_grid_width", self.default_grid_width),
+                ("default_grid_height", self.default_grid_height),
+                ("min_game_width", self.min_game_width),
+                ("min_game_height", self.min_game_height),
+                ("max_grid_width", self.max_grid_width),
+                ("max_grid_height", self.max_grid_height),
+            )
+        }
+        for label, width_name, height_name in (
+            ("default grid", "default_grid_width", "default_grid_height"),
+            ("minimum game grid", "min_game_width", "min_game_height"),
+            ("maximum game grid", "max_grid_width", "max_grid_height"),
+        ):
+            if dimensions[width_name] * dimensions[height_name] < 2:
+                raise ValueError(f"{label} must contain at least 2 cells")
+        if dimensions["max_grid_width"] < dimensions["min_game_width"]:
+            raise ValueError(
+                "max_grid_width must be greater than or equal to min_game_width"
+            )
+        if dimensions["max_grid_height"] < dimensions["min_game_height"]:
+            raise ValueError(
+                "max_grid_height must be greater than or equal to min_game_height"
+            )
+
+        _require_positive_int("cell_scale", self.cell_scale)
+        _require_positive_int("symbols_per_world", self.symbols_per_world)
+        _require_positive_int("max_buffered_turns", self.max_buffered_turns)
+        _require_positive_int("side_panel_width", self.side_panel_width)
+
+        initial_interval = _require_positive_finite(
+            "initial_speed_interval", self.initial_speed_interval
+        )
+        minimum_interval = _require_positive_finite(
+            "min_speed_interval", self.min_speed_interval
+        )
+        if initial_interval < minimum_interval:
+            raise ValueError(
+                "initial_speed_interval must be greater than or equal to "
+                "min_speed_interval"
+            )
+        speed_factor = _require_positive_finite(
+            "speed_increase_factor", self.speed_increase_factor
+        )
+        if speed_factor > 1:
+            raise ValueError("speed_increase_factor must be less than or equal to 1")
+
+        for name, glyph in (
+            ("snake_block", self.snake_block),
+            ("empty_cell", self.empty_cell),
+        ):
+            if not isinstance(glyph, str):
+                raise ValueError(f"{name} must be a string, got {glyph!r}")
+            width = cell_len(glyph)
+            if width != 2:
+                raise ValueError(
+                    f"{name} must occupy exactly 2 terminal cells, got {width}"
+                )
+
+        if not isinstance(self.food_sprites, bool):
+            raise ValueError(
+                f"food_sprites must be a boolean, got {self.food_sprites!r}"
+            )
 
 
 default_config = GameConfig()

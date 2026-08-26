@@ -25,12 +25,12 @@ class SnakeApp(App):
 
     def __init__(
         self,
-        config: GameConfig = None,
+        config: GameConfig | None = None,
         demo_strategy: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.config = config or default_config
+        self.config = default_config if config is None else config
         # Which demo strategy to construct (set by the `--demo-strategy` CLI flag);
         # the game screen reads this when entering demo mode. Falls back to default.
         self.demo_strategy = demo_strategy or DEFAULT_STRATEGY

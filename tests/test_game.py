@@ -31,6 +31,51 @@ class TestGameInitialization:
         assert game.height == 20
         assert game.snake[0] == (15, 10)  # Center position
 
+    def test_none_dimensions_fall_back_independently(self):
+        """Only `None` selects a default; an explicit peer dimension is retained."""
+        game = Game(width=None, height=12)
+        assert (game.width, game.height) == (game.config.default_grid_width, 12)
+
+    @pytest.mark.parametrize("value", [0, -1, 2.5, "10", True])
+    @pytest.mark.parametrize("field", ["width", "height"])
+    def test_invalid_dimensions_are_rejected(self, field: str, value: object) -> None:
+        """Invalid values fail at construction, not in random food placement."""
+        dimensions = {"width": 10, "height": 10, field: value}
+        with pytest.raises(ValueError, match=field):
+            Game(**dimensions)
+
+    def test_one_by_one_board_is_rejected_before_construction(self):
+        with pytest.raises(ValueError, match="board must contain at least 2 cells"):
+            Game(width=1, height=1)
+
+    def test_minimum_one_by_two_board_has_defined_win_semantics(self):
+        """The smallest supported board initializes fully and wins coherently."""
+        game = Game(width=1, height=2, rng=random.Random(0))
+        assert game.snake == [(0, 1)]
+        assert game.food == (0, 0)
+        assert isinstance(game.food_symbol, str)
+
+        game.turn(Direction.UP)
+        result = game.step()
+
+        assert result.won is True
+        assert game.won is True
+        assert game.game_over is True
+        assert len(game.snake) == 2
+
+    def test_very_large_sparse_board_is_supported(self):
+        """Dimensions are not subject to an arbitrary UI-sized upper bound."""
+        game = Game(width=10**12, height=2, rng=random.Random(0))
+        assert game.width == 10**12
+        assert 0 <= game.food[0] < game.width
+        assert 0 <= game.food[1] < game.height
+
+    def test_every_constructed_game_has_food_attributes(self):
+        """Supported dimensions always initialize the complete step contract."""
+        game = Game(width=1, height=2)
+        assert hasattr(game, "food")
+        assert hasattr(game, "food_symbol")
+
     def test_reset(self):
         """Test game reset functionality."""
         game = Game()
@@ -385,14 +430,10 @@ class TestSpeedFloor:
             game.step()
             assert game.get_moves_per_second() <= cap + 1e-9
 
-    def test_fast_start_speed_is_floored(self):
-        """A tiny initial interval (e.g. a huge `--speed`) is floored at reset."""
-        cfg = GameConfig(initial_speed_interval=0.00001)  # ~100k moves/sec requested
-        game = Game(config=cfg)
-        assert game.current_interval == cfg.min_speed_interval
-        assert game.get_moves_per_second() == pytest.approx(
-            1.0 / cfg.min_speed_interval
-        )
+    def test_fast_start_above_cap_is_rejected(self):
+        """An unsafe requested start speed fails instead of being silently changed."""
+        with pytest.raises(ValueError, match="initial_speed_interval"):
+            GameConfig(initial_speed_interval=0.00001)
 
 
 class TestWinState:
@@ -464,6 +505,22 @@ class TestPositionSetup:
             ValueError, match="width and height must be provided together"
         ):
             game.reset(width=20)
+
+    @pytest.mark.parametrize(
+        ("width", "height"),
+        [(0, 10), (10, -1), (1.5, 10), (1, 1)],
+    )
+    def test_reset_rejects_invalid_dimensions(
+        self, width: object, height: object
+    ) -> None:
+        """Fresh-grid setup uses the same boundary as direct construction."""
+        game = Game(width=10, height=10)
+        before = (game.width, game.height, list(game.snake), game.food)
+
+        with pytest.raises(ValueError):
+            game.reset(width=width, height=height)
+
+        assert (game.width, game.height, game.snake, game.food) == before
 
     def test_set_food_position_validation(self):
         """Test food position validation with bounds checking."""

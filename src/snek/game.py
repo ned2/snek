@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import random
 
-from .config import GameConfig, default_config
+from .config import GameConfig, default_config, validate_dimensions
 from .game_rules import Direction, GameRules, Position
 from .worlds import WorldPath
 
@@ -30,16 +30,19 @@ class Game:
 
     def __init__(
         self,
-        width: int = None,
-        height: int = None,
-        config: GameConfig = None,
-        rng: random.Random = None,
+        width: int | None = None,
+        height: int | None = None,
+        config: GameConfig | None = None,
+        rng: random.Random | None = None,
     ) -> None:
         """Initialize a new game with given dimensions and configuration."""
-        self.config = config or default_config
-        self.width = width or self.config.default_grid_width
-        self.height = height or self.config.default_grid_height
-        self.rng = rng or random.Random()
+        self.config = default_config if config is None else config
+        resolved_width = self.config.default_grid_width if width is None else width
+        resolved_height = self.config.default_grid_height if height is None else height
+        validate_dimensions(resolved_width, resolved_height)
+        self.width = resolved_width
+        self.height = resolved_height
+        self.rng = random.Random() if rng is None else rng
         self.world_path = WorldPath(rng=self.rng)
         self.reset()
 
@@ -53,6 +56,7 @@ class Game:
         if (width is None) != (height is None):
             raise ValueError("width and height must be provided together")
         if width is not None and height is not None:
+            validate_dimensions(width, height)
             self.width = width
             self.height = height
         mid = (self.width // 2, self.height // 2)

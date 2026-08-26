@@ -20,11 +20,16 @@ def test_parser_accepts_explicit_speed():
     assert _build_parser().parse_args(["--speed", "20"]).speed == pytest.approx(20.0)
 
 
-@pytest.mark.parametrize("value", ["0", "-5", "abc", ""])
+@pytest.mark.parametrize("value", ["0", "-5", "abc", "", "nan", "inf", "501", "1e-309"])
 def test_parser_rejects_non_positive_or_invalid_speed(value):
-    """Zero, negative, and non-numeric speeds are rejected (exit non-zero)."""
+    """Unsafe, non-finite, and non-numeric speeds are rejected."""
     with pytest.raises(SystemExit):
         _build_parser().parse_args(["--speed", value])
+
+
+def test_parser_accepts_maximum_safe_speed():
+    maximum = 1.0 / default_config.min_speed_interval
+    assert _build_parser().parse_args(["--speed", str(maximum)]).speed == maximum
 
 
 def test_main_translates_speed_into_interval(monkeypatch):
@@ -110,9 +115,17 @@ def test_parser_rejects_unknown_sizing():
 
 def test_parser_grid_parsing():
     assert _build_parser().parse_args(["--grid", "40x24"]).grid == (40, 24)
+    minimum = f"{default_config.min_game_width}x{default_config.min_game_height}"
+    assert _build_parser().parse_args(["--grid", minimum]).grid == (
+        default_config.min_game_width,
+        default_config.min_game_height,
+    )
 
 
-@pytest.mark.parametrize("value", ["40", "40x", "axb", "40x0", "-4x4", ""])
+@pytest.mark.parametrize(
+    "value",
+    ["40", "40x", "axb", "40x0", "-4x4", "", "1x1", "9x10", "10x9"],
+)
 def test_parser_rejects_bad_grid(value):
     with pytest.raises(SystemExit):
         _build_parser().parse_args(["--grid", value])

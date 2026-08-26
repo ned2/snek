@@ -37,7 +37,7 @@ def test_config():
     config.default_grid_width = 20
     config.default_grid_height = 20
     config.initial_speed_interval = 0.1
-    config.speed_increase_factor = 1.1
+    config.speed_increase_factor = 0.9
     return config
 
 
