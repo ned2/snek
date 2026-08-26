@@ -274,16 +274,15 @@ def test_hamiltonian_fallback_uses_vacating_tail():
     assert HamiltonianStrategy(game)._safe_fallback() == Direction.UP
 
 
-def test_hamiltonian_rebuilds_on_resize():
-    """Contract #3 (0005-B7): a runtime resize rebuilds the cycle for the new
-    dimensions; no stale grid state survives."""
+def test_hamiltonian_rebuilds_if_a_fresh_game_uses_a_new_grid():
+    """A strategy reused across explicit fresh-grid setup drops stale topology."""
     game = Game(width=20, height=10, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     ai.get_next_direction()
     assert ai._built_for == (20, 10)
     assert len(ai.cycle) == 200
 
-    game.resize(12, 8)  # as SnakeView.on_resize -> Game.resize does at runtime
+    game.reset(width=12, height=8)
     ai.get_next_direction()
     assert ai._built_for == (12, 8)
     assert len(ai.cycle) == 96

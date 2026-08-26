@@ -3,13 +3,17 @@
 These are deliberately framework-free (no Textual widgets, no widget state) so the
 layout maths and the board contents can be unit-tested directly. The board
 decouples two quantities — the *logical grid* (game cells, which fix difficulty)
-and the *visual scale* (characters per cell). `compute_layout` resolves both from
-the available space according to the sizing mode:
+and the *visual scale* (characters per cell). `compute_layout` resolves both for
+a fresh game's initial viewport according to the sizing mode:
 
 - "cap": fix the grid (clamped to `max_grid_*`), then take the largest scale that
   fits up to `cell_scale` — a consistent, bounded board that may be letterboxed.
 - "fill": fix the scale at `cell_scale`, then grow the grid to fill the space —
   fills the terminal, but the grid (and difficulty) vary with the window.
+
+Once play begins the logical grid is fixed. `fit_grid_scale` changes only the
+visual scale as the viewport changes, so a terminal resize can never rewrite
+snake or food coordinates.
 
 `render_board` turns a game state into Rich `Segment`s (so individual cells can
 carry their own colour — e.g. a food sprite). The food cell is supplied as a
@@ -71,6 +75,25 @@ def compute_layout(
     fit = min(avail_cols // (CELL_BASE_WIDTH * width), avail_rows // height)
     scale = max(1, min(fit, scale_setting))
     return width, height, scale
+
+
+def fit_grid_scale(
+    avail_cols: int,
+    avail_rows: int,
+    grid_width: int,
+    grid_height: int,
+    max_scale: int,
+) -> int:
+    """Return the largest scale that fits an established logical grid.
+
+    Scale never drops below one. If the viewport is smaller than the scale-one
+    board, Textual may clip the rendering, but the logical game remains intact.
+    """
+    fit = min(
+        avail_cols // (CELL_BASE_WIDTH * grid_width),
+        avail_rows // grid_height,
+    )
+    return max(1, min(fit, max(1, max_scale)))
 
 
 def glyph_food_tile(food_symbol: str, empty_cell: str, scale: int) -> FoodTile:

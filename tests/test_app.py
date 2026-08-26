@@ -24,6 +24,29 @@ def _arm_self_collision(game) -> None:
     game.set_food_position((0, 0))
 
 
+def _serpentine_cycle(width: int, height: int) -> list[tuple[int, int]]:
+    """Return a toroidal Hamiltonian cycle for an even-height test board."""
+    assert height % 2 == 0
+    return [
+        (x, y)
+        for y in range(height)
+        for x in (range(width) if y % 2 == 0 else range(width - 1, -1, -1))
+    ]
+
+
+def _assert_game_invariants(game) -> None:
+    """Assert the coordinate invariants that viewport changes must preserve."""
+    assert len(game.snake) == len(set(game.snake))
+    assert all(0 <= x < game.width and 0 <= y < game.height for x, y in game.snake)
+    for first, second in zip(game.snake, game.snake[1:]):
+        dx = min(abs(first[0] - second[0]), game.width - abs(first[0] - second[0]))
+        dy = min(abs(first[1] - second[1]), game.height - abs(first[1] - second[1]))
+        assert dx + dy == 1
+    assert 0 <= game.food[0] < game.width
+    assert 0 <= game.food[1] < game.height
+    assert game.food not in game.snake
+
+
 def _death_message(app) -> str:
     """The rendered text of the game-over modal's banner line."""
     return str(app.screen.query_one(".death-message", Static).render())
@@ -411,29 +434,70 @@ async def test_theme_changes_with_world():
 
 @pytest.mark.asyncio
 async def test_resize_handling():
-    """Test app handles terminal resize."""
+    """Repeated viewport changes preserve a live, nearly-full game exactly."""
     app = SnakeApp()
-    async with app.run_test(size=(80, 24)) as pilot:
-        # Start game
+    async with app.run_test(size=(120, 32)) as pilot:
         await pilot.press("space")
         await pilot.pause()
-
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
+        game_screen.timer.stop()
 
-        # Create a mock resize event for the snake view
-        from textual.events import Resize
+        game = app.game
+        cycle = _serpentine_cycle(game.width, game.height)
+        game.set_snake_position(cycle[:-1])
+        game.set_food_position(cycle[-1])  # exactly one free cell remains
+        game.direction = Direction.RIGHT
+        game.turn(Direction.UP)
+        game.symbols_consumed = 37
+        before = (
+            game.width,
+            game.height,
+            list(game.snake),
+            game.food,
+            list(game._pending_turns),
+            game.symbols_consumed,
+        )
+        _assert_game_invariants(game)
 
-        resize_event = Resize(100, 30, 100, 30)
+        # Shrink, grow, become too small even for scale one, then return. None of
+        # these viewport-only events may rewrite model state.
+        for size in ((80, 24), (280, 70), (30, 8), (120, 32)):
+            await pilot.resize_terminal(*size)
+            await pilot.pause()
+            assert (
+                game.width,
+                game.height,
+                game.snake,
+                game.food,
+                game._pending_turns,
+                game.symbols_consumed,
+            ) == before
+            _assert_game_invariants(game)
 
-        # Simulate resize on the snake view
-        snake_view = game_screen.query_one(SnakeView)
-        snake_view.on_resize(resize_event)
+
+@pytest.mark.asyncio
+async def test_resize_preserves_stateful_demo_strategy():
+    """A live demo keeps its strategy instance and cached topology on resize."""
+    app = SnakeApp(demo_strategy="hamiltonian")
+    async with app.run_test(size=(120, 32)) as pilot:
+        await pilot.press("d")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen.timer.stop()
+        strategy = game_screen.demo_ai
+        assert strategy is not None
+        strategy.get_next_direction()
+        built_for = strategy._built_for
+        cycle = list(strategy.cycle)
+
+        await pilot.resize_terminal(280, 70)
         await pilot.pause()
 
-        # Game dimensions should update
-        assert app.game.width > 0
-        assert app.game.height > 0
+        assert game_screen.demo_ai is strategy
+        assert strategy._built_for == built_for
+        assert strategy.cycle == cycle
 
 
 @pytest.mark.asyncio
@@ -556,7 +620,7 @@ async def test_food_sprites_can_be_disabled():
 
 @pytest.mark.asyncio
 async def test_scale_only_resize_does_not_rescale_snake():
-    """Growing the terminal (scale change, same logical grid) leaves snake intact."""
+    """Growing the terminal changes scale while leaving the fixed grid intact."""
     app = SnakeApp()
     async with app.run_test(size=(180, 50)) as pilot:
         await pilot.press("space")
@@ -566,8 +630,6 @@ async def test_scale_only_resize_does_not_rescale_snake():
         scale_before = snake_view._scale
         before = list(app.game.snake)
 
-        # Both sizes map to the capped grid, so this is a scale-only change:
-        # positions must be untouched (Game.resize, which rescales them, is skipped).
         await pilot.resize_terminal(280, 70)
         await pilot.pause()
 

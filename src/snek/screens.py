@@ -18,6 +18,7 @@ from . import sprites
 from .rendering import (
     CELL_BASE_WIDTH,
     compute_layout,
+    fit_grid_scale,
     frame_board,
     glyph_food_tile,
     render_board,
@@ -246,6 +247,19 @@ class GameScreen(Screen):
         # Update theme to initial world before refreshing view
         self.app.theme = self.app.game.world_path.get_world(0).theme_name
         self.query_one(SnakeView).refresh()
+
+    def establish_grid(self, width: int, height: int) -> None:
+        """Establish dimensions from the first layout before play begins.
+
+        `SnakeView` invokes this once in its lifetime. The model is still a
+        fresh length-one game, so resetting it at the selected dimensions loses
+        no play state. Demo strategies are recreated because some cache grid
+        topology.
+        """
+        self.app.game.reset(width=width, height=height)
+        if self.demo_ai:
+            self.demo_ai = make_demo_ai(self.app.game, self.app.demo_strategy)
+        self._sync_reactives()
 
     def start_new_game(self, demo: bool) -> None:
         """Begin a fresh game from the splash, clearing any prior end-state.
@@ -481,32 +495,35 @@ class GameOverModal(ModalScreen):
 class SnakeView(Static):
     """Renders the game as text.
 
-    The logical grid is capped (see `config.max_grid_*`); this widget chooses how
-    big to draw each cell so the bounded board fills the terminal. CSS
-    (`content-align: center middle`) centres the scaled board in the leftover
-    space.
+    The first valid layout establishes the logical grid. After that this widget
+    only changes how big each cell is drawn, so viewport changes cannot corrupt
+    model coordinates. CSS (`content-align: center middle`) centres the scaled
+    board in the leftover space.
     """
 
     # How many terminal characters draw one logical cell, per axis-unit. Updated
     # on resize; the board is drawn at this scale.
     _scale: int = 1
+    _grid_established: bool = False
 
     def on_resize(self, event: events.Resize) -> None:
-        """Re-fit the board: pick the logical grid and the visual scale.
-
-        The logical grid only changes when the terminal crosses a size threshold;
-        resizes that merely change the *scale* must not call `Game.resize`, which
-        rescales snake/food positions (and can round two cells onto one). So we
-        resize the model only when the logical size actually changes, and always
-        refresh at the new scale.
-        """
+        """Establish the logical grid once, then make every resize visual-only."""
         if self.app.game and self.size.width > 0 and self.size.height > 0:
-            grid_width, grid_height, scale = compute_layout(
-                self.size.width, self.size.height, self.app.config
-            )
-            self._scale = scale
-            if (grid_width, grid_height) != (self.app.game.width, self.app.game.height):
-                self.app.game.resize(grid_width, grid_height)
+            if not self._grid_established:
+                grid_width, grid_height, self._scale = compute_layout(
+                    self.size.width, self.size.height, self.app.config
+                )
+                self.screen.establish_grid(grid_width, grid_height)
+                self._grid_established = True
+            else:
+                game = self.app.game
+                self._scale = fit_grid_scale(
+                    self.size.width,
+                    self.size.height,
+                    game.width,
+                    game.height,
+                    self.app.config.cell_scale,
+                )
             self.refresh()
 
     def render(self) -> Segments:

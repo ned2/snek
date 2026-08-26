@@ -43,8 +43,18 @@ class Game:
         self.world_path = WorldPath(rng=self.rng)
         self.reset()
 
-    def reset(self) -> None:
-        """Reset the game to initial state with snake at center."""
+    def reset(self, *, width: int | None = None, height: int | None = None) -> None:
+        """Reset the game to its initial state, optionally on a fresh grid.
+
+        Supplying dimensions is reserved for establishing the logical grid from
+        the first valid UI layout. Once play begins, viewport resizes never call
+        into the model or alter its coordinates.
+        """
+        if (width is None) != (height is None):
+            raise ValueError("width and height must be provided together")
+        if width is not None and height is not None:
+            self.width = width
+            self.height = height
         mid = (self.width // 2, self.height // 2)
         self.snake: list[Position] = [mid]
         # `direction` is the *committed* heading — the way the last step actually
@@ -178,18 +188,6 @@ class Game:
     def get_moves_per_second(self) -> float:
         """Get current speed as moves per second."""
         return 1.0 / self.current_interval
-
-    def resize(self, new_width: int, new_height: int) -> None:
-        """Resize grid and scale snake and food positions."""
-        old_width, old_height = self.width, self.height
-        self.snake = [
-            GameRules.scale_position(pos, old_width, old_height, new_width, new_height)
-            for pos in self.snake
-        ]
-        self.food = GameRules.scale_position(
-            self.food, old_width, old_height, new_width, new_height
-        )
-        self.width, self.height = new_width, new_height
 
     @property
     def is_running(self) -> bool:

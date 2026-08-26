@@ -439,35 +439,31 @@ class TestWinState:
         assert StepResult(moved=True).won is False
 
 
-class TestResize:
-    """Test game resizing functionality."""
+class TestPositionSetup:
+    """Test fresh-grid and explicit-position setup helpers."""
 
-    def test_resize_scales_positions(self):
-        """Test snake and food positions scale with resize."""
+    def test_reset_can_establish_a_fresh_grid(self):
+        """Initial UI layout may choose dimensions before any play state exists."""
         game = Game(width=10, height=10)
-        game.snake = [(5, 5), (4, 5), (3, 5)]
-        game.food = (7, 7)
-
-        game.resize(20, 20)
-
-        # Check dimensions updated
-        assert game.width == 20
-        assert game.height == 20
-
-        # Check positions scaled
-        assert game.snake == [(10, 10), (8, 10), (6, 10)]
-        assert game.food == (14, 14)
-
-    def test_resize_maintains_game_state(self):
-        """Test resize preserves symbols consumed and current world."""
-        game = Game()
         game.symbols_consumed = 10
-        game.current_world = 3
+        game.game_over = True
 
-        game.resize(30, 30)
+        game.reset(width=20, height=12)
 
-        assert game.symbols_consumed == 10
-        assert game.current_world == 3
+        assert (game.width, game.height) == (20, 12)
+        assert game.snake == [(10, 6)]
+        assert game.food not in game.snake
+        assert game.symbols_consumed == 0
+        assert game.game_over is False
+
+    def test_reset_dimensions_must_be_supplied_together(self):
+        """A partial dimension update cannot leave the model half-reconfigured."""
+        game = Game(width=10, height=10)
+
+        with pytest.raises(
+            ValueError, match="width and height must be provided together"
+        ):
+            game.reset(width=20)
 
     def test_set_food_position_validation(self):
         """Test food position validation with bounds checking."""

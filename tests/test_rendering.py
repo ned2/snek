@@ -4,6 +4,7 @@ from snek.config import GameConfig
 from snek.rendering import (
     board_to_text,
     compute_layout,
+    fit_grid_scale,
     frame_board,
     glyph_food_tile,
     render_board,
@@ -79,6 +80,22 @@ class TestComputeLayoutFillMode:
             cfg.min_game_height,
             3,
         )
+
+
+class TestFitGridScale:
+    """An established logical grid is only visually fitted to new viewports."""
+
+    def test_grows_and_shrinks_without_changing_grid_inputs(self):
+        assert fit_grid_scale(216, 60, 36, 20, 3) == 3
+        assert fit_grid_scale(144, 40, 36, 20, 3) == 2
+        assert fit_grid_scale(72, 20, 36, 20, 3) == 1
+
+    def test_too_small_viewport_still_uses_scale_one(self):
+        """Clipping is safer than corrupting model coordinates."""
+        assert fit_grid_scale(10, 4, 36, 20, 3) == 1
+
+    def test_scale_respects_configured_ceiling(self):
+        assert fit_grid_scale(10_000, 10_000, 20, 10, 2) == 2
 
 
 class TestRenderBoard:

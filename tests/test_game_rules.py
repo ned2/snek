@@ -78,18 +78,6 @@ class TestPositionCalculation:
             5,
         )
 
-    def test_scale_position(self):
-        """Test position scaling when resizing."""
-        # Scale up
-        assert GameRules.scale_position((5, 5), 10, 10, 20, 20) == (10, 10)
-        # Scale down
-        assert GameRules.scale_position((10, 10), 20, 20, 10, 10) == (5, 5)
-        # Non-uniform scaling
-        assert GameRules.scale_position((5, 5), 10, 10, 20, 10) == (10, 5)
-        # Edge cases
-        assert GameRules.scale_position((0, 0), 10, 10, 20, 20) == (0, 0)
-        assert GameRules.scale_position((9, 9), 10, 10, 20, 20) == (18, 18)
-
 
 class TestCollisionDetection:
     """Test collision detection logic."""

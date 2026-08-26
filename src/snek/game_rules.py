@@ -55,12 +55,3 @@ class GameRules:
     def is_food_collision(head: Position, food: Position) -> bool:
         """Check if the head collides with food."""
         return head == food
-
-    @staticmethod
-    def scale_position(
-        pos: Position, old_width: int, old_height: int, new_width: int, new_height: int
-    ) -> Position:
-        """Scale a position from old dimensions to new dimensions."""
-        scaled_x = min(int(pos[0] * new_width / old_width), new_width - 1)
-        scaled_y = min(int(pos[1] * new_height / old_height), new_height - 1)
-        return (scaled_x, scaled_y)
