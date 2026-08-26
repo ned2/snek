@@ -28,6 +28,7 @@ dependencies = [
     "textual>=8.0.0",
     "pyfiglet>=1.0.4",
     "rich-pixels>=3.0.1",
+    "pillow>=12.3.0",
 ]
 
 [project.urls]
