@@ -1,9 +1,13 @@
 """Integration tests for the Snek app."""
 
+import asyncio
+
 import pytest
 from textual.containers import Vertical, VerticalScroll
+from textual.worker import WorkerCancelled
 from textual.widgets import Label, Static
 
+from snek import clipboard
 from snek.app import SnakeApp
 from snek.config import GameConfig
 from snek.figlet import FigletText
@@ -777,6 +781,7 @@ async def test_diagnostics_scrolls_and_keeps_actions_reachable_at_80_by_24(
         assert scroll.max_scroll_x == 0
 
         await pilot.press("c")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         assert app.clipboard == expected
 
@@ -854,6 +859,7 @@ async def test_diagnostics_copy_to_clipboard(monkeypatch):
         expected = app.screen._params_text()
 
         await pilot.press("c")
+        await app.workers.wait_for_complete()
         await pilot.pause()
         assert app.clipboard == expected
 
@@ -877,6 +883,7 @@ async def test_diagnostics_copy_warns_on_osc52_fallback(monkeypatch):
     async with app.run_test(size=(120, 40)) as pilot:
         calls = await _open_diagnostics_capturing_notify(app, pilot)
         await pilot.press("c")
+        await app.workers.wait_for_complete()
         await pilot.pause()
 
     assert len(calls) == 1
@@ -888,20 +895,126 @@ async def test_diagnostics_copy_warns_on_osc52_fallback(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_diagnostics_copy_confirms_system_clipboard(monkeypatch):
-    """When a local tool is used, the toast confirms it without warning."""
-    monkeypatch.setattr("snek.clipboard._system_clipboard_command", lambda: ["wl-copy"])
-    monkeypatch.setattr("snek.clipboard.subprocess.run", lambda *a, **k: None)
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "System clipboard command timed out",
+        "System clipboard command exited with status 3",
+    ],
+)
+async def test_diagnostics_copy_reports_system_failure(
+    monkeypatch: pytest.MonkeyPatch, detail: str
+) -> None:
+    """Timeout and non-zero fallback notifications retain their concise reason."""
+
+    async def copy_with_fallback(_app: object, _text: str) -> clipboard.CopyResult:
+        return clipboard.CopyResult(clipboard.METHOD_OSC52, detail)
+
+    monkeypatch.setattr(clipboard, "copy_text", copy_with_fallback)
     app = SnakeApp()
     async with app.run_test(size=(120, 40)) as pilot:
         calls = await _open_diagnostics_capturing_notify(app, pilot)
         await pilot.press("c")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert kwargs.get("severity") == "warning"
+    assert detail in args[0]
+    assert "OSC 52" in args[0]
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_copy_confirms_system_clipboard(monkeypatch):
+    """When a local tool is used, the toast confirms it without warning."""
+
+    async def copy_to_system(_app: object, _text: str) -> clipboard.CopyResult:
+        return clipboard.CopyResult(clipboard.METHOD_SYSTEM)
+
+    monkeypatch.setattr(clipboard, "copy_text", copy_to_system)
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        calls = await _open_diagnostics_capturing_notify(app, pilot)
+        await pilot.press("c")
+        await app.workers.wait_for_complete()
         await pilot.pause()
 
     assert len(calls) == 1
     args, kwargs = calls[0]
     assert kwargs.get("severity") != "warning"
     assert "system clipboard" in args[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close_mode", ["screen", "app"])
+async def test_slow_clipboard_worker_keeps_ui_responsive_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, close_mode: str
+) -> None:
+    """A hung utility does not block timers/input and is reaped when the modal closes."""
+    started = asyncio.Event()
+
+    class SlowClipboardProcess:
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.killed = False
+            self.waited = False
+
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:  # noqa: A002
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        async def wait(self) -> int:
+            self.waited = True
+            assert self.returncode is not None
+            return self.returncode
+
+    process = SlowClipboardProcess()
+
+    async def create_process(*_args: object, **_kwargs: object) -> SlowClipboardProcess:
+        return process
+
+    monkeypatch.setattr(clipboard, "_system_clipboard_command", lambda: ["wl-copy"])
+    monkeypatch.setattr(clipboard.asyncio, "create_subprocess_exec", create_process)
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, DiagnosticsModal)
+
+        await pilot.press("c")
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+
+        loop_responsive = asyncio.Event()
+        app.set_timer(0.01, loop_responsive.set)
+        await asyncio.wait_for(loop_responsive.wait(), timeout=0.5)
+
+        if close_mode == "screen":
+            # SPACE must still be processed while the five-second clipboard
+            # timeout is pending. Popping the owner cancels its worker.
+            await pilot.press("space")
+            await pilot.pause()
+            assert isinstance(app.screen, GameScreen)
+        else:
+            workers = list(app.workers)
+            assert len(workers) == 1
+            app.exit()
+            with pytest.raises(WorkerCancelled):
+                await workers[0].wait()
+        if close_mode == "screen":
+            await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert process.killed and process.waited
+        assert not list(app.workers)
 
 
 class TestWorldProgression:

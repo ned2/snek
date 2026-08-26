@@ -1,7 +1,7 @@
 """Screen implementations for the Snek game using Textual's Screen system."""
 
 from rich.segment import Segment, Segments
-from textual import events
+from textual import events, work
 from textual.app import ComposeResult
 from textual.reactive import reactive
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -430,26 +430,27 @@ class DiagnosticsModal(ModalScreen):
         ]
         return "\n".join(lines)
 
-    def action_copy(self) -> None:
+    @work(exclusive=True, exit_on_error=False)
+    async def action_copy(self) -> None:
         """Copy the diagnostics text to the system clipboard.
 
         Prefers a local clipboard utility and falls back to OSC 52 (see
         `clipboard.copy_text`), so it works even where the terminal ignores OSC
         52. The toast names the method used.
         """
-        method = clipboard.copy_text(self.app, self._params_text())
-        if method == clipboard.METHOD_OSC52:
+        result = await clipboard.copy_text(self.app, self._params_text())
+        if result.method == clipboard.METHOD_OSC52:
             # OSC 52 is often ignored (no local clipboard tool, tmux, etc.), so
             # warn rather than silently claim success.
             self.notify(
-                "Copied via terminal escape (OSC 52) — if it didn't stick, "
-                "install a clipboard tool (e.g. wl-clipboard or xclip).",
+                f"{result.detail}; copied via terminal escape (OSC 52). "
+                "The terminal may not support it.",
                 title="Clipboard",
                 severity="warning",
                 timeout=6,
             )
         else:
-            self.notify(f"Diagnostics copied to {method}", timeout=2)
+            self.notify(f"Diagnostics copied to {result.method}", timeout=2)
 
     def action_resume(self) -> None:
         """Resume the game (mirrors the pause modal)."""
