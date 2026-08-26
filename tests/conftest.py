@@ -1,7 +1,27 @@
 """Pytest configuration and fixtures."""
 
+from collections.abc import Generator
+
 import pytest
 from snek.config import GameConfig
+
+from tests.snapshot_safety import sanitized_snapshot_environment
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_sessionfinish(
+    session: pytest.Session, exitstatus: int
+) -> Generator[None, None, None]:
+    """Prevent snapshot failure reports from serializing the host environment.
+
+    pytest-textual-snapshot renders ``os.environ`` during its own session-finish
+    hook. Wrapping it with a non-reporting environment proxy keeps credentials
+    and attacker-controlled markup out of the HTML report while preserving the
+    plugin's operational lookups. The original environment is restored after
+    all session-finish hooks have completed.
+    """
+    with sanitized_snapshot_environment():
+        yield
 
 
 @pytest.fixture

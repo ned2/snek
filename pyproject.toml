@@ -41,6 +41,7 @@ snek-tui = "snek.cli:main"
 
 [dependency-groups]
 dev = [
+    "hatchling>=1.26",
     "pytest>=7.0.0",
     "pytest-asyncio>=1.1.0",
     "ruff>=0.12.9",
@@ -56,6 +57,42 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/snek"]
+exclude = [
+    ".coverage",
+    ".coverage.*",
+    ".env",
+    ".env.*",
+    ".envrc",
+    ".pytest_cache",
+    "*.cover",
+    "*.py.cover",
+    "cover",
+    "coverage.json",
+    "coverage.lcov",
+    "coverage.xml",
+    "htmlcov",
+    "nosetests.xml",
+    "snapshot_report*.html",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".coverage",
+    ".coverage.*",
+    ".env",
+    ".env.*",
+    ".envrc",
+    ".pytest_cache",
+    "*.cover",
+    "*.py.cover",
+    "cover",
+    "coverage.json",
+    "coverage.lcov",
+    "coverage.xml",
+    "htmlcov",
+    "nosetests.xml",
+    "snapshot_report*.html",
+]
 
 [tool.coverage.run]
 source = ["src"]

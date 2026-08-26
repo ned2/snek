@@ -41,6 +41,8 @@ pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
+snapshot_report.html
+snapshot_report*.html
 .tox/
 .nox/
 .coverage
@@ -48,6 +50,8 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
+coverage.json
+coverage.lcov
 *.cover
 *.py.cover
 .hypothesis/
@@ -139,6 +143,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
 .envrc
 .venv
 env/
