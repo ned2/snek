@@ -8,6 +8,22 @@ from snek.config import GameConfig
 from tests.snapshot_safety import sanitized_snapshot_environment
 
 
+@pytest.fixture
+def deterministic_snapshot_render_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Give visual snapshots a canonical color-capable terminal environment.
+
+    Textual reads these variables when each ``App`` is constructed. Keeping the
+    fixture opt-in lets ordinary tests continue to exercise ambient and explicit
+    monochrome behavior while checked-in SVG baselines remain host-independent.
+    """
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setenv("COLORTERM", "truecolor")
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_sessionfinish(
     session: pytest.Session, exitstatus: int

@@ -6,8 +6,13 @@ the Textual 6.0.0 change that stopped applying background styles to widget
 with `uv run pytest --snapshot-update` after an intentional visual change.
 """
 
+import pytest
+
 from snek.app import SnakeApp
 from snek.screens import SnakeView
+
+
+pytestmark = pytest.mark.usefixtures("deterministic_snapshot_render_environment")
 
 
 def test_game_screen_snapshot(snap_compare):
