@@ -32,8 +32,9 @@ class FigletText(Static):
         colors: Color strings and/or Textual theme tokens (``"$primary"``). ``None``/empty
             inherits the widget color; one entry fills solid; two or more interpolate as a
             vertical gradient across the glyph rows.
-        animate: When ``True`` and ``colors`` has two or more entries, scroll the gradient
-            vertically. Ignored otherwise.
+        animate: Request vertical gradient scrolling when ``colors`` has two or more
+            entries. Continuous motion runs only at Textual's ``full`` animation level;
+            ``basic`` (reduced motion) and ``none`` render the same gradient statically.
     """
 
     # Size to the fixed-width art (`width: auto`). Call sites must not force a width
@@ -53,7 +54,12 @@ class FigletText(Static):
     ) -> None:
         super().__init__("", name=name, id=id, classes=classes)
         self._colors = colors or []
-        self._animate = animate and len(self._colors) >= 2
+        self._animation_requested = animate and len(self._colors) >= 2
+        # Continuous decorative motion is reserved for Textual's full level.
+        # `basic` (reduced motion) and `none` both retain the static gradient.
+        self._animate = False
+        self._animation_visible = True
+        self._animation_running = False
         self._offset = 0.0
         self._timer: Timer | None = None
         # Text and font are fixed for this app's call sites, so render the art once.
@@ -63,14 +69,50 @@ class FigletText(Static):
 
     def on_mount(self) -> None:
         """Build the colored renderable and start the animation if enabled."""
-        self._rebuild()
-        if self._animate:
-            self._timer = self.set_interval(1 / _ANIMATION_FPS, self._tick)
+        # The first content update establishes the widget's auto-sized geometry.
+        self._rebuild(layout=True)
+        self.resume_animation()
 
     def on_unmount(self) -> None:
         """Stop the animation timer if one is running."""
         if self._timer is not None:
             self._timer.stop()
+            self._timer = None
+        self._animation_running = False
+
+    def on_hide(self) -> None:
+        """Pause decorative work while the widget is not being rendered."""
+        self._animation_visible = False
+        self.pause_animation()
+
+    def on_show(self) -> None:
+        """Resume decorative work when an eligible widget becomes visible."""
+        self._animation_visible = True
+        self.resume_animation()
+
+    def pause_animation(self) -> None:
+        """Pause the existing animation timer without discarding its phase."""
+        if self._timer is not None:
+            self._timer.pause()
+        self._animation_running = False
+
+    def resume_animation(self) -> None:
+        """Run one timer when preference, visibility, and screen state allow it."""
+        self._animate = self._animation_requested and self.app.animation_level == "full"
+        if not (
+            self._animate
+            and self._animation_visible
+            and self.display
+            and self.screen is self.app.screen
+        ):
+            self.pause_animation()
+            return
+
+        if self._timer is None:
+            self._timer = self.set_interval(1 / _ANIMATION_FPS, self._tick)
+        else:
+            self._timer.resume()
+        self._animation_running = True
 
     def notify_style_update(self) -> None:
         """Re-resolve theme tokens when the stylesheet or app theme changes.
@@ -81,12 +123,12 @@ class FigletText(Static):
         so persistent titles depend on this. The animation timer is unaffected.
         """
         super().notify_style_update()
-        self._rebuild()
+        self._rebuild(layout=False)
 
     def _tick(self) -> None:
         """Advance the gradient scroll by one frame."""
         self._offset = (self._offset + _ANIMATION_STEP) % 1.0
-        self._rebuild()
+        self._rebuild(layout=False)
 
     def _resolve_colors(self) -> list[Color]:
         """Resolve color strings / theme tokens to `Color` objects."""
@@ -97,8 +139,8 @@ class FigletText(Static):
             resolved.append(Color.parse(color))
         return resolved
 
-    def _rebuild(self) -> None:
-        """Render the figlet lines into a styled `Text` and update the widget."""
+    def _rebuild(self, *, layout: bool = False) -> None:
+        """Render styled figlet lines, optionally invalidating auto-size layout."""
         colors = self._resolve_colors()
         rendered = Text()
         gradient = self._build_gradient(colors)
@@ -108,7 +150,7 @@ class FigletText(Static):
             rendered.append(line, style=style)
             if index < line_count - 1:
                 rendered.append("\n")
-        self.update(rendered)
+        self.update(rendered, layout=layout)
 
     @staticmethod
     def _build_gradient(colors: list[Color]) -> Gradient | None:

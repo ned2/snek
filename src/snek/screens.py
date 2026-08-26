@@ -54,14 +54,9 @@ class SplashScreen(Screen):
                 id="splash-title",
                 classes="title-text",
                 colors=["$primary", "$panel"],
-                # Continuous decoration is reserved for Textual's full
-                # animation level on a viewport where this title is visible;
-                # basic/reduced, none, and compact layouts remain stable.
-                animate=(
-                    self.app.animation_level == "full"
-                    and self.app.size.width >= self._ROOMY_WIDTH
-                    and self.app.size.height >= self._ROOMY_HEIGHT
-                ),
+                # FigletText owns preference, visibility, and timer lifecycle;
+                # the CSS breakpoints decide whether this large title is shown.
+                animate=True,
             )
             yield FigletText(
                 "SNEK",
@@ -83,6 +78,16 @@ class SplashScreen(Screen):
             yield Static(
                 f"v{__version__}", id="splash-version", classes="version-display"
             )
+
+    def on_screen_suspend(self) -> None:
+        """Pause title work while another screen covers the splash."""
+        for title in self.query(FigletText):
+            title.pause_animation()
+
+    def on_screen_resume(self) -> None:
+        """Resume eligible visible titles without creating another timer."""
+        for title in self.query(FigletText):
+            title.resume_animation()
 
     def action_start_game(self) -> None:
         """Start a fresh game under user control."""

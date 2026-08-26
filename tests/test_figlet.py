@@ -6,7 +6,9 @@ pyfiglet's default-width wrapping, the gradient endpoints, and the scroll seam.
 
 import pytest
 from pyfiglet import figlet_format
+from textual import constants
 from textual.color import Color
+from textual.screen import Screen
 
 from snek.app import SnakeApp
 from snek.figlet import FigletText
@@ -94,6 +96,43 @@ def test_scroll_has_no_seam() -> None:
         assert max_adjacent_delta() < 40
 
 
+def test_animation_frame_does_not_invalidate_layout(monkeypatch) -> None:
+    """A color-only frame refresh must retain the fixed figlet geometry."""
+    widget = FigletText(
+        "SNEK", font="small", colors=["#00ff00", "#2a2a2a"], animate=True
+    )
+    layout_flags: list[bool] = []
+    monkeypatch.setattr(
+        widget,
+        "update",
+        lambda _content, *, layout=True: layout_flags.append(layout),
+    )
+
+    widget._tick()
+
+    assert layout_flags == [False]
+
+
+@pytest.mark.asyncio
+async def test_textual_animations_none_default_keeps_title_stable(monkeypatch) -> None:
+    """The environment-derived Textual default disables the requested decoration."""
+    # Textual reads TEXTUAL_ANIMATIONS into this constant at module import; patch
+    # that parsed value before App.__init__ copies it to app.animation_level.
+    monkeypatch.setenv("TEXTUAL_ANIMATIONS", "none")
+    monkeypatch.setattr(constants, "TEXTUAL_ANIMATIONS", "none")
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        title = app.screen.query_one("#splash-title", FigletText)
+
+        assert app.animation_level == "none"
+        assert title._animation_requested
+        assert not title._animate
+        assert not title._animation_running
+        assert title._timer is None
+        assert title._offset == 0.0
+
+
 @pytest.mark.asyncio
 async def test_theme_token_resolution_and_live_recolor() -> None:
     """`$primary` resolves to the active theme and follows when the theme changes."""
@@ -111,6 +150,64 @@ async def test_theme_token_resolution_and_live_recolor() -> None:
         ocean_primary = Color.parse(app.theme_variables["primary"])
         assert title._resolve_colors()[0].rgb == ocean_primary.rgb
         assert ocean_primary.rgb != classic_primary.rgb
+
+
+@pytest.mark.asyncio
+async def test_animation_pauses_while_splash_is_covered_and_reuses_timer() -> None:
+    """Screen suspension pauses work and every return resumes the same timer."""
+    app = SnakeApp()
+    app.animation_level = "full"
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        title = app.screen.query_one("#splash-title", FigletText)
+        timer = title._timer
+        assert timer is not None
+        assert title._animation_running
+
+        for _ in range(2):
+            cover = Screen()
+            app.push_screen(cover)
+            await pilot.pause()
+            assert app.screen is cover
+            assert not title._animation_running
+            assert title._timer is timer
+
+            app.pop_screen()
+            await pilot.pause()
+            assert title._animation_running
+            assert title._timer is timer
+
+        # Theme rebuilds also leave timer ownership unchanged.
+        app.theme = "snek-ocean"
+        await pilot.pause()
+        assert title._animation_running
+        assert title._timer is timer
+
+
+@pytest.mark.asyncio
+async def test_animation_pauses_when_breakpoint_hides_title() -> None:
+    """Responsive display changes stop hidden work and resume the same timer."""
+    app = SnakeApp()
+    app.animation_level = "full"
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        title = app.screen.query_one("#splash-title", FigletText)
+        timer = title._timer
+        assert timer is not None
+        assert title.display
+        assert title._animation_running
+
+        await pilot.resize_terminal(80, 24)
+        await pilot.pause()
+        assert not title.display
+        assert not title._animation_running
+        assert title._timer is timer
+
+        await pilot.resize_terminal(120, 40)
+        await pilot.pause()
+        assert title.display
+        assert title._animation_running
+        assert title._timer is timer
 
 
 def _baked_color(widget: FigletText) -> Color:
