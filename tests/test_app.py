@@ -1,6 +1,7 @@
 """Integration tests for the Snek app."""
 
 import pytest
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Label, Static
 
 from snek.app import SnakeApp
@@ -737,6 +738,86 @@ async def test_diagnostics_opens_and_pauses_and_resumes():
         await pilot.pause()
         assert isinstance(app.screen, GameScreen)
         assert app.game.paused is False
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_scrolls_and_keeps_actions_reachable_at_80_by_24(
+    monkeypatch,
+):
+    """The supported minimum can reach every row, copy, and close by keyboard."""
+    monkeypatch.setattr("snek.clipboard._system_clipboard_command", lambda: None)
+    app = SnakeApp(demo_strategy=f"strategy-{'x' * 160}")
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+
+        modal = app.screen
+        assert isinstance(modal, DiagnosticsModal)
+        container = modal.query_one("#diagnostics-container", Vertical)
+        title = modal.query_one("#diagnostics-title", FigletText)
+        prompt = modal.query_one("#diagnostics-prompt", Static)
+        scroll = modal.query_one("#diagnostics-scroll", VerticalScroll)
+        params = modal.query_one("#diagnostics-params", Static)
+        expected = modal._params_text()
+
+        assert container.region.width <= 72
+        assert container.region.height < 24
+        for widget in (title, prompt, scroll):
+            _assert_fully_in_view(widget, 80, 24)
+        assert "C copy" in str(prompt.render())
+        assert "SPACE close" in str(prompt.render())
+        assert modal.focused is scroll
+        assert scroll.max_scroll_y > 0
+
+        # The deliberately long strategy value wraps onto extra display lines
+        # instead of widening the body beyond its hidden horizontal overflow.
+        assert params.virtual_size.height > len(expected.splitlines())
+        assert scroll.max_scroll_x == 0
+
+        await pilot.press("c")
+        await pilot.pause()
+        assert app.clipboard == expected
+
+        await pilot.press("pagedown")
+        await pilot.pause()
+        assert scroll.scroll_y > 0
+        await pilot.press("end")
+        await pilot.pause()
+        assert scroll.scroll_y == scroll.max_scroll_y
+
+        # Dismissal remains bound at the modal after its child has focus and
+        # has consumed its own navigation bindings.
+        await pilot.press("space")
+        await pilot.pause()
+        assert isinstance(app.screen, GameScreen)
+        assert app.game.paused is False
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_body_fits_without_scrolling_in_roomy_terminal():
+    """The capped modal presents the complete standard snapshot when space allows."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 50)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+
+        modal = app.screen
+        assert isinstance(modal, DiagnosticsModal)
+        container = modal.query_one("#diagnostics-container", Vertical)
+        prompt = modal.query_one("#diagnostics-prompt", Static)
+        scroll = modal.query_one("#diagnostics-scroll", VerticalScroll)
+        params = modal.query_one("#diagnostics-params", Static)
+
+        assert container.region.width <= 72
+        assert container.region.height <= 46
+        _assert_fully_in_view(prompt, 120, 50)
+        _assert_fully_in_view(scroll, 120, 50)
+        assert scroll.max_scroll_y == 0
+        assert params.region.bottom <= scroll.content_region.bottom
 
 
 @pytest.mark.asyncio

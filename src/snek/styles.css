@@ -146,19 +146,36 @@ SplashScreen.-wide.-tall .version-display {
 
 /* Diagnostics modal styling */
 #diagnostics-container {
-    align: center middle;
-    width: auto;
-    height: auto;
+    width: 92%;
+    max-width: 72;
+    height: 92%;
+    max-height: 46;
+    align-horizontal: center;
+}
+
+#diagnostics-title {
+    margin-bottom: 1;
 }
 
 #diagnostics-prompt {
+    width: 100%;
+    height: auto;
     text-align: center;
     text-style: bold dim;
-    margin-bottom: 2;
+    margin-bottom: 1;
+}
+
+#diagnostics-scroll {
+    width: 100%;
+    height: 1fr;
+    overflow-x: hidden;
+    scrollbar-size-vertical: 1;
 }
 
 #diagnostics-params {
-    width: auto;
+    width: 100%;
+    height: auto;
     text-align: left;
+    text-wrap: wrap;
     text-style: dim;
 }

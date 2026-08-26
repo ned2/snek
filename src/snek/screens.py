@@ -4,7 +4,7 @@ from rich.segment import Segment, Segments
 from textual import events
 from textual.app import ComposeResult
 from textual.reactive import reactive
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Label, Static
@@ -359,7 +359,7 @@ class DiagnosticsModal(ModalScreen):
     ]
 
     def compose(self) -> ComposeResult:
-        """Compose the diagnostics screen: figlet title, prompt, and key/vals."""
+        """Compose fixed actions around a vertically scrollable diagnostics body."""
         with Vertical(id="diagnostics-container"):
             yield FigletText(
                 "DIAGNOSTICS",
@@ -368,8 +368,9 @@ class DiagnosticsModal(ModalScreen):
                 colors=["$primary"],
                 classes="title-text",
             )
-            yield Static("Press C to copy · SPACE to continue", id="diagnostics-prompt")
-            yield Static(self._params_text(), id="diagnostics-params")
+            yield Static("C copy · SPACE close · ↑/↓ scroll", id="diagnostics-prompt")
+            with VerticalScroll(id="diagnostics-scroll", can_focus=True):
+                yield Static(self._params_text(), id="diagnostics-params")
 
     def _params_text(self) -> str:
         """Build the aligned key/value snapshot of config and live game state."""
