@@ -80,21 +80,27 @@ class Game:
         self.place_food()
 
     def place_food(self) -> None:
-        """Place food at a random empty position on the grid."""
-        # Defensive guard: a full board has no empty cell, so the search below
-        # would spin forever. `step()` ends the game as a win before ever calling
-        # this on a full board (see below); this is belt-and-suspenders so the
-        # method can never hang even if mis-called.
-        if len(self.snake) >= self.width * self.height:
+        """Place food uniformly on an empty cell with bounded work.
+
+        Draw one rank among the free cells, then map it to a row-major board
+        index by skipping occupied indices. Work is bounded by the snake length,
+        rather than board area or the luck of repeated coordinate sampling.
+        """
+        occupied = {y * self.width + x for x, y in self.snake}
+        free_cell_count = self.width * self.height - len(occupied)
+        # `step()` declares a win before requesting food on a valid full board.
+        # Keep this defensive no-op so a direct/mistaken call can never hang.
+        if free_cell_count <= 0:
             return
-        while True:
-            pos = (self.rng.randrange(self.width), self.rng.randrange(self.height))
-            if pos not in self.snake:
-                self.food = pos
-                self.food_symbol = self.world_path.get_food_character(
-                    self.current_world
-                )
-                return
+
+        position_index = self.rng.randrange(free_cell_count)
+        for occupied_index in sorted(occupied):
+            if occupied_index > position_index:
+                break
+            position_index += 1
+
+        self.food = (position_index % self.width, position_index // self.width)
+        self.food_symbol = self.world_path.get_food_character(self.current_world)
 
     def turn(self, new_direction: Direction) -> None:
         """Queue a direction change to be applied on an upcoming step.

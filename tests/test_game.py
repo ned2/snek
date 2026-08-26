@@ -9,6 +9,20 @@ from snek.game import Game, StepResult
 from snek.game_rules import Direction
 
 
+class _FixedRankRng:
+    """Minimal position RNG that records and returns one requested free rank."""
+
+    def __init__(self, rank: int) -> None:
+        self.rank = rank
+        self.calls: list[int] = []
+
+    def randrange(self, stop: int) -> int:
+        self.calls.append(stop)
+        if not 0 <= self.rank < stop:
+            raise AssertionError(f"rank {self.rank} outside range(0, {stop})")
+        return self.rank
+
+
 class TestGameInitialization:
     """Test game initialization and reset."""
 
@@ -121,9 +135,61 @@ class TestFoodPlacement:
         assert game.food not in game.snake
         assert game.food[1] == 4  # Only row 4 is free
 
+    @pytest.mark.parametrize(
+        ("rank", "expected"),
+        [(0, (1, 0)), (1, (0, 1)), (2, (1, 1)), (3, (3, 1))],
+    )
+    def test_free_rank_maps_past_occupied_cells(
+        self, rank: int, expected: tuple[int, int]
+    ) -> None:
+        """A sampled free rank maps deterministically in row-major order."""
+        game = Game(width=4, height=2, rng=random.Random(0))
+        game.set_snake_position([(0, 0), (2, 0), (3, 0), (2, 1)])
+        rank_rng = _FixedRankRng(rank)
+        game.rng = rank_rng
+
+        game.place_food()
+
+        assert game.food == expected
+        assert rank_rng.calls == [4]
+
+    def test_large_nearly_full_board_uses_one_position_draw(self) -> None:
+        """Structural performance guard: no retry loop or whole-board scan.
+
+        A call-count budget is deterministic where a wall-clock assertion would
+        be flaky. The only free cell is the last of a 200x50 board.
+        """
+        width, height = 200, 50
+        free = (width - 1, height - 1)
+        game = Game(width=width, height=height, rng=random.Random(0))
+        game.set_snake_position(
+            [(x, y) for y in range(height) for x in range(width) if (x, y) != free]
+        )
+        rank_rng = _FixedRankRng(0)
+        game.rng = rank_rng
+
+        game.place_food()
+
+        assert game.food == free
+        assert rank_rng.calls == [1]
+
+    def test_repeated_placement_is_in_bounds_and_off_snake(self) -> None:
+        game = Game(width=17, height=11, rng=random.Random(1234))
+        game.set_snake_position([(x, 5) for x in range(14)])
+
+        for _ in range(500):
+            game.place_food()
+            assert 0 <= game.food[0] < game.width
+            assert 0 <= game.food[1] < game.height
+            assert game.food not in game.snake
+
 
 class TestDeterminism:
-    """Test that a seeded game is fully reproducible in position and symbol."""
+    """Seeded position+symbol streams are reproducible for equal state histories.
+
+    Exact coordinates are not a compatibility promise: bounded free-rank food
+    placement intentionally changed the legacy rejection-sampling sequence.
+    """
 
     def _food_sequence(
         self, seed: int, steps: int
@@ -468,10 +534,13 @@ class TestWinState:
         game = Game(width=3, height=2, rng=random.Random(0))
         game.snake = [(x, y) for y in range(2) for x in range(3)]  # every cell
         game.set_food_position((0, 0))
+        rank_rng = _FixedRankRng(0)
+        game.rng = rank_rng
 
         game.place_food()  # must return immediately, not hang
 
         assert game.food == (0, 0)  # untouched — the guard short-circuited
+        assert rank_rng.calls == []
 
     def test_won_defaults_false(self):
         """A fresh game and a plain StepResult are not in a won state."""
