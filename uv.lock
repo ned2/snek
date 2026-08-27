@@ -1414,7 +1414,7 @@ dev = [
 requires-dist = [
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pyfiglet", specifier = ">=1.0.4" },
-    { name = "rich-pixels", specifier = ">=3.0.1" },
+    { name = "rich-pixels", specifier = ">=3.0.1,<4" },
     { name = "textual", specifier = ">=8.0.0" },
 ]
 

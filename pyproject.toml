@@ -27,7 +27,7 @@ classifiers = [
 dependencies = [
     "textual>=8.0.0",
     "pyfiglet>=1.0.4",
-    "rich-pixels>=3.0.1",
+    "rich-pixels>=3.0.1,<4",
     "pillow>=12.3.0",
 ]
 

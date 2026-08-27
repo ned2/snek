@@ -15,7 +15,7 @@ themed glyph.
 """
 
 from PIL import Image
-from rich.segment import Segment
+from rich.console import Console
 from rich_pixels import Pixels
 
 from .rendering import FoodTile
@@ -91,4 +91,4 @@ def _build_tile(sprite: Sprite, scale: int) -> FoodTile:
     """Render a sprite to a food tile sized for `scale` (a 2k x 2k px image)."""
     side = 2 * scale
     pixels = Pixels.from_image(sprite.image(), resize=(side, side))
-    return [list(line) for line in Segment.split_lines(pixels._segments.segments)]
+    return Console(width=side).render_lines(pixels, pad=False)
