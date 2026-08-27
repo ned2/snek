@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import math
+from typing import Final
 
 from rich.cells import cell_len
 
@@ -39,9 +40,13 @@ def validate_dimensions(width: object, height: object) -> None:
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class GameConfig:
-    """Configuration settings for the Snake game."""
+    """Immutable configuration value for the Snake game.
+
+    Instances may be shared safely. Use `dataclasses.replace` to derive a
+    validated configuration with overrides rather than mutating an instance.
+    """
 
     # Grid dimensions
     default_grid_width: int = 20
@@ -188,4 +193,4 @@ class GameConfig:
             )
 
 
-default_config = GameConfig()
+default_config: Final = GameConfig()

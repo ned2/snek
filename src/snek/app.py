@@ -30,7 +30,8 @@ class SnakeApp(App):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.config = default_config if config is None else config
+        # GameConfig is immutable, so the app and model safely share one value.
+        self.config: GameConfig = default_config if config is None else config
         # Which demo strategy to construct (set by the `--demo-strategy` CLI flag);
         # the game screen reads this when entering demo mode. Falls back to default.
         self.demo_strategy = demo_strategy or DEFAULT_STRATEGY

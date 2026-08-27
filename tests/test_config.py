@@ -1,10 +1,24 @@
 """Tests for the explicit `GameConfig` validation boundary."""
 
+from dataclasses import FrozenInstanceError, replace
 import math
 
 import pytest
 
 from snek.config import GameConfig
+
+
+def test_config_is_an_immutable_value_object() -> None:
+    """Overrides create a new validated value and cannot alter the source."""
+    config = GameConfig()
+    original_scale = config.cell_scale
+
+    with pytest.raises(FrozenInstanceError):
+        setattr(config, "cell_scale", original_scale + 1)
+
+    overridden = replace(config, cell_scale=original_scale + 1)
+    assert overridden.cell_scale == original_scale + 1
+    assert config.cell_scale == original_scale
 
 
 @pytest.mark.parametrize(

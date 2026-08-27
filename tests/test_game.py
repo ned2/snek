@@ -1,5 +1,6 @@
 """Unit tests for the Game class."""
 
+from dataclasses import replace
 import random
 
 import pytest
@@ -37,6 +38,30 @@ class TestGameInitialization:
         assert game.symbols_consumed == 0
         assert game.game_over is False
         assert game.paused is False
+
+    def test_replacing_one_default_config_is_isolated(self) -> None:
+        """Games may share the immutable default without sharing later overrides."""
+        first = Game()
+        second = Game()
+        shared_default = second.config
+        original_scale = shared_default.cell_scale
+
+        assert first.config is shared_default
+        first.config = replace(first.config, cell_scale=original_scale + 1)
+
+        assert first.config.cell_scale == original_scale + 1
+        assert second.config is shared_default
+        assert second.config.cell_scale == original_scale
+
+    def test_explicit_config_is_retained_as_a_shareable_value(self) -> None:
+        """Callers may intentionally reuse one immutable config value."""
+        config = GameConfig(cell_scale=2)
+
+        first = Game(config=config)
+        second = Game(config=config)
+
+        assert first.config is config
+        assert second.config is config
 
     def test_custom_dimensions(self):
         """Test game with custom dimensions."""

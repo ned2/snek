@@ -35,8 +35,13 @@ class Game:
         config: GameConfig | None = None,
         rng: random.Random | None = None,
     ) -> None:
-        """Initialize a new game with given dimensions and configuration."""
-        self.config = default_config if config is None else config
+        """Initialize a game with an immutable, safely shareable configuration.
+
+        An explicitly supplied `GameConfig` is retained as-is. Omitting it uses
+        the immutable module default; callers derive variants with
+        `dataclasses.replace` rather than mutating either value.
+        """
+        self.config: GameConfig = default_config if config is None else config
         resolved_width = self.config.default_grid_width if width is None else width
         resolved_height = self.config.default_grid_height if height is None else height
         validate_dimensions(resolved_width, resolved_height)
