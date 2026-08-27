@@ -1,10 +1,10 @@
 """Pluggable demo-mode AI strategies.
 
 A small registry of interchangeable `DemoStrategy` implementations, each a
-behaviourally-distinct way to drive the snake in demo mode. Selection is
-*implemented* (the `STRATEGIES` registry + a single `DEFAULT_STRATEGY` constant)
-but not yet exposed to the user — the game always constructs the default via
-`make_demo_ai`. Empirical backing for the shortlist lives in
+behaviourally-distinct way to drive the snake in demo mode. The
+`--demo-strategy` CLI option selects a `STRATEGIES` registry entry and carries
+that name through `SnakeApp` to `make_demo_ai`; omitting it uses
+`DEFAULT_STRATEGY`. Empirical backing for the shortlist lives in
 `issues/0004-demo-ai-skill/results.md`.
 """
 
@@ -26,11 +26,7 @@ DEFAULT_STRATEGY = "floodfill"
 
 
 def make_demo_ai(game: Game, name: str | None = None) -> DemoStrategy:
-    """Construct the active (or named) demo strategy.
-
-    The eventual user-facing selector will pass `name`; today everything uses
-    `DEFAULT_STRATEGY`.
-    """
+    """Construct the CLI-selected strategy, or the default when unnamed."""
     return STRATEGIES[name or DEFAULT_STRATEGY](game)
 
 

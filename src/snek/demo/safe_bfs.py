@@ -1,7 +1,7 @@
 """Cautious survivor — shortest path to food gated by a tail-reachability check.
 
-Stateless each tick (holding NO cross-tick state, so it is immune to resize /
-stale-path bugs by construction):
+Stateless each tick (holding no cross-tick topology, so it cannot retain a stale
+path if model dimensions are freshly established):
 
 1. BFS the torus from head to food over the cells the body will NOT occupy,
    modelling the tail as free (it vacates on a non-growing step).

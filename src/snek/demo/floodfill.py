@@ -9,7 +9,7 @@ and varied (it occasionally traps itself, ~22% mortal on 20x10), which makes the
 liveliest attract-loop demo — hence the active default.
 
 Contract compliance: every neighbour goes through the shared toroidal helper
-(resize-safe, no cached state); the obstacle set models the vacating tail; only
+(live-grid safe, no cached state); the obstacle set models the vacating tail; only
 non-reversing turns are considered and exactly one `Direction` is returned; when
 every legal move is immediately fatal it still returns a legal move (dies
 deterministically) rather than `None`.

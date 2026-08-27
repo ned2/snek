@@ -21,9 +21,10 @@ class DemoStrategy(ABC):
        is blocked, model the tail as *free* on a non-growing step — the engine
        checks collision against `snake[:-1]` unless the move eats. Use the shared
        helpers (`_helpers.blocked_cells`) so this is uniform.
-    3. **Resize-tolerant** (kills 0005/B7): hold no grid-coordinate state that
-       survives a `Game.resize`; rebuild any precomputed structure (e.g. a
-       Hamiltonian cycle) when `(game.width, game.height)` changes.
+    3. **Grid-aware** (kills 0005/B7): hold no stale grid-coordinate state when
+       model dimensions change; rebuild any precomputed structure (e.g. a
+       Hamiltonian cycle) when `(game.width, game.height)` changes. Normal
+       viewport resizes are visual-only and do not alter these dimensions.
     4. **Deterministic**: a pure function of game state (no RNG), so benchmarks
        are reproducible. Tie-break in a fixed order (the `Direction` enum order),
        never set-iteration order.

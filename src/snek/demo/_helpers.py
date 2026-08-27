@@ -1,7 +1,7 @@
 """Shared, model-correct helpers for demo strategies.
 
 Every strategy routes its board math through here so the four contract
-properties (legality, tail-vacate, resize-tolerance, determinism) are honoured
+properties (legality, tail-vacate, grid-awareness, determinism) are honoured
 uniformly: movement goes through `GameRules` so toroidal wrap matches the engine
 exactly, and `blocked_cells` models the receding tail per `Game.step`'s
 `snake[:-1]` collision rule.

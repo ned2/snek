@@ -6,7 +6,7 @@ Application Development framework.
 
 ## Dependencies
 
-* Python 3.10+ (tested on Python 3.10, 3.11, 3.12, 3.13, 3.14)
+* Python 3.10–3.14
 
 ## Installation
 
@@ -43,6 +43,11 @@ downloads the pinned hook environments, so those operations require network acce
 
     snek
 
+Run `snek --help` for speed and board-layout options. Demo strategy choices are `floodfill` (the
+default), `greedy`, `safe-bfs`, and `hamiltonian`. Select one before pressing D with, for example:
+
+    snek --demo-strategy hamiltonian
+
 The supported minimum terminal size is **80 columns × 24 rows**. The game model remains safe if
 the terminal is made smaller, but interface elements may be clipped.
 
@@ -52,4 +57,5 @@ the terminal is made smaller, but interface elements may be clipped.
 - **Space**: Start game / Pause/unpause the game / Restart after game over
 - **D** (on the splash screen): Watch the snek play itself in demo mode
 - **Enter**: Toggle sidebar visibility
+- **?**: Open scrollable live diagnostics; press **C** there to copy them
 - **Q**: Quit the game

@@ -22,8 +22,10 @@ consecutive edges are validated against ``GameRules.calculate_new_position`` (th
 same modulo-wrap the engine moves with), so wrap-adjacency is honoured. Odd x odd
 grids admit no Hamiltonian cycle; we degrade gracefully to a Hamiltonian path
 whose single non-adjacent seam is covered by a tail-vacate-aware safe fallback.
-The cycle is rebuilt whenever ``(width, height)`` changes, so a runtime resize
-never strands the snake on a stale plan (contract #3 / 0005-B7).
+The cycle is rebuilt whenever ``(width, height)`` changes, so a freshly
+established model grid never strands the snake on a stale plan (contract #3 /
+0005-B7). Normal viewport resizes change only rendering scale and leave the
+cycle untouched.
 """
 
 from typing_extensions import override
@@ -47,7 +49,7 @@ class HamiltonianStrategy(DemoStrategy):
     @override
     def get_next_direction(self) -> Direction | None:
         g = self.game
-        if (g.width, g.height) != self._built_for:  # first call OR runtime resize
+        if (g.width, g.height) != self._built_for:  # first call or new model grid
             self._build_cycle(g.width, g.height)  # auto-invalidates stale plan
 
         n = len(self.cycle)
@@ -55,7 +57,7 @@ class HamiltonianStrategy(DemoStrategy):
             return self._safe_fallback()
 
         head = g.snake[0]
-        if head not in self.order:  # degenerate post-resize collapse
+        if head not in self.order:  # defensive inconsistent-grid fallback
             return self._safe_fallback()
 
         head_i = self.order[head]
@@ -66,15 +68,15 @@ class HamiltonianStrategy(DemoStrategy):
         # torus neighbour, follow a safe fallback instead.
         default_dir = self._direction_between(head, cyc_next)
         if default_dir is None or not GameRules.is_valid_turn(g.direction, default_dir):
-            # Either the seam (path mode) or a transient post-resize reversal.
+            # Either the seam (path mode) or a transient grid-change reversal.
             return self._safe_fallback()
 
         # The cycle-successor is collision-safe only while the snake is a
         # contiguous arc of a TRUE cycle (the head advances into the cell the tail
         # just vacated). On an odd x odd Hamiltonian PATH the successor across the
-        # interior is NOT guaranteed free, and a runtime resize can also leave the
-        # body non-contiguous in cycle order. Tail-vacate-check the successor and
-        # divert to the safe fallback rather than walking into the body.
+        # interior is NOT guaranteed free, and an external dimension change can
+        # leave the body non-contiguous in cycle order. Tail-vacate-check the
+        # successor and divert to the safe fallback rather than walking into it.
         grows = cyc_next == g.food
         blocked = set(g.snake) if grows else set(g.snake[:-1])
         if cyc_next in blocked:
@@ -100,7 +102,7 @@ class HamiltonianStrategy(DemoStrategy):
                 # Don't shortcut into the body. For a contiguous arc a safe
                 # shortcut always lands on an empty gap cell so this never fires
                 # (identical play); it only guards a body left non-contiguous by a
-                # runtime resize, where the cycle-order check alone isn't enough.
+                # external dimension change, where cycle order alone isn't enough.
                 if nxt in body_without_tail:  # food is never on the body
                     continue
                 if not self._shortcut_is_safe(
@@ -142,7 +144,7 @@ class HamiltonianStrategy(DemoStrategy):
 
     def _food_index(self, head_i: int) -> int:
         """Cycle index of the food, or the head's own index if the food is off the
-        cycle (e.g. a transient post-resize state) so shortcuts simply don't help."""
+        cycle (e.g. a transient grid-change state) so shortcuts simply don't help."""
         return self.order.get(self.game.food, head_i)
 
     # --------------------------------------------- cycle construction & checks
