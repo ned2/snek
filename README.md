@@ -19,6 +19,16 @@ Application Development framework.
     uv sync
     uv run pre-commit install --install-hooks
 
+Each checkout owns its own `.venv`. The tracked `.envrc` is secret-free and keeps uv and direct
+tool invocations anchored to that checkout. Review it, then approve it separately in every linked
+worktree before setup:
+
+    direnv allow .
+
+Optional human or machine settings may go in the ignored `.envrc.local`; it is not copied into
+linked worktrees. Snek's development, pytest, Ruff, and quality commands do not require project
+secrets, so there is no external agent dotenv file in the project contract.
+
 The install command enables both the fast commit hooks and the complete pre-push quality gate for
 this checkout. Commit hooks normalize repository hygiene, apply Ruff's safe lint fixes and
 formatter, and run ty over the production code and maintenance scripts.
