@@ -11,7 +11,6 @@ import pytest
 from snek.app import SnakeApp
 from snek.screens import SnakeView
 
-
 pytestmark = pytest.mark.usefixtures("deterministic_snapshot_render_environment")
 
 

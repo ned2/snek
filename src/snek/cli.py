@@ -1,8 +1,8 @@
 """Console entry point for the Snek game."""
 
 import argparse
-from dataclasses import replace
 import math
+from dataclasses import replace
 
 from .app import SnakeApp
 from .config import default_config, validate_dimensions
@@ -19,7 +19,7 @@ def _positive_speed(value: str) -> float:
     try:
         speed = float(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"{value!r} is not a number")
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
     if not math.isfinite(speed) or speed <= 0:
         raise argparse.ArgumentTypeError("speed must be finite and greater than 0")
     max_speed = 1.0 / default_config.min_speed_interval
@@ -37,7 +37,7 @@ def _positive_int(value: str) -> int:
     try:
         number = int(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"{value!r} is not an integer")
+        raise argparse.ArgumentTypeError(f"{value!r} is not an integer") from None
     if number < 1:
         raise argparse.ArgumentTypeError("scale must be at least 1")
     return number
@@ -49,7 +49,9 @@ def _grid_dims(value: str) -> tuple[int, int]:
     try:
         width, height = (int(part) for part in parts)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"{value!r} must be WIDTHxHEIGHT, e.g. 36x20")
+        raise argparse.ArgumentTypeError(
+            f"{value!r} must be WIDTHxHEIGHT, e.g. 36x20"
+        ) from None
     try:
         validate_dimensions(width, height)
     except ValueError as error:

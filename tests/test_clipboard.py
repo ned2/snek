@@ -32,7 +32,7 @@ class _FakeProcess:
         self.killed = False
         self.waited = False
 
-    async def communicate(self, input: bytes) -> tuple[bytes, bytes]:  # noqa: A002
+    async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
         self.input = input
         if self._communicate_error is not None:
             raise self._communicate_error
@@ -49,7 +49,7 @@ class _FakeProcess:
         return self.returncode
 
 
-async def _return_process(
+async def _return_process(  # ruff: ignore[unused-async] - mocks an async API
     process: _FakeProcess, *_args: object, **_kwargs: object
 ) -> _FakeProcess:
     """Return a configured fake from a create_subprocess_exec replacement."""
@@ -150,7 +150,9 @@ class TestCopyText:
     async def test_falls_back_when_tool_cannot_launch(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        async def boom(*_args: object, **_kwargs: object) -> None:
+        async def boom(  # ruff: ignore[unused-async] - mocks an async API
+            *_args: object, **_kwargs: object
+        ) -> None:
             raise OSError("no such tool")
 
         monkeypatch.setattr(clipboard, "_system_clipboard_command", lambda: ["wl-copy"])
@@ -213,7 +215,7 @@ class TestCopyText:
         started = asyncio.Event()
 
         class SlowProcess(_FakeProcess):
-            async def communicate(self, input: bytes) -> tuple[bytes, bytes]:  # noqa: A002
+            async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
                 self.input = input
                 started.set()
                 await asyncio.Event().wait()

@@ -1,14 +1,13 @@
 """Regression tests for deterministic pytest discovery and visual snapshots."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from snek.app import SnakeApp
-
 
 PROJECT_ROOT = Path(__file__).parents[1]
 

@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 from textual.containers import Vertical, VerticalScroll
-from textual.worker import WorkerCancelled
 from textual.widgets import Label, Static
+from textual.worker import WorkerCancelled
 
 from snek import clipboard
 from snek.app import SnakeApp
@@ -14,11 +14,11 @@ from snek.figlet import FigletText
 from snek.game_rules import Direction
 from snek.screens import (
     DiagnosticsModal,
-    GameScreen,
     GameOverModal,
-    SplashScreen,
-    SnakeView,
+    GameScreen,
     SidePanel,
+    SnakeView,
+    SplashScreen,
     StatDisplay,
 )
 
@@ -44,7 +44,7 @@ def _assert_game_invariants(game) -> None:
     """Assert the coordinate invariants that viewport changes must preserve."""
     assert len(game.snake) == len(set(game.snake))
     assert all(0 <= x < game.width and 0 <= y < game.height for x, y in game.snake)
-    for first, second in zip(game.snake, game.snake[1:]):
+    for first, second in zip(game.snake, game.snake[1:], strict=False):
         dx = min(abs(first[0] - second[0]), game.width - abs(first[0] - second[0]))
         dy = min(abs(first[1] - second[1]), game.height - abs(first[1] - second[1]))
         assert dx + dy == 1
@@ -152,7 +152,7 @@ async def test_splash_animation_respects_preference(
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         title = app.screen.query_one("#splash-title", FigletText)
-        assert title._animate is expected
+        assert title._animation_enabled is expected
         assert (title._timer is not None) is expected
 
 
@@ -250,6 +250,38 @@ async def test_pause_functionality():
         await pilot.press("space")
         await pilot.pause()
         assert app.game.paused is False
+
+
+@pytest.mark.asyncio
+async def test_game_actions_tolerate_timer_teardown() -> None:
+    """Lifecycle actions remain safe after Textual has cleared the timer."""
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        assert game_screen.timer is not None
+        game_screen.timer.stop()
+        game_screen.timer = None
+
+        game_screen.action_pause()
+        await pilot.pause()
+        assert app.game.paused
+        await pilot.press("space")
+        await pilot.pause()
+        assert not app.game.paused
+
+        game_screen.action_diagnostics()
+        await pilot.pause()
+        assert isinstance(app.screen, DiagnosticsModal)
+        await pilot.press("space")
+        await pilot.pause()
+
+        _arm_self_collision(app.game)
+        game_screen.tick()
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverModal)
 
 
 @pytest.mark.asyncio
@@ -494,21 +526,17 @@ async def test_theme_changes_with_world():
         initial_theme = app.theme
         old_world = game.current_world
 
-        # Force world change by consuming enough symbols to get to a world with a different theme
-        # World 0 uses 'snek-classic', world 1 uses 'snek-ocean'
-        game.symbols_consumed = config.symbols_per_world
-        game.symbols_in_current_world = config.symbols_per_world
-        game.check_world_transition()
+        game_screen.timer.stop()
+        head_x, head_y = game.snake[0]
+        game.direction = Direction.RIGHT
+        game.set_food_position(((head_x + 1) % game.width, head_y))
+        game.symbols_consumed = config.symbols_per_world - 1
+        game.symbols_in_current_world = config.symbols_per_world - 1
+        game_screen.tick()
         await pilot.pause()
 
         # World should have changed
         assert game.current_world == old_world + 1
-
-        # Manually trigger theme change since we bypassed the normal game step
-        if game.current_world != old_world:
-            app.theme = game.world_path.get_world(game.current_world).theme_name
-
-        await pilot.pause()
 
         # Theme should have changed (world 1 has 'snek-ocean' theme)
         assert app.theme != initial_theme
@@ -907,7 +935,9 @@ async def test_diagnostics_copy_reports_system_failure(
 ) -> None:
     """Timeout and non-zero fallback notifications retain their concise reason."""
 
-    async def copy_with_fallback(_app: object, _text: str) -> clipboard.CopyResult:
+    async def copy_with_fallback(  # ruff: ignore[unused-async] - mocks an async API
+        _app: object, _text: str
+    ) -> clipboard.CopyResult:
         return clipboard.CopyResult(clipboard.METHOD_OSC52, detail)
 
     monkeypatch.setattr(clipboard, "copy_text", copy_with_fallback)
@@ -929,7 +959,9 @@ async def test_diagnostics_copy_reports_system_failure(
 async def test_diagnostics_copy_confirms_system_clipboard(monkeypatch):
     """When a local tool is used, the toast confirms it without warning."""
 
-    async def copy_to_system(_app: object, _text: str) -> clipboard.CopyResult:
+    async def copy_to_system(  # ruff: ignore[unused-async] - mocks an async API
+        _app: object, _text: str
+    ) -> clipboard.CopyResult:
         return clipboard.CopyResult(clipboard.METHOD_SYSTEM)
 
     monkeypatch.setattr(clipboard, "copy_text", copy_to_system)
@@ -960,7 +992,7 @@ async def test_slow_clipboard_worker_keeps_ui_responsive_and_cleans_up(
             self.killed = False
             self.waited = False
 
-        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:  # noqa: A002
+        async def communicate(self, input: bytes) -> tuple[bytes, bytes]:
             started.set()
             await asyncio.Event().wait()
             raise AssertionError("unreachable")
@@ -976,7 +1008,9 @@ async def test_slow_clipboard_worker_keeps_ui_responsive_and_cleans_up(
 
     process = SlowClipboardProcess()
 
-    async def create_process(*_args: object, **_kwargs: object) -> SlowClipboardProcess:
+    async def create_process(  # ruff: ignore[unused-async] - mocks an async API
+        *_args: object, **_kwargs: object
+    ) -> SlowClipboardProcess:
         return process
 
     monkeypatch.setattr(clipboard, "_system_clipboard_command", lambda: ["wl-copy"])
@@ -1041,7 +1075,7 @@ class TestWorldProgression:
 
         game = Game()
         game.current_interval = 0.1
-        assert game.get_moves_per_second() == 10.0
+        assert game.get_moves_per_second() == pytest.approx(10.0)
 
         game.current_interval = 0.5
-        assert game.get_moves_per_second() == 2.0
+        assert game.get_moves_per_second() == pytest.approx(2.0)

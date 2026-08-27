@@ -1,7 +1,7 @@
 """Tests for the explicit `GameConfig` validation boundary."""
 
-from dataclasses import FrozenInstanceError, replace
 import math
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -14,7 +14,7 @@ def test_config_is_an_immutable_value_object() -> None:
     original_scale = config.cell_scale
 
     with pytest.raises(FrozenInstanceError):
-        setattr(config, "cell_scale", original_scale + 1)
+        config.cell_scale = original_scale + 1
 
     overridden = replace(config, cell_scale=original_scale + 1)
     assert overridden.cell_scale == original_scale + 1

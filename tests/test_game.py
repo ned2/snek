@@ -1,7 +1,7 @@
 """Unit tests for the Game class."""
 
-from dataclasses import replace
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -631,16 +631,16 @@ class TestPositionSetup:
         assert game.food == (9, 9)
 
         # Invalid positions should raise ValueError
-        with pytest.raises(ValueError, match="Food position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Food position .* is out of bounds"):
             game.set_food_position((-1, 5))  # Negative x
 
-        with pytest.raises(ValueError, match="Food position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Food position .* is out of bounds"):
             game.set_food_position((5, -1))  # Negative y
 
-        with pytest.raises(ValueError, match="Food position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Food position .* is out of bounds"):
             game.set_food_position((10, 5))  # x >= width
 
-        with pytest.raises(ValueError, match="Food position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Food position .* is out of bounds"):
             game.set_food_position((5, 10))  # y >= height
 
     def test_set_snake_position_validation(self):
@@ -656,20 +656,20 @@ class TestPositionSetup:
             game.set_snake_position([])
 
         # Out of bounds positions should raise ValueError
-        with pytest.raises(ValueError, match="Snake position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Snake position .* is out of bounds"):
             game.set_snake_position([(-1, 5)])  # Negative x
 
-        with pytest.raises(ValueError, match="Snake position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Snake position .* is out of bounds"):
             game.set_snake_position([(5, -1)])  # Negative y
 
-        with pytest.raises(ValueError, match="Snake position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Snake position .* is out of bounds"):
             game.set_snake_position([(10, 5)])  # x >= width
 
-        with pytest.raises(ValueError, match="Snake position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Snake position .* is out of bounds"):
             game.set_snake_position([(5, 10)])  # y >= height
 
         # Multiple positions with one invalid should raise error
-        with pytest.raises(ValueError, match="Snake position .* is out of bounds"):
+        with pytest.raises(ValueError, match=r"Snake position .* is out of bounds"):
             game.set_snake_position([(5, 5), (4, 5), (-1, 5)])
 
     def test_is_valid_position_helper(self):

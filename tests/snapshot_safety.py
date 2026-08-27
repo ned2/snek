@@ -4,7 +4,6 @@ import os
 from collections.abc import Iterator, MutableMapping
 from contextlib import contextmanager
 
-
 SNAPSHOT_OPERATIONAL_ENVIRONMENT = frozenset(
     {
         "PYTEST_XDIST_WORKER",

@@ -1,15 +1,17 @@
 """Main Textual application for the Snek game."""
 
+from typing import Any
+
 from textual.app import App
 
 from .config import GameConfig, default_config
 from .demo import DEFAULT_STRATEGY
 from .game import Game
-from .screens import SplashScreen, GameScreen, PauseModal
+from .screens import GameScreen, PauseModal, SplashScreen
 from .themes import THEME_MAP
 
 
-class SnakeApp(App):
+class SnakeApp(App[None]):
     """Main Snek application using Textual's Screen system."""
 
     CSS_PATH = "styles.css"
@@ -27,7 +29,7 @@ class SnakeApp(App):
         self,
         config: GameConfig | None = None,
         demo_strategy: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         # GameConfig is immutable, so the app and model safely share one value.

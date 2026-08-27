@@ -26,6 +26,8 @@ The cycle is rebuilt whenever ``(width, height)`` changes, so a runtime resize
 never strands the snake on a stale plan (contract #3 / 0005-B7).
 """
 
+from typing_extensions import override
+
 from ..game import Game
 from ..game_rules import Direction, GameRules, Position
 from .base import DemoStrategy
@@ -42,6 +44,7 @@ class HamiltonianStrategy(DemoStrategy):
         self._is_true_cycle = False  # False when only a path (odd x odd grid)
 
     # ------------------------------------------------------------------ public
+    @override
     def get_next_direction(self) -> Direction | None:
         g = self.game
         if (g.width, g.height) != self._built_for:  # first call OR runtime resize

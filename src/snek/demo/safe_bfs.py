@@ -22,6 +22,8 @@ the snake never coasts straight into its own body.
 
 from collections import deque
 
+from typing_extensions import override
+
 from ..game_rules import Direction, Position
 from ._helpers import legal_turns, neighbour, toroidal_manhattan
 from .base import DemoStrategy
@@ -121,6 +123,7 @@ class SafeBfsStrategy(DemoStrategy):
         # reachable target rather than a permanent obstacle.
         return self._can_reach(new_head, new_tail, blocked=set(body[:-1]))
 
+    @override
     def get_next_direction(self) -> Direction | None:
         g = self.game
         snake = g.snake

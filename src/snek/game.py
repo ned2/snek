@@ -1,7 +1,7 @@
 """Core game logic and state management for Snek."""
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
 
 from .config import GameConfig, default_config, validate_dimensions
 from .game_rules import Direction, GameRules, Position
@@ -223,7 +223,7 @@ class Game:
                 raise ValueError(f"Snake position {pos} is out of bounds")
         self.snake = positions
 
-    def set_food_position(self, position: Position, symbol: str = None) -> None:
+    def set_food_position(self, position: Position, symbol: str | None = None) -> None:
         """Set food position for testing."""
         if not self._is_valid_position(position):
             raise ValueError(f"Food position {position} is out of bounds")

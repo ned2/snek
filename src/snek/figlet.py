@@ -12,6 +12,7 @@ from rich.text import Text
 from textual.color import Color, Gradient
 from textual.timer import Timer
 from textual.widgets import Static
+from typing_extensions import override
 
 # Fraction of the gradient scrolled per animation frame, and the animation frame rate.
 _ANIMATION_STEP = 0.02
@@ -57,7 +58,7 @@ class FigletText(Static):
         self._animation_requested = animate and len(self._colors) >= 2
         # Continuous decorative motion is reserved for Textual's full level.
         # `basic` (reduced motion) and `none` both retain the static gradient.
-        self._animate = False
+        self._animation_enabled = False
         self._animation_visible = True
         self._animation_running = False
         self._offset = 0.0
@@ -98,9 +99,11 @@ class FigletText(Static):
 
     def resume_animation(self) -> None:
         """Run one timer when preference, visibility, and screen state allow it."""
-        self._animate = self._animation_requested and self.app.animation_level == "full"
+        self._animation_enabled = (
+            self._animation_requested and self.app.animation_level == "full"
+        )
         if not (
-            self._animate
+            self._animation_enabled
             and self._animation_visible
             and self.display
             and self.screen is self.app.screen
@@ -114,6 +117,7 @@ class FigletText(Static):
             self._timer.resume()
         self._animation_running = True
 
+    @override
     def notify_style_update(self) -> None:
         """Re-resolve theme tokens when the stylesheet or app theme changes.
 

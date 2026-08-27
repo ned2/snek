@@ -1,7 +1,7 @@
 """Tests for world path functionality."""
 
-from snek.worlds import WorldPath, World
 from snek.themes import THEME_MAP
+from snek.worlds import World, WorldPath
 
 
 class TestWorld:

@@ -11,14 +11,18 @@ OS clipboard, and fall back to OSC 52 (the only option over SSH).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import os
 import shutil
 import sys
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from textual.app import App
+
+class _ClipboardApp(Protocol):
+    """The small part of Textual's app API needed by the OSC 52 fallback."""
+
+    def copy_to_clipboard(self, text: str) -> None: ...
+
 
 # Labels returned by `copy_text` identifying which mechanism was used. OSC 52 is
 # the unreliable fallback (callers may want to warn when it's hit).
@@ -66,14 +70,14 @@ async def _kill_process(process: asyncio.subprocess.Process) -> None:
     await process.wait()
 
 
-def _osc52_fallback(app: App, text: str, detail: str) -> CopyResult:
+def _osc52_fallback(app: _ClipboardApp, text: str, detail: str) -> CopyResult:
     """Copy through Textual's terminal fallback and retain the system failure."""
     app.copy_to_clipboard(text)
     return CopyResult(METHOD_OSC52, detail)
 
 
 async def copy_text(
-    app: App,
+    app: _ClipboardApp,
     text: str,
     *,
     timeout: float = SYSTEM_COPY_TIMEOUT_SECONDS,

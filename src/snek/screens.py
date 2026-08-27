@@ -1,20 +1,25 @@
 """Screen implementations for the Snek game using Textual's Screen system."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
+
 from rich.segment import Segment, Segments
 from textual import events, work
 from textual.app import ComposeResult
-from textual.reactive import reactive
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.dom import DOMNode
+from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
 from textual.timer import Timer
 from textual.widgets import Label, Static
+from typing_extensions import override
 
-from . import __version__
-from . import clipboard
+from . import __version__, clipboard, sprites
 from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
+from .game import Game
 from .game_rules import Direction
-from . import sprites
 from .rendering import (
     CELL_BASE_WIDTH,
     compute_layout,
@@ -24,11 +29,24 @@ from .rendering import (
     render_board,
 )
 
+if TYPE_CHECKING:
+    from .app import SnakeApp
+
 # Reused row separator for the Segments stream returned by SnakeView.render.
 _NEWLINE = Segment("\n")
 
 
-class SplashScreen(Screen):
+def _snake_app(node: DOMNode) -> SnakeApp:
+    """Narrow Textual's generic app reference to this project's app type."""
+    return cast("SnakeApp", node.app)
+
+
+def _game_screen(node: DOMNode) -> GameScreen:
+    """Return the registered game screen with its concrete type preserved."""
+    return cast("GameScreen", _snake_app(node).get_screen("game"))
+
+
+class SplashScreen(Screen[None]):
     """Splash screen for Snek."""
 
     # The large `doh` title is 85x25 before prompts and spacing. It is shown
@@ -45,8 +63,10 @@ class SplashScreen(Screen):
         ("q", "quit", "Quit"),
     ]
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose the splash screen with the figlet title."""
+        app = _snake_app(self)
         with Vertical(id="splash-container"):
             yield FigletText(
                 "SNEK",
@@ -66,7 +86,7 @@ class SplashScreen(Screen):
                 colors=["$primary", "$panel"],
             )
             yield Static(
-                f"Press SPACE to start or D for the {self.app.demo_strategy} demo.",
+                f"Press SPACE to start or D for the {app.demo_strategy} demo.",
                 id="splash-start-prompt",
                 classes="splash-prompt",
             )
@@ -91,13 +111,13 @@ class SplashScreen(Screen):
 
     def action_start_game(self) -> None:
         """Start a fresh game under user control."""
-        game_screen = self.app.get_screen("game")
+        game_screen = _game_screen(self)
         game_screen.start_new_game(demo=False)
         self.app.push_screen("game")
 
     def action_start_demo(self) -> None:
         """Start a fresh game in demo mode."""
-        game_screen = self.app.get_screen("game")
+        game_screen = _game_screen(self)
         game_screen.start_new_game(demo=True)
         self.app.push_screen("game")
 
@@ -106,7 +126,7 @@ class SplashScreen(Screen):
         self.app.exit()
 
 
-class GameScreen(Screen):
+class GameScreen(Screen[None]):
     """Main game screen containing the snake game and side panel."""
 
     BINDINGS = [
@@ -137,6 +157,7 @@ class GameScreen(Screen):
         self.sidebar_visible: bool = True
         self.demo_ai: DemoStrategy | None = None
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose the game screen.
 
@@ -158,18 +179,24 @@ class GameScreen(Screen):
 
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
-        self.timer = self.set_interval(self.app.game.current_interval, self.tick)
-        self.app.theme = self.app.game.world_path.get_world(0).theme_name
+        app = _snake_app(self)
+        self.timer = self.set_interval(app.game.current_interval, self.tick)
+        app.theme = app.game.world_path.get_world(0).theme_name
         self._sync_reactives()
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
-        self.timer.stop()
+        if self.timer is not None:
+            self.timer.stop()
+            self.timer = None
 
     def _restart_timer(self) -> None:
         """Restart the game timer at the game's current speed interval."""
-        self.timer.stop()
-        self.timer = self.set_interval(self.app.game.current_interval, self.tick)
+        if self.timer is not None:
+            self.timer.stop()
+        self.timer = self.set_interval(
+            _snake_app(self).game.current_interval, self.tick
+        )
 
     def _sync_reactives(self) -> None:
         """Recompute the display-ready stat strings from the game model.
@@ -178,37 +205,38 @@ class GameScreen(Screen):
         propagates them to the panel's `StatDisplay`s. Formatting that needs the
         world *name* or units lives here, on the screen, not in the widget.
         """
-        game = self.app.game
+        app = _snake_app(self)
+        game = app.game
         self.world_name = game.world_path.get_world_name(game.current_world)
         self.progress = (
-            f"{game.symbols_in_current_world}/{self.app.config.symbols_per_world}"
+            f"{game.symbols_in_current_world}/{app.config.symbols_per_world}"
         )
         self.foods_label = str(game.symbols_consumed)
         self.speed_label = f"{game.get_moves_per_second():.1f}/sec"
 
     def tick(self) -> None:
         """Advance the game one step and react to the result."""
+        app = _snake_app(self)
         if self.demo_ai:
             # In demo mode, let the demo strategy choose the direction
             ai_direction = self.demo_ai.get_next_direction()
             if ai_direction:
-                self.app.game.turn(ai_direction)
+                app.game.turn(ai_direction)
 
-        result = self.app.game.step()
+        result = app.game.step()
 
-        if result.world_changed:
+        if result.world_changed and result.new_world is not None:
             # Chrome follows the world: swap the app theme (kept intentionally).
-            self.app.theme = self.app.game.world_path.get_world(
-                result.new_world
-            ).theme_name
+            app.theme = app.game.world_path.get_world(result.new_world).theme_name
 
         if result.game_over:
             # Stop the timer to prevent multiple game over modals.
-            self.timer.stop()
+            if self.timer is not None:
+                self.timer.stop()
             # Push a FRESH modal instance (not the registered singleton) so its
             # compose() re-reads the current game: the win/death banner and the
             # final food count reflect *this* game, not a cached earlier one.
-            self.app.push_screen(GameOverModal())
+            app.push_screen(GameOverModal())
             return
 
         if result.ate_food:
@@ -220,10 +248,12 @@ class GameScreen(Screen):
 
     def action_pause(self) -> None:
         """Pause the game."""
-        if not self.app.game.game_over:
-            self.app.game.paused = True
-            self.timer.pause()
-            self.app.push_screen("pause")
+        app = _snake_app(self)
+        if not app.game.game_over:
+            app.game.paused = True
+            if self.timer is not None:
+                self.timer.pause()
+            app.push_screen("pause")
 
     def action_diagnostics(self) -> None:
         """Pause the game and show the live diagnostics overlay.
@@ -231,10 +261,12 @@ class GameScreen(Screen):
         Pushed as a fresh instance (not a registered singleton) so its key/value
         snapshot reflects the game's current state each time it's opened.
         """
-        if not self.app.game.game_over:
-            self.app.game.paused = True
-            self.timer.pause()
-            self.app.push_screen(DiagnosticsModal())
+        app = _snake_app(self)
+        if not app.game.game_over:
+            app.game.paused = True
+            if self.timer is not None:
+                self.timer.pause()
+            app.push_screen(DiagnosticsModal())
 
     def action_toggle_sidebar(self) -> None:
         """Toggle sidebar visibility."""
@@ -249,7 +281,7 @@ class GameScreen(Screen):
             # Don't allow manual control in demo mode
             return
 
-        self.app.game.turn(Direction[dir_name])
+        _snake_app(self).game.turn(Direction[dir_name])
         # Force a refresh after key press to show immediate response
         self.query_one(SnakeView).refresh()
 
@@ -259,20 +291,23 @@ class GameScreen(Screen):
 
     def resume_game(self) -> None:
         """Resume the game after pause."""
-        if self.app.game.paused:
-            self.app.game.paused = False
-            self.timer.resume()
+        app = _snake_app(self)
+        if app.game.paused:
+            app.game.paused = False
+            if self.timer is not None:
+                self.timer.resume()
 
     def restart_game(self) -> None:
         """Restart the game."""
-        self.app.game.reset()
+        app = _snake_app(self)
+        app.game.reset()
         if self.demo_ai:
             # Recreate the demo strategy for a fresh game, keeping the selection.
-            self.demo_ai = make_demo_ai(self.app.game, self.app.demo_strategy)
+            self.demo_ai = make_demo_ai(app.game, app.demo_strategy)
         self._restart_timer()
         self._sync_reactives()
         # Update theme to initial world before refreshing view
-        self.app.theme = self.app.game.world_path.get_world(0).theme_name
+        app.theme = app.game.world_path.get_world(0).theme_name
         self.query_one(SnakeView).refresh()
 
     def establish_grid(self, width: int, height: int) -> None:
@@ -283,9 +318,10 @@ class GameScreen(Screen):
         no play state. Demo strategies are recreated because some cache grid
         topology.
         """
-        self.app.game.reset(width=width, height=height)
+        app = _snake_app(self)
+        app.game.reset(width=width, height=height)
         if self.demo_ai:
-            self.demo_ai = make_demo_ai(self.app.game, self.app.demo_strategy)
+            self.demo_ai = make_demo_ai(app.game, app.demo_strategy)
         self._sync_reactives()
 
     def start_new_game(self, demo: bool) -> None:
@@ -301,18 +337,17 @@ class GameScreen(Screen):
         the timer, theme and view. (On the very first start the timer is still
         `None`; `on_mount` does this once the screen is pushed.)
         """
-        self.app.game.reset()
-        self.demo_ai = (
-            make_demo_ai(self.app.game, self.app.demo_strategy) if demo else None
-        )
+        app = _snake_app(self)
+        app.game.reset()
+        self.demo_ai = make_demo_ai(app.game, app.demo_strategy) if demo else None
         if self.timer is not None:
             self._restart_timer()
-            self.app.theme = self.app.game.world_path.get_world(0).theme_name
+            app.theme = app.game.world_path.get_world(0).theme_name
             self._sync_reactives()
             self.query_one(SnakeView).refresh()
 
 
-class PauseModal(ModalScreen):
+class PauseModal(ModalScreen[None]):
     """Modal screen shown when game is paused."""
 
     BINDINGS = [
@@ -320,6 +355,7 @@ class PauseModal(ModalScreen):
         ("q", "quit", "Quit"),
     ]
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose the pause screen with the figlet title."""
         with Vertical(id="pause-container"):
@@ -340,7 +376,7 @@ class PauseModal(ModalScreen):
 
     def action_resume(self) -> None:
         """Resume the game."""
-        game_screen = self.app.get_screen("game")
+        game_screen = _game_screen(self)
         game_screen.resume_game()
         self.app.pop_screen()
 
@@ -349,7 +385,7 @@ class PauseModal(ModalScreen):
         self.app.exit()
 
 
-class DiagnosticsModal(ModalScreen):
+class DiagnosticsModal(ModalScreen[None]):
     """A pause-style overlay that shows live config and game state for debugging.
 
     Opened with `?` from the game (which also pauses); SPACE resumes, mirroring
@@ -363,6 +399,7 @@ class DiagnosticsModal(ModalScreen):
         ("q", "quit", "Quit"),
     ]
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose fixed actions around a vertically scrollable diagnostics body."""
         with Vertical(id="diagnostics-container"):
@@ -379,10 +416,10 @@ class DiagnosticsModal(ModalScreen):
 
     def _params_text(self) -> str:
         """Build the aligned key/value snapshot of config and live game state."""
-        app = self.app
+        app = _snake_app(self)
         game = app.game
         config = app.config
-        game_screen = app.get_screen("game")
+        game_screen = _game_screen(self)
         view = game_screen.query_one(SnakeView)
 
         # `None` entries render as blank spacer lines between sections.
@@ -438,7 +475,7 @@ class DiagnosticsModal(ModalScreen):
         `clipboard.copy_text`), so it works even where the terminal ignores OSC
         52. The toast names the method used.
         """
-        result = await clipboard.copy_text(self.app, self._params_text())
+        result = await clipboard.copy_text(_snake_app(self), self._params_text())
         if result.method == clipboard.METHOD_OSC52:
             # OSC 52 is often ignored (no local clipboard tool, tmux, etc.), so
             # warn rather than silently claim success.
@@ -454,7 +491,7 @@ class DiagnosticsModal(ModalScreen):
 
     def action_resume(self) -> None:
         """Resume the game (mirrors the pause modal)."""
-        game_screen = self.app.get_screen("game")
+        game_screen = _game_screen(self)
         game_screen.resume_game()
         self.app.pop_screen()
 
@@ -463,7 +500,7 @@ class DiagnosticsModal(ModalScreen):
         self.app.exit()
 
 
-class GameOverModal(ModalScreen):
+class GameOverModal(ModalScreen[None]):
     """Modal screen shown when snek dies."""
 
     BINDINGS = [
@@ -472,13 +509,15 @@ class GameOverModal(ModalScreen):
         ("q", "quit", "Quit"),
     ]
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose the end-of-game screen with the figlet title.
 
         The same modal serves death and victory: when the board has been filled
         (`app.game.won`) it shows a win banner instead of the death message.
         """
-        won = self.app.game.won
+        app = _snake_app(self)
+        won = app.game.won
         with Vertical(id="death-container"):
             yield FigletText(
                 "YOU WIN" if won else "GAME OVER",
@@ -492,7 +531,7 @@ class GameOverModal(ModalScreen):
                 classes="death-message",
             )
             yield Static(
-                f"Foods collected: {self.app.game.symbols_consumed}",
+                f"Foods collected: {app.game.symbols_consumed}",
                 classes="death-prompt",
             )
             yield Static(
@@ -507,7 +546,7 @@ class GameOverModal(ModalScreen):
         resume play. Popping twice would drop through to the splash while the
         restarted game ticks on invisibly underneath.
         """
-        game_screen = self.app.get_screen("game")
+        game_screen = _game_screen(self)
         game_screen.restart_game()
         self.app.pop_screen()
 
@@ -537,28 +576,31 @@ class SnakeView(Static):
 
     def on_resize(self, event: events.Resize) -> None:
         """Establish the logical grid once, then make every resize visual-only."""
-        if self.app.game and self.size.width > 0 and self.size.height > 0:
+        app = _snake_app(self)
+        if self.size.width > 0 and self.size.height > 0:
             if not self._grid_established:
                 grid_width, grid_height, self._scale = compute_layout(
-                    self.size.width, self.size.height, self.app.config
+                    self.size.width, self.size.height, app.config
                 )
-                self.screen.establish_grid(grid_width, grid_height)
+                cast(GameScreen, self.screen).establish_grid(grid_width, grid_height)
                 self._grid_established = True
             else:
-                game = self.app.game
+                game = app.game
                 self._scale = fit_grid_scale(
                     self.size.width,
                     self.size.height,
                     game.width,
                     game.height,
-                    self.app.config.cell_scale,
+                    app.config.cell_scale,
                 )
             self.refresh()
 
+    @override
     def render(self) -> Segments:
         """Render the game grid: solid blocks for the snake, sprite/glyph food."""
-        game = self.app.game
-        empty_cell = self.app.config.empty_cell
+        app = _snake_app(self)
+        game = app.game
+        empty_cell = app.config.empty_cell
         food_tile = self._food_tile(game)
         lines = render_board(
             game.width,
@@ -576,7 +618,7 @@ class SnakeView(Static):
         board_cols = CELL_BASE_WIDTH * game.width * self._scale
         board_rows = game.height * self._scale
         if (
-            self.app.config.sizing_mode == "cap"
+            app.config.sizing_mode == "cap"
             and self.size.width >= board_cols + 2
             and self.size.height >= board_rows + 2
         ):
@@ -589,19 +631,18 @@ class SnakeView(Static):
             flat.pop()  # no trailing newline after the last row
         return Segments(flat)
 
-    def _food_tile(self, game) -> list[list[Segment]]:
+    def _food_tile(self, game: Game) -> list[list[Segment]]:
         """Pick the food rendering: a pixel sprite when big enough, else the glyph.
 
         At scale 1 (and when sprites are disabled) the cell is too small for pixel
         art, so we keep the themed Unicode glyph.
         """
-        if self.app.config.food_sprites and self._scale >= sprites.MIN_SPRITE_SCALE:
+        config = _snake_app(self).config
+        if config.food_sprites and self._scale >= sprites.MIN_SPRITE_SCALE:
             return sprites.food_tile(
                 sprites.get_food_sprite(game.current_world), self._scale
             )
-        return glyph_food_tile(
-            game.food_symbol, self.app.config.empty_cell, self._scale
-        )
+        return glyph_food_tile(game.food_symbol, config.empty_cell, self._scale)
 
 
 class StatDisplay(Horizontal):
@@ -617,6 +658,7 @@ class StatDisplay(Horizontal):
         super().__init__()
         self._label = label
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose the label and its value cell."""
         yield Label(f"{self._label}:", classes="stat-label")
@@ -637,9 +679,11 @@ class SidePanel(Static):
     def __init__(self, *stats: StatDisplay) -> None:
         super().__init__()
         self._stats = stats
-        self.styles.width = self.app.config.side_panel_width
-        self.styles.min_width = self.app.config.side_panel_width
+        side_panel_width = _snake_app(self).config.side_panel_width
+        self.styles.width = side_panel_width
+        self.styles.min_width = side_panel_width
 
+    @override
     def compose(self) -> ComposeResult:
         """Compose the side panel with the figlet title at bottom."""
         yield Vertical(

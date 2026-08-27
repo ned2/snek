@@ -11,6 +11,8 @@ enough ahead to keep one. Still honours contract #1 (when every move collides it
 dies forward on a legal direction rather than returning `None`).
 """
 
+from typing_extensions import override
+
 from ..game_rules import Direction
 from ._helpers import blocked_cells, legal_turns, neighbour, toroidal_manhattan
 from .base import DemoStrategy
@@ -19,6 +21,7 @@ from .base import DemoStrategy
 class GreedyStrategy(DemoStrategy):
     """Greedy distance-minimiser with no lookahead (the weak anchor)."""
 
+    @override
     def get_next_direction(self) -> Direction | None:
         g = self.game
         head = g.snake[0]

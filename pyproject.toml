@@ -25,10 +25,11 @@ classifiers = [
     "Topic :: Games/Entertainment :: Arcade",
 ]
 dependencies = [
-    "textual>=8.0.0",
+    "textual>=8.2.8",
     "pyfiglet>=1.0.4",
     "rich-pixels>=3.0.1,<4",
     "pillow>=12.3.0",
+    "typing-extensions>=4.15.0",
 ]
 
 [project.urls]
@@ -43,10 +44,13 @@ snek-tui = "snek.cli:main"
 [dependency-groups]
 dev = [
     "hatchling>=1.26",
+    "pip-audit>=2.10.1",
+    "pre-commit>=4.6.1",
     "pytest>=7.0.0",
     "pytest-asyncio>=1.1.0",
-    "ruff>=0.12.9",
+    "ruff>=0.16.4",
     "textual-dev>=1.7.0",
+    "ty>=0.0.74",
     "coverage[toml]>=7.0.0",
     "python-lsp-server>=1.13.1",
     "pytest-textual-snapshot>=1.0.0",
@@ -95,6 +99,21 @@ exclude = [
     "snapshot_report*.html",
 ]
 
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "RUF", "ANN", "PYI", "blanket-type-ignore"]
+preview = true
+
+[tool.ruff.lint.per-file-ignores]
+"src/snek/app.py" = ["any-type", "mutable-class-default"]
+"src/snek/demo/__init__.py" = ["non-empty-init-module"]
+"src/snek/screens.py" = ["mutable-class-default"]
+"src/snek/worlds.py" = ["ambiguous-unicode-character-string"]
+"tests/**/*.py" = ["ANN"]
+"tests/snapshot_safety.py" = ["assignment-to-os-environ"]
+
 [tool.coverage.run]
 source = ["src"]
 branch = true
@@ -108,6 +127,7 @@ omit = [
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
+    "if TYPE_CHECKING:",
     "def __repr__",
     "if self.debug:",
     "if settings.DEBUG",
@@ -120,6 +140,34 @@ exclude_lines = [
 ]
 show_missing = true
 precision = 2
+fail_under = 95.0
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.analysis]
+strict-generic-narrowing = true
+strict-literal-narrowing = true
+
+[tool.ty.rules]
+blanket-ignore-comment = "error"
+division-by-zero = "warn"
+dynamic-function-decorator-return = "error"
+missing-override-decorator = "error"
+missing-type-argument = "error"
+possibly-missing-attribute = "warn"
+possibly-missing-import = "warn"
+possibly-unresolved-reference = "warn"
+unsound-assignment = "error"
+unsound-return-statement = "error"
+unsound-yield = "error"
+unsupported-dynamic-base = "warn"
+
+[tool.ty.src]
+include = ["src", "scripts"]
+
+[tool.ty.terminal]
+error-on-warning = true
 
 [tool.coverage.html]
 directory = "htmlcov"

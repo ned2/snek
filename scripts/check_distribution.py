@@ -8,7 +8,6 @@ import zipfile
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 
-
 FORBIDDEN_DIRECTORIES = frozenset({".pytest_cache", "cover", "htmlcov"})
 FORBIDDEN_EXACT_FILES = frozenset(
     {

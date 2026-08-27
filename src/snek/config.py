@@ -1,7 +1,7 @@
 """Configuration settings and defaults for the Snek game."""
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 from typing import Final
 
 from rich.cells import cell_len

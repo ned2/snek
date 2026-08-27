@@ -17,7 +17,26 @@ Application Development framework.
 ### Development
 
     uv sync
-    
+    uv run pre-commit install --install-hooks
+
+The install command enables both the fast commit hooks and the complete pre-push quality gate for
+this checkout. Commit hooks normalize repository hygiene, apply Ruff's safe lint fixes and
+formatter, and run ty over the production code and maintenance scripts.
+
+Run the same checks across every tracked file on demand:
+
+    uv run pre-commit run --all-files
+
+Run the complete pre-push gate directly:
+
+    uv run python scripts/check_quality.py
+
+The full gate verifies the lockfile, Ruff lint and formatting, ty, the test suite and branch
+coverage floor, locked runtime dependencies, distribution contents, and isolated wheel and source
+installation with a `snek --help` smoke test. Dependency auditing queries the vulnerability service,
+and first-time hook setup downloads the pinned hook environments, so those operations require
+network access.
+
 ## Usage
 
     snek

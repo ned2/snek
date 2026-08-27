@@ -1,7 +1,9 @@
 """World path management for food symbols in Snek."""
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
+
+from textual.theme import Theme
 
 from .themes import THEME_MAP
 
@@ -16,7 +18,7 @@ class World:
     theme_name: str
 
     @property
-    def theme(self):
+    def theme(self) -> Theme:
         """Get the theme object for this world."""
         return THEME_MAP[self.theme_name]
 
@@ -24,7 +26,7 @@ class World:
 class WorldPath:
     """Manages the progression of food characters through worlds."""
 
-    def __init__(self, rng: random.Random | None = None):
+    def __init__(self, rng: random.Random | None = None) -> None:
         """Initialize the world path."""
         self._rng = rng or random.Random()
         self.worlds = self._create_journey_worlds()

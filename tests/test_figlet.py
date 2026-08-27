@@ -24,7 +24,7 @@ CALL_SITES = [
 
 def _distance(a: Color, b: Color) -> int:
     """Manhattan distance between two colors in RGB space."""
-    return sum(abs(x - y) for x, y in zip(a.rgb, b.rgb))
+    return sum(abs(x - y) for x, y in zip(a.rgb, b.rgb, strict=True))
 
 
 @pytest.mark.parametrize("text, font", CALL_SITES)
@@ -127,10 +127,10 @@ async def test_textual_animations_none_default_keeps_title_stable(monkeypatch) -
 
         assert app.animation_level == "none"
         assert title._animation_requested
-        assert not title._animate
+        assert not title._animation_enabled
         assert not title._animation_running
         assert title._timer is None
-        assert title._offset == 0.0
+        assert title._offset == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio

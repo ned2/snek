@@ -17,6 +17,8 @@ deterministically) rather than `None`.
 
 from collections import deque
 
+from typing_extensions import override
+
 from ..game_rules import Direction, Position
 from ._helpers import blocked_cells, legal_turns, neighbour, toroidal_manhattan
 from .base import DemoStrategy
@@ -25,6 +27,7 @@ from .base import DemoStrategy
 class FloodFillStrategy(DemoStrategy):
     """Per-step space-maximising survival move, biased toward food."""
 
+    @override
     def get_next_direction(self) -> Direction | None:
         g = self.game
         head = g.snake[0]

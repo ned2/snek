@@ -19,7 +19,6 @@ from scripts.check_distribution import (
 )
 from tests.snapshot_safety import sanitized_snapshot_environment
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
@@ -137,7 +136,7 @@ def test_distribution_checker_opens_sdist_and_wheel(tmp_path: Path) -> None:
     check_distribution_archives([sdist_path, wheel_path])
 
     _write_sdist(sdist_path, ["snek_tui-0.1.1/snapshot_report.html"])
-    with pytest.raises(ValueError, match="snapshot_report.html"):
+    with pytest.raises(ValueError, match=r"snapshot_report\.html"):
         check_distribution_archives([sdist_path, wheel_path])
 
 

@@ -3,8 +3,8 @@
 from collections.abc import Generator
 
 import pytest
-from snek.config import GameConfig
 
+from snek.config import GameConfig
 from tests.snapshot_safety import sanitized_snapshot_environment
 
 
