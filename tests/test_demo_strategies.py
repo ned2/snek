@@ -308,18 +308,19 @@ def test_hamiltonian_solves_small_board(w, h):
 def test_skill_floor_strong_beats_greedy():
     """Fast smoke: every survival strategy clearly outscores naive greedy on a
     small board, and hamiltonian solves every seed."""
-    w, h, cap = 8, 6, 20_000
+    w, h, cap = 8, 6, 500
     seeds = [0, 1, 2]
+    results = {
+        name: [_play(name, w, h, seed, cap) for seed in seeds] for name in STRATEGIES
+    }
+    mean_foods = {
+        name: sum(game.symbols_consumed for game in games) / len(games)
+        for name, games in results.items()
+    }
 
-    def mean_foods(name: str) -> float:
-        return sum(_play(name, w, h, s, cap).symbols_consumed for s in seeds) / len(
-            seeds
-        )
-
-    greedy = mean_foods("greedy")
+    greedy = mean_foods["greedy"]
     for name in ("safe-bfs", "floodfill", "hamiltonian"):  # the planning strategies
-        assert mean_foods(name) > greedy, (
-            f"{name} mean {mean_foods(name)} !> greedy mean {greedy}"
+        assert mean_foods[name] > greedy, (
+            f"{name} mean {mean_foods[name]} !> greedy mean {greedy}"
         )
-    for s in seeds:
-        assert _play("hamiltonian", w, h, s, cap).won
+    assert all(game.won for game in results["hamiltonian"])

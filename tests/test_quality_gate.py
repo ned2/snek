@@ -103,6 +103,11 @@ def test_gate_uses_disposable_coverage_data(
     coverage_calls = [call for call in calls if call[0].startswith("Coverage")]
     test_call = next(call for call in calls if call[0] == "Tests with branch coverage")
     assert len(coverage_calls) == 1
+    assert "--quiet" in test_call[1]
+    assert "-n" in test_call[1]
+    assert "--maxprocesses=8" in test_call[1]
+    assert "--cov=src/snek" in test_call[1]
+    assert "--cov-branch" in test_call[1]
     assert test_call[2] is not None
     assert coverage_calls[0][2] is not None
     test_coverage_file = test_call[2]["COVERAGE_FILE"]

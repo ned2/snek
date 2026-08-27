@@ -94,7 +94,17 @@ def run_quality_gates() -> None:
 
         run_gate(
             "Tests with branch coverage",
-            uv_run("coverage", "run", "-m", "pytest"),
+            uv_run(
+                "pytest",
+                "--quiet",
+                "-n",
+                "auto",
+                "--maxprocesses=8",
+                "--dist=load",
+                "--cov=src/snek",
+                "--cov-branch",
+                "--cov-report=",
+            ),
             env=coverage_environment,
         )
         run_gate(
