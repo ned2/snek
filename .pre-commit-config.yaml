@@ -4,7 +4,7 @@ default_stages: [pre-commit]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
@@ -16,6 +16,7 @@ repos:
       - id: check-xml
       - id: check-merge-conflict
       - id: check-case-conflict
+      - id: check-illegal-windows-names
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: check-added-large-files
@@ -26,14 +27,14 @@ repos:
       - id: check-shebang-scripts-are-executable
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: aab412d509121cb5f7533134b7e67f9fab59c682  # frozen: v0.16.4
     hooks:
       - id: ruff-check
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
   - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.75
+    rev: dcc8608dfbaaec6a53fcdcf97bb98ec97f1b64ab  # frozen: v0.0.75
     hooks:
       - id: ty
         args: [--locked]
@@ -42,7 +43,7 @@ repos:
     hooks:
       - id: full-quality-gate
         name: full local quality gate
-        entry: uv run python scripts/check_quality.py
+        entry: uv run --locked python scripts/check_quality.py
         language: system
         always_run: true
         pass_filenames: false

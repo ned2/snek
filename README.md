@@ -33,9 +33,11 @@ Run the complete pre-push gate directly:
 
 The full gate verifies the lockfile, Ruff lint and formatting, ty, the test suite and branch
 coverage floor, locked runtime dependencies, distribution contents, and isolated wheel and source
-installation with a `snek --help` smoke test. Dependency auditing queries the vulnerability service,
-and first-time hook setup downloads the pinned hook environments, so those operations require
-network access.
+installation with CLI and headless application smoke tests. Direct runs check the current working
+tree; the pre-push hook checks the exact revision being pushed in a temporary detached worktree.
+Gate coverage data and build artifacts are temporary and do not replace a developer's local
+coverage results. Dependency auditing queries the vulnerability service, and first-time hook setup
+downloads the pinned hook environments, so those operations require network access.
 
 ## Usage
 
