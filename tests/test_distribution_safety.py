@@ -127,6 +127,29 @@ def _write_wheel(path: Path, member_names: list[str]) -> None:
             archive.writestr(member_name, "test artifact")
 
 
+def _copy_tracked_project(destination: Path) -> None:
+    """Copy controlled project inputs without ambient checkout artifacts."""
+    result = subprocess.run(
+        ["git", "ls-files", "--cached", "-z"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    for tracked_name in result.stdout.split("\0"):
+        if not tracked_name:
+            continue
+        relative_path = Path(tracked_name)
+        destination_path = destination / relative_path
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            PROJECT_ROOT / relative_path,
+            destination_path,
+            follow_symlinks=False,
+        )
+
+
 def test_distribution_checker_opens_sdist_and_wheel(tmp_path: Path) -> None:
     sdist_path = tmp_path / "snek_tui-0.1.1.tar.gz"
     wheel_path = tmp_path / "snek_tui-0.1.1-py3-none-any.whl"
@@ -142,18 +165,7 @@ def test_distribution_checker_opens_sdist_and_wheel(tmp_path: Path) -> None:
 
 def test_hatch_build_excludes_local_artifacts(tmp_path: Path) -> None:
     project_path = tmp_path / "project"
-    shutil.copytree(
-        PROJECT_ROOT,
-        project_path,
-        ignore=shutil.ignore_patterns(
-            ".git",
-            ".pytest_cache",
-            ".venv",
-            "__pycache__",
-            "dist",
-            "htmlcov",
-        ),
-    )
+    _copy_tracked_project(project_path)
     (project_path / ".gitignore").unlink()
 
     decoy_paths = [
