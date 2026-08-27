@@ -283,6 +283,7 @@ class TestMovement:
         """Test normal snake movement."""
         game = Game()
         initial_head = game.snake[0]
+        game.set_food_position((0, 0))  # keep the random food off the move path
 
         game.step()
 
