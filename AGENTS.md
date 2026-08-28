@@ -23,9 +23,31 @@ notes belong in [CLAUDE.md](CLAUDE.md), which imports this file.
 
 **Setup and Installation:**
 
+Every checkout — the primary one and each linked worktree — owns an independent `.venv`, so
+run setup inside the assigned checkout. Review the tracked `.envrc` first, then:
+
 ```bash
-uv sync                           # Install dependencies
+direnv allow .                    # Approve this checkout only, after reviewing .envrc
+uv sync --locked                  # Install exactly the locked dependencies
 ```
+
+`.envrc` is tracked and secret-free: it optionally sources an ignored `.envrc.local`, points
+`UV_PROJECT_ENVIRONMENT` at this checkout's own `.venv`, and adds that environment's `bin`
+directory to `PATH`. direnv approval is manual and per path and never propagates, so review
+and approve again in every linked worktree instead of assuming pool-wide or inherited trust.
+Where direnv is unavailable, review `.envrc` in that checkout, then export
+`UV_PROJECT_ENVIRONMENT="$PWD/.venv"` in the current shell so uv still resolves to that
+checkout's environment; repeat this manual setup separately for every checkout.
+
+`uv sync --locked` installs exactly what `uv.lock` records and fails instead of silently
+relocking, matching the `--locked` semantics the pre-commit hooks and quality gate use. Do
+not upgrade or relock dependencies as a side effect of setup; a lockfile change is its own
+task.
+
+Optional human or machine settings belong in the ignored `.envrc.local`. It is never
+committed and never copied into a linked worktree, so it is not part of the shared contract.
+Snek's development, test, lint, and quality commands need no project secrets: a missing
+`.envrc.local` is expected, and nothing should be copied in to supply one.
 
 **Running the Application:**
 
