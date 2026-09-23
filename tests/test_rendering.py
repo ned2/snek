@@ -1,13 +1,20 @@
 """Tests for the framework-free board sizing and drawing helpers."""
 
+import pytest
+
 from snek.config import GameConfig
+from snek.game_rules import Direction
 from snek.rendering import (
     board_to_text,
     compute_layout,
     fit_grid_scale,
     frame_board,
     glyph_food_tile,
+    motion_cells,
+    motion_units,
+    partial_tile,
     render_board,
+    render_board_row,
 )
 
 
@@ -174,3 +181,88 @@ class TestFrameBoard:
         assert rows[-1] == "└──────┘"
         for r in rows[1:-1]:
             assert r[0] == "│" and r[-1] == "│"
+
+
+# Half-cell coverage of each glyph a partial tile may use: (upper, lower).
+_HALVES = {"█": (1, 1), "▀": (1, 0), "▄": (0, 1), " ": (0, 0)}
+
+
+def _coverage(tile) -> list[list[int]]:
+    """A partial tile as a grid of filled half rows (2 per terminal row)."""
+    grid: list[list[int]] = []
+    for row in tile:
+        text = "".join(segment.text for segment in row)
+        grid.append([_HALVES[ch][0] for ch in text])
+        grid.append([_HALVES[ch][1] for ch in text])
+    return grid
+
+
+class TestPartialTile:
+    """Partial cells fill `filled` of 2*scale units from the anchored side."""
+
+    @pytest.mark.parametrize("scale", [1, 2, 3])
+    @pytest.mark.parametrize("anchor", list(Direction))
+    def test_fills_exactly_the_anchored_units(self, scale, anchor):
+        units = motion_units(scale)
+        for filled in range(units + 1):
+            tile = partial_tile(anchor, filled, scale)
+            assert len(tile) == scale
+            grid = _coverage(tile)
+            assert all(len(row) == 2 * scale for row in grid)
+            if anchor in (Direction.LEFT, Direction.RIGHT):
+                # Whole columns: every half row has the same filled columns.
+                columns = [all(row[c] for row in grid) for c in range(units)]
+                assert all(grid[0] == row for row in grid)
+            else:
+                columns = [all(grid[r]) for r in range(units)]
+                assert all(len(set(row)) == 1 for row in grid)
+            if anchor in (Direction.RIGHT, Direction.DOWN):
+                columns.reverse()
+            assert columns == [True] * filled + [False] * (units - filled)
+
+
+class TestMotionCells:
+    """Interpolated steps keep the visible length constant."""
+
+    @pytest.mark.parametrize("scale", [1, 2, 3])
+    def test_head_grows_as_the_tail_drains(self, scale):
+        units = motion_units(scale)
+        head, vacated = (6, 5), (3, 5)
+        for index in range(units):
+            progress = index / units
+            cells = motion_cells(
+                head, Direction.RIGHT, vacated, Direction.RIGHT, progress, scale
+            )
+            filled = index + 1
+            if filled == units:
+                assert cells == {}
+            else:
+                assert cells == {
+                    head: (Direction.LEFT, filled),
+                    vacated: (Direction.RIGHT, units - filled),
+                }
+
+    def test_anchors_follow_each_moves_own_direction(self):
+        """A turning head and a tail on another leg anchor independently."""
+        cells = motion_cells((5, 4), Direction.UP, (2, 7), Direction.LEFT, 0.0, 2)
+        assert cells == {(5, 4): (Direction.DOWN, 1), (2, 7): (Direction.LEFT, 3)}
+
+    def test_growth_has_no_vacated_cell(self):
+        cells = motion_cells((6, 5), Direction.RIGHT, None, None, 0.0, 2)
+        assert cells == {(6, 5): (Direction.LEFT, 1)}
+
+    def test_head_entering_its_own_vacated_tail_cell_stays_whole(self):
+        assert motion_cells((5, 5), Direction.UP, (5, 5), Direction.LEFT, 0.0, 2) == {}
+
+    def test_progress_at_or_past_the_step_is_drawn_whole(self):
+        assert (
+            motion_cells((6, 5), Direction.RIGHT, (5, 5), Direction.RIGHT, 1.0, 3) == {}
+        )
+
+
+def test_render_board_row_draws_partial_cells_over_the_board():
+    """Partial cells replace the head's snake cell and the empty vacated cell."""
+    partial = {(2, 0): (Direction.LEFT, 1), (1, 0): (Direction.RIGHT, 1)}
+    tile = glyph_food_tile("*", "  ", 1)
+    rows = render_board_row(4, 0, {(2, 0)}, (3, 0), 1, "██", "  ", tile, partial)
+    assert board_to_text(rows) == "   ██ * "

@@ -25,8 +25,7 @@ def test_game_screen_snapshot(snap_compare):
         await pilot.press("space")
         await pilot.pause()
         screen = pilot.app.get_screen("game")
-        if screen.timer is not None:
-            screen.timer.stop()
+        screen._disarm()
         game = pilot.app.game
         game.reset()
         head_x, head_y = game.snake[0]
@@ -48,8 +47,7 @@ def test_game_screen_sprite_snapshot(snap_compare):
         await pilot.press("space")
         await pilot.pause()
         screen = pilot.app.get_screen("game")
-        if screen.timer is not None:
-            screen.timer.stop()
+        screen._disarm()
         game = pilot.app.game
         game.reset()
         head_x, head_y = game.snake[0]

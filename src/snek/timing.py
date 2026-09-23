@@ -17,10 +17,14 @@ renderer needs to interpolate motion between steps.
 `next_wake_delay()` says when the loop should next wake: exactly at the next
 step's deadline, or once per frame when steps are shorter than a frame. Waking at
 the deadline rather than on a fixed frame grid keeps the step rhythm even when
-the interval is not a whole number of frames.
+the interval is not a whole number of frames. An interpolating renderer splits
+each step into equal substeps, and the loop wakes at each substep boundary
+instead, so every visible increment is evenly spaced too.
 
 Framework-free (no Textual) so it can be unit-tested with plain numbers.
 """
+
+import math
 
 
 class StepClock:
@@ -83,16 +87,32 @@ class StepClock:
 # promptly without ever asking the timer for a zero or negative delay.
 MIN_WAKE_DELAY = 0.001
 
+# Fraction of a substep within which the clock counts as on a boundary.
+_BOUNDARY_TOLERANCE = 1e-6
+
 
 def next_wake_delay(
-    interval: float, accumulated: float, frame_interval: float
+    interval: float,
+    accumulated: float,
+    frame_interval: float,
+    substeps: int = 1,
 ) -> float:
-    """Seconds until the loop should next wake to run a step.
+    """Seconds until the loop should next wake to run a step or draw a substep.
 
-    Normally this is the time left until the next step is due. Intervals shorter
-    than a frame wake once per frame instead, and the clock batches the steps
-    due, so short intervals never schedule more wakes than frames.
+    With one substep this is the time left until the next step is due. With
+    more, it is the time until the next of `substeps` equal boundaries within
+    the step. Wakes are never closer than a frame, except to meet the step
+    deadline itself: intervals shorter than a frame wake once per frame and the
+    clock batches the steps due, and substeps shorter than a frame are drawn at
+    whatever boundary each frame reaches.
     """
     if interval < frame_interval:
         return frame_interval
-    return max(interval - accumulated, MIN_WAKE_DELAY)
+    until_step = interval - accumulated
+    substep = interval / substeps
+    if substep < frame_interval:
+        return max(min(frame_interval, until_step), MIN_WAKE_DELAY)
+    # The tolerance treats a clock a hair short of a boundary as on it, so
+    # float rounding cannot schedule a spurious near-zero wake.
+    boundary = (math.floor(accumulated / substep + _BOUNDARY_TOLERANCE) + 1) * substep
+    return max(min(boundary - accumulated, until_step), MIN_WAKE_DELAY)

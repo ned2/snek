@@ -15,6 +15,11 @@ class StepResult:
     The model owns what a tick *means* (movement, world transition, speed-up,
     game-over); the view reads these flags instead of sniffing deltas in snake
     length or world index.
+
+    A move also records what a renderer needs to animate it: the new `head` and
+    the `heading` it moved in and, unless the snake grew, the `vacated` tail
+    cell and the `vacated_heading` the tail moved in (None if a test placed a
+    tail that is not adjacent to the next segment).
     """
 
     moved: bool = False
@@ -23,6 +28,10 @@ class StepResult:
     new_world: int | None = None
     game_over: bool = False
     won: bool = False
+    head: Position | None = None
+    heading: Direction | None = None
+    vacated: Position | None = None
+    vacated_heading: Direction | None = None
 
 
 class Game:
@@ -157,8 +166,22 @@ class Game:
 
         self.snake.insert(0, new_head_pos)
         if not grows:
-            self.snake.pop()
-            return StepResult(moved=True)
+            vacated = self.snake.pop()
+            # A lone head is also the tail, so it moved the same way.
+            vacated_heading = (
+                self.direction
+                if len(self.snake) == 1
+                else GameRules.direction_between(
+                    vacated, self.snake[-1], self.width, self.height
+                )
+            )
+            return StepResult(
+                moved=True,
+                head=new_head_pos,
+                heading=self.direction,
+                vacated=vacated,
+                vacated_heading=vacated_heading,
+            )
 
         self.symbols_consumed += 1
         self.symbols_in_current_world += 1
@@ -185,6 +208,8 @@ class Game:
                 new_world=self.current_world if world_changed else None,
                 game_over=True,
                 won=True,
+                head=new_head_pos,
+                heading=self.direction,
             )
         self.place_food()
         return StepResult(
@@ -192,6 +217,8 @@ class Game:
             ate_food=True,
             world_changed=world_changed,
             new_world=self.current_world if world_changed else None,
+            head=new_head_pos,
+            heading=self.direction,
         )
 
     def check_world_transition(self) -> None:

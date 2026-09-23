@@ -130,3 +130,9 @@ def test_valid_boundary_values_are_accepted() -> None:
         side_panel_width=1,
     )
     assert (config.default_grid_width, config.default_grid_height) == (1, 2)
+
+
+def test_smooth_motion_flag_is_boolean() -> None:
+    assert GameConfig().smooth_motion is True
+    with pytest.raises(ValueError, match="smooth_motion must be a boolean"):
+        GameConfig(smooth_motion="no")

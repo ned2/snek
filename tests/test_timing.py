@@ -113,3 +113,17 @@ def test_intervals_shorter_than_a_frame_wake_once_per_frame() -> None:
     """Sub-frame steps are batched by the clock, not scheduled one by one."""
     assert next_wake_delay(0.002, 0.0, FRAME) == pytest.approx(FRAME)
     assert next_wake_delay(0.002, 0.0015, FRAME) == pytest.approx(FRAME)
+
+
+def test_substeps_wake_at_each_boundary_within_the_step() -> None:
+    """An interpolating renderer wakes at every substep, evenly spaced."""
+    assert next_wake_delay(0.1, 0.0, FRAME, 4) == pytest.approx(0.025)
+    assert next_wake_delay(0.1, 0.03, FRAME, 4) == pytest.approx(0.02)
+    assert next_wake_delay(0.1, 0.075, FRAME, 4) == pytest.approx(0.025)
+
+
+def test_substeps_shorter_than_a_frame_wake_once_per_frame() -> None:
+    """Fine substeps are drawn per frame, but the step deadline is still met."""
+    assert next_wake_delay(0.1, 0.0, FRAME, 12) == pytest.approx(FRAME)
+    assert next_wake_delay(0.1, 0.095, FRAME, 12) == pytest.approx(0.005)
+    assert next_wake_delay(0.1, 0.1, FRAME, 12) == MIN_WAKE_DELAY

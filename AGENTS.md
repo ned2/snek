@@ -134,15 +134,16 @@ diagnostics and game-over are fresh instances so their displayed state cannot go
 Within the game loop:
 1. `GameScreen._on_frame` feeds the elapsed wall time into a `StepClock` and runs one model
    step for each `current_interval` that has come due, re-reading the interval before every
-   step. It then calls `_arm()`, the only place that creates the loop timer (`self.timer`): a
-   one-shot at the next step's exact deadline (`timing.next_wake_delay`), or once per frame
-   when the interval is shorter than a frame. Deadline wakes keep the step rhythm even; a fixed
-   60 Hz grid made gaps alternate by a frame. Once render interpolation exists,
-   `_should_animate()` switches the loop to a 60 Hz interval timer. Pausing credits the time
-   already waited and stops the timer; resuming re-arms and discards the paused time; game over
-   stops it, and a stale wake while paused or over does nothing. `GameScreen.tick()` runs
-   exactly one step and redraws without touching timers; tests stop `timer` and use it to
-   advance by hand.
+   step. It then draws and calls `_arm()`, the only place that creates the loop timer
+   (`self.timer`): a one-shot at the next step's exact deadline or, while interpolating, the
+   next substep boundary (`timing.next_wake_delay`), and never closer than a frame except to
+   meet a deadline. Exact wakes keep steps and increments evenly spaced; a fixed 60 Hz grid made
+   gaps alternate by a frame. Pausing credits the time already waited and stops the timer;
+   resuming re-arms and discards the paused time; game over stops it. Textual queues timer
+   callbacks, so stopping a timer cannot recall a wake it already queued: each wake carries the
+   `_generation` it was armed in, `_disarm()` bumps it, and `_on_wake` ignores stale wakes.
+   `GameScreen.tick()` runs exactly one step and redraws it whole without touching timers;
+   tests call `_disarm()` (not `timer.stop()`) and then advance by hand.
 2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction, then calls
    `Game.step()`, which returns a `StepResult` describing the consequences (moved / ate food /
    world changed / game over). The view reacts to those flags rather than inferring model
@@ -168,11 +169,19 @@ Within the game loop:
 - `SnakeView` uses Textual's Line API: `render_line()` centres and frames the board itself and
   delegates each board row to the pure `render_board_row()` in `rendering.py`. Food is a cached
   pixel sprite when enabled and scale permits, otherwise the world's Unicode glyph.
-- Lines are drawn from a `BoardState` snapshot, not the live game. After each frame's steps,
+- Lines are drawn from a `BoardState` snapshot, not the live game. After each wake,
   `SnakeView.update_board()` takes a new snapshot and refreshes only the changed cells' regions, so
   Textual re-renders those lines and writes only those cells. Call `update_board()` after model
-  steps; a plain full `refresh()` re-snapshots the live game (use it after resets or direct model
-  edits, as tests do).
+  steps; a plain full `refresh()` re-snapshots the live game drawn whole (use it after resets or
+  direct model edits, as tests do).
+- Movement is interpolated. The drawing trails the model by up to one step: `Game.step()` reports
+  the new head, the vacated tail cell and their directions in `StepResult`, and
+  `rendering.motion_cells()` turns those plus the clock's progress into part-filled cells (whole
+  columns across, `▀`/`▄` half rows vertically, `2*scale` increments either way) that keep the
+  visible length constant. The screen passes the step to `update_board()` only while
+  interpolating: `smooth_motion` is on (`--no-smooth` turns it off), the glyphs are the default
+  blocks, the step spans at least two frames, and exactly one step ran in the wake. Otherwise
+  cells are drawn whole, and game over settles the board whole.
 
 ### Diagnostics and clipboard flow
 

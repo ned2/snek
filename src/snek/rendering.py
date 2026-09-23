@@ -20,15 +20,24 @@ carry their own colour — e.g. a food sprite). The food cell is supplied as a
 pre-built *tile* so the board walker stays independent of how food is drawn:
 `glyph_food_tile` keeps the single themed glyph; a sprite tile (see `sprites`)
 swaps in pixel art. Both are `scale` rows tall and `2*scale` columns wide.
+
+Between steps the view can interpolate motion. `motion_cells` works out which
+cells are partly drawn at a given progress through a step: the head fills in
+from the side it entered while the vacated tail cell drains towards the tail, so
+the visible length stays constant. `partial_tile` draws such a cell with block
+elements, and `render_board_row` draws those cells in place of whole ones.
 """
 
+from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
+from types import MappingProxyType
+from typing import Final
 
 from rich.segment import Segment
 from rich.style import Style
 
 from .config import GameConfig
-from .game_rules import Position
+from .game_rules import Direction, GameRules, Position
 
 # Subtle frame around the play area; dim so it reads as chrome, not as snake.
 # No explicit colour, so it inherits the widget's colour (theme primary).
@@ -43,6 +52,24 @@ CELL_BASE_WIDTH = 2
 # A food cell tile: `scale` rows, each a list of Segments spanning `2*scale`
 # columns. Kept as a type alias for readability at call sites.
 FoodTile = list[list[Segment]]
+
+# A partly drawn snake cell: the side its filled part sits against, and how many
+# of the cell's `motion_units(scale)` are filled from that side.
+PartialCell = tuple[Direction, int]
+
+# Partial cells are drawn with block elements: whole columns across, half rows
+# up and down. They match the default snake and blank glyphs, which is what
+# interpolation requires.
+SMOOTH_SNAKE_BLOCK = "██"
+SMOOTH_EMPTY_CELL = "  "
+# No partly drawn cells: the board drawn whole.
+_EMPTY_PARTIAL: dict[Position, PartialCell] = {}
+NO_PARTIAL_CELLS: Final[Mapping[Position, PartialCell]] = MappingProxyType(
+    _EMPTY_PARTIAL
+)
+_FULL = "█"
+_UPPER_HALF = "▀"
+_LOWER_HALF = "▄"
 
 
 def compute_layout(
@@ -114,6 +141,71 @@ def glyph_food_tile(food_symbol: str, empty_cell: str, scale: int) -> FoodTile:
     ]
 
 
+def motion_units(scale: int) -> int:
+    """How many visible increments one step is drawn in at `scale`.
+
+    A cell is ``2*scale`` columns wide and `scale` rows (``2*scale`` half rows)
+    tall, so either axis moves in ``2*scale`` equal physical increments.
+    """
+    return CELL_BASE_WIDTH * scale
+
+
+def partial_tile(anchor: Direction, filled: int, scale: int) -> FoodTile:
+    """A snake cell with `filled` of its `motion_units` drawn against `anchor`.
+
+    Horizontal anchors fill whole columns; vertical anchors fill half rows with
+    upper and lower half blocks. Rows are unstyled, like whole snake cells, so
+    they inherit the snake colour.
+    """
+    cols = CELL_BASE_WIDTH * scale
+    if anchor in (Direction.LEFT, Direction.RIGHT):
+        fill = _FULL * filled
+        empty = " " * (cols - filled)
+        text = fill + empty if anchor is Direction.LEFT else empty + fill
+        return [[Segment(text)] for _ in range(scale)]
+    rows: FoodTile = []
+    for r in range(scale):
+        # Half-row indices counted from the anchored edge.
+        near, far = (2 * r, 2 * r + 1)
+        if anchor is Direction.DOWN:
+            near, far = (2 * (scale - 1 - r), 2 * (scale - 1 - r) + 1)
+        upper, lower = (near < filled, far < filled)
+        if anchor is Direction.DOWN:
+            upper, lower = lower, upper
+        glyph = _FULL if upper and lower else _UPPER_HALF if upper else _LOWER_HALF
+        rows.append([Segment((glyph if upper or lower else " ") * cols)])
+    return rows
+
+
+def motion_cells(
+    head: Position,
+    heading: Direction,
+    vacated: Position | None,
+    vacated_heading: Direction | None,
+    progress: float,
+    scale: int,
+) -> dict[Position, PartialCell]:
+    """The partly drawn cells `progress` of the way through a step.
+
+    The step has already moved the model: `head` is its new head and `vacated`
+    its old tail cell (None when the snake grew). The drawing trails the model
+    by up to one step. The head shows ``floor(progress * units) + 1`` units
+    filled from the side it entered, so a move shows at once; the vacated cell
+    keeps the rest against the side the tail moved towards. The visible length
+    is constant, and a fully drawn step needs no partial cells.
+
+    A head moving into the cell its own tail just left stays whole.
+    """
+    units = motion_units(scale)
+    filled = min(units, int(progress * units) + 1)
+    if filled >= units or head == vacated:
+        return {}
+    cells = {head: (GameRules.get_opposite_direction(heading), filled)}
+    if vacated is not None and vacated_heading is not None:
+        cells[vacated] = (vacated_heading, units - filled)
+    return cells
+
+
 def render_board_row(
     width: int,
     y: int,
@@ -123,6 +215,7 @@ def render_board_row(
     snake_block: str,
     empty_cell: str,
     food_tile: FoodTile,
+    partial: Mapping[Position, PartialCell] = NO_PARTIAL_CELLS,
 ) -> list[list[Segment]]:
     """Draw logical row `y` as Segments: one inner list per terminal row.
 
@@ -130,7 +223,8 @@ def render_board_row(
     `scale` terminal rows. Snake and empty cells tile their base glyph
     (`snake_block` / `empty_cell`) and stay unstyled so they inherit the widget
     colour; the food cell uses `food_tile`, whose rows already span the block
-    width and may carry their own styles.
+    width and may carry their own styles. Cells in `partial` are drawn part
+    filled (see `partial_tile`), whatever else they hold.
 
     Each row is simplified so runs of same-style cells become one Segment. Textual
     emits a style reset and a full colour escape per Segment, so an uncoalesced
@@ -142,7 +236,11 @@ def render_board_row(
     block_rows: list[list[Segment]] = [[] for _ in range(scale)]
     for x in range(width):
         pos = (x, y)
-        if pos in snake:
+        if pos in partial:
+            anchor, filled = partial[pos]
+            for r, tile_row in enumerate(partial_tile(anchor, filled, scale)):
+                block_rows[r].extend(tile_row)
+        elif pos in snake:
             for r in range(scale):
                 block_rows[r].append(Segment(snake_text))
         elif pos == food:

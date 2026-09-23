@@ -1,5 +1,7 @@
 """Unit tests for game rules and logic."""
 
+import pytest
+
 from snek.game_rules import Direction, GameRules
 
 
@@ -98,3 +100,27 @@ class TestCollisionDetection:
         # No collision
         assert GameRules.is_food_collision((5, 5), (5, 6)) is False
         assert GameRules.is_food_collision((5, 5), (6, 5)) is False
+
+
+class TestDirectionBetween:
+    """One-cell moves read as a direction, including across the wrap seam."""
+
+    @pytest.mark.parametrize(
+        ("start", "end", "direction"),
+        [
+            ((5, 5), (6, 5), Direction.RIGHT),
+            ((5, 5), (4, 5), Direction.LEFT),
+            ((5, 5), (5, 6), Direction.DOWN),
+            ((5, 5), (5, 4), Direction.UP),
+            ((9, 3), (0, 3), Direction.RIGHT),
+            ((0, 3), (9, 3), Direction.LEFT),
+            ((3, 7), (3, 0), Direction.DOWN),
+            ((3, 0), (3, 7), Direction.UP),
+        ],
+    )
+    def test_adjacent_cells(self, start, end, direction):
+        assert GameRules.direction_between(start, end, 10, 8) == direction
+
+    @pytest.mark.parametrize("end", [(5, 5), (7, 5), (6, 6)])
+    def test_cells_that_are_not_adjacent_have_no_direction(self, end):
+        assert GameRules.direction_between((5, 5), end, 10, 8) is None

@@ -47,6 +47,28 @@ class GameRules:
         return (new_x, new_y)
 
     @staticmethod
+    def direction_between(
+        start: Position, end: Position, width: int, height: int
+    ) -> Direction | None:
+        """The direction of a one-cell move from `start` to `end`, if adjacent.
+
+        Wrap-aware: a move across the seam (e.g. x = width - 1 to x = 0) reads
+        as continuing in the same direction, not as a jump back across the board.
+        Returns None for cells that are not adjacent.
+        """
+        dx = (end[0] - start[0]) % width
+        dy = (end[1] - start[1]) % height
+        if dy == 0 and dx == 1:
+            return Direction.RIGHT
+        if dy == 0 and dx == width - 1 and dx != 0:
+            return Direction.LEFT
+        if dx == 0 and dy == 1:
+            return Direction.DOWN
+        if dx == 0 and dy == height - 1 and dy != 0:
+            return Direction.UP
+        return None
+
+    @staticmethod
     def is_self_collision(head: Position, body: list[Position]) -> bool:
         """Check if the head collides with the body."""
         return head in body

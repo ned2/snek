@@ -177,3 +177,20 @@ def test_main_layout_defaults_match_config(monkeypatch):
     assert config.sizing_mode == default_config.sizing_mode
     assert config.max_grid_width == default_config.max_grid_width
     assert config.cell_scale == default_config.cell_scale
+
+
+@pytest.mark.parametrize(("argv", "smooth"), [([], True), (["--no-smooth"], False)])
+def test_main_applies_smooth_motion_flag(monkeypatch, argv, smooth):
+    """`--no-smooth` turns off movement interpolation."""
+    captured = {}
+
+    class FakeApp:
+        def __init__(self, config=None, demo_strategy=None):
+            captured["config"] = config
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
+    main(argv)
+    assert captured["config"].smooth_motion is smooth

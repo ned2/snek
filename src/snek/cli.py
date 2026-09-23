@@ -111,6 +111,12 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-smooth",
+        dest="smooth",
+        action="store_false",
+        help="move the snake a whole cell at a time instead of sliding between cells",
+    )
+    parser.add_argument(
         "--demo-strategy",
         choices=sorted(STRATEGIES),
         default=DEFAULT_STRATEGY,
@@ -130,6 +136,7 @@ def main(argv: list[str] | None = None) -> None:
     overrides = {
         "initial_speed_interval": 1.0 / args.speed,
         "sizing_mode": args.sizing,
+        "smooth_motion": args.smooth,
     }
     if args.grid is not None:
         overrides["max_grid_width"], overrides["max_grid_height"] = args.grid

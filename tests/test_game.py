@@ -443,7 +443,14 @@ class TestStepResult:
         game = Game(width=40, height=40)
         head = game.snake[0]
         game.food = (head[0], head[1] + 2)  # not where a RIGHT step lands
-        assert game.step() == StepResult(moved=True)
+        new_head = (head[0] + 1, head[1])
+        assert game.step() == StepResult(
+            moved=True,
+            head=new_head,
+            heading=Direction.RIGHT,
+            vacated=head,
+            vacated_heading=Direction.RIGHT,
+        )
 
     def test_self_collision_reports_game_over(self):
         """Running into the body reports game_over and sets the flag."""
@@ -457,9 +464,43 @@ class TestStepResult:
     def test_eat_without_world_change(self):
         """Eating mid-world reports ate_food but not world_changed."""
         game = self._game_with_food_ahead()
+        head = game.snake[0]
         assert game.step() == StepResult(
-            moved=True, ate_food=True, world_changed=False, new_world=None
+            moved=True,
+            ate_food=True,
+            world_changed=False,
+            new_world=None,
+            head=(head[0] + 1, head[1]),
+            heading=Direction.RIGHT,
         )
+
+    def test_tail_heading_follows_the_body_round_a_corner(self):
+        """The vacated tail moves towards the next body cell, not the head's way."""
+        game = Game(width=20, height=20)
+        game.snake = [(5, 5), (5, 6), (4, 6)]
+        game.direction = Direction.UP
+        game.food = (0, 0)
+        result = game.step()
+        assert (result.head, result.heading) == ((5, 4), Direction.UP)
+        assert (result.vacated, result.vacated_heading) == ((4, 6), Direction.RIGHT)
+
+    def test_motion_headings_wrap_across_the_seam(self):
+        """Moves across the board edge keep their direction."""
+        game = Game(width=20, height=20)
+        game.snake = [(0, 5), (19, 5), (18, 5)]
+        game.direction = Direction.RIGHT
+        game.food = (10, 10)
+        result = game.step()
+        assert (result.head, result.heading) == ((1, 5), Direction.RIGHT)
+        assert (result.vacated, result.vacated_heading) == ((18, 5), Direction.RIGHT)
+        result = game.step()
+        assert (result.vacated, result.vacated_heading) == ((19, 5), Direction.RIGHT)
+
+        game.snake = [(3, 19)]
+        game.direction = Direction.DOWN
+        result = game.step()
+        assert (result.head, result.heading) == ((3, 0), Direction.DOWN)
+        assert (result.vacated, result.vacated_heading) == ((3, 19), Direction.DOWN)
 
     def test_eat_crossing_world_boundary(self):
         """Eating a world's final food reports world_changed and the new index."""

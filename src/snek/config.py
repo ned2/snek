@@ -116,6 +116,12 @@ class GameConfig:
     # False to always use the glyph.
     food_sprites: bool = True
 
+    # Interpolate movement between steps: the head slides into its new cell and
+    # the tail drains out of the old one, instead of both jumping a whole cell.
+    # Needs the default block/blank glyphs, and turns itself off at speeds where
+    # a step lasts less than two frames.
+    smooth_motion: bool = True
+
     def __post_init__(self) -> None:
         """Reject invalid configuration at its construction boundary."""
         if not isinstance(self.sizing_mode, str) or self.sizing_mode not in {
@@ -187,10 +193,12 @@ class GameConfig:
                     f"{name} must occupy exactly 2 terminal cells, got {width}"
                 )
 
-        if not isinstance(self.food_sprites, bool):
-            raise ValueError(
-                f"food_sprites must be a boolean, got {self.food_sprites!r}"
-            )
+        for name, flag in (
+            ("food_sprites", self.food_sprites),
+            ("smooth_motion", self.smooth_motion),
+        ):
+            if not isinstance(flag, bool):
+                raise ValueError(f"{name} must be a boolean, got {flag!r}")
 
 
 default_config: Final = GameConfig()

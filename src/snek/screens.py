@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 from rich.segment import Segment
@@ -24,15 +24,20 @@ from typing_extensions import Self, override
 from . import __version__, clipboard, sprites
 from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
-from .game import Game
+from .game import Game, StepResult
 from .game_rules import Direction, Position
 from .rendering import (
     CELL_BASE_WIDTH,
+    SMOOTH_EMPTY_CELL,
+    SMOOTH_SNAKE_BLOCK,
+    PartialCell,
     compute_layout,
     fit_grid_scale,
     frame_rule,
     frame_side,
     glyph_food_tile,
+    motion_cells,
+    motion_units,
     render_board_row,
 )
 from .timing import StepClock, next_wake_delay
@@ -41,8 +46,12 @@ if TYPE_CHECKING:
     from .app import SnakeApp
 
 # Textual's default screen-update rate. The loop never wakes more often than
-# this; when not animating it wakes only at step deadlines.
+# this; without interpolation it wakes only at step deadlines.
 _FRAME_INTERVAL = 1 / 60
+
+# Interpolate only when a step spans at least this many frames. Faster steps
+# would show few, unevenly timed increments, and whole cells read better.
+_MIN_SMOOTH_FRAMES = 2
 
 
 def _snake_app(node: DOMNode) -> SnakeApp:
@@ -168,13 +177,16 @@ class GameScreen(Screen[None]):
     def __init__(self) -> None:
         super().__init__()
         # `timer` is the single loop timer, created only by `_arm()`: a one-shot
-        # at the next step deadline, or a 60 Hz interval while animating.
+        # at the next step deadline or, while interpolating, the next substep.
         # `_clock` decides when a model step is due. `_last_frame` is None until
         # the first wake after a (re)start or resume, so paused time never counts.
+        # `_motion` is the step being interpolated, if any. `_generation` tags
+        # each armed wake so a stale one can be ignored (see `_on_wake`).
         self.timer: Timer | None = None
-        self._timer_animating: bool = False
+        self._generation: int = 0
         self._clock = StepClock()
         self._last_frame: float | None = None
+        self._motion: StepResult | None = None
         # Injectable so tests can drive frames without patching the global clock.
         self._now: Callable[[], float] = time.monotonic
         self.sidebar_visible: bool = True
@@ -216,29 +228,23 @@ class GameScreen(Screen[None]):
         self._disarm()
         self._clock.reset()
         self._last_frame = None
+        self._motion = None
         self._arm()
 
-    def _should_animate(self, interval: float) -> bool:
-        """Whether frames between steps would draw anything new.
-
-        Nothing interpolates between steps yet, so the loop only needs to wake
-        at step deadlines. Render interpolation will return True here when the
-        interval spans at least two frames.
-        """
-        return False
+    def _substeps(self, interval: float) -> int:
+        """How many increments the board draws each step in: 1 means whole cells."""
+        if interval < _MIN_SMOOTH_FRAMES * _FRAME_INTERVAL:
+            return 1
+        return self.query_one(SnakeView).motion_units()
 
     def _arm(self) -> None:
         """Schedule the next wake; the only place that creates loop timers.
 
-        While animating, a 60 Hz interval timer runs steps on frame boundaries,
-        and render interpolation hides that quantisation. Otherwise a one-shot
-        timer fires exactly when the next step is due, so steps keep an even
-        rhythm instead of snapping to a frame grid.
+        A one-shot timer fires exactly when the next step is due or, while
+        interpolating, at the next substep boundary. Steps and the increments
+        between them keep an even rhythm instead of snapping to a frame grid.
         """
         game = _snake_app(self).game
-        animate = self._should_animate(game.current_interval)
-        if self.timer is not None and animate and self._timer_animating:
-            return  # The running frame timer already covers this.
         self._disarm()
         if game.game_over or game.paused:
             return
@@ -246,17 +252,18 @@ class GameScreen(Screen[None]):
             # Count from now, so the first wake after a (re)start or resume
             # credits the time spent waiting for it.
             self._last_frame = self._now()
-        self._timer_animating = animate
-        if animate:
-            self.timer = self.set_interval(_FRAME_INTERVAL, self._on_frame)
-        else:
-            delay = next_wake_delay(
-                game.current_interval, self._clock.accumulated, _FRAME_INTERVAL
-            )
-            self.timer = self.set_timer(delay, self._on_frame)
+        delay = next_wake_delay(
+            game.current_interval,
+            self._clock.accumulated,
+            _FRAME_INTERVAL,
+            self._substeps(game.current_interval),
+        )
+        generation = self._generation
+        self.timer = self.set_timer(delay, lambda: self._on_wake(generation))
 
     def _disarm(self) -> None:
-        """Stop and forget the loop timer, if any."""
+        """Stop and forget the loop timer, if any, and void any wake it queued."""
+        self._generation += 1
         if self.timer is not None:
             self.timer.stop()
             self.timer = None
@@ -277,8 +284,17 @@ class GameScreen(Screen[None]):
         self.foods_label = str(game.symbols_consumed)
         self.speed_label = f"{game.get_moves_per_second():.1f}/sec"
 
+    def _on_wake(self, generation: int) -> None:
+        """Handle a timer wake unless the loop was stopped or re-armed since.
+
+        Textual queues a timer's callback on the screen rather than calling it,
+        so stopping a timer that has already fired cannot recall its wake.
+        """
+        if generation == self._generation:
+            self._on_frame()
+
     def _on_frame(self) -> None:
-        """Run every model step that has come due, then schedule the next wake.
+        """Run every model step that has come due, draw, then schedule the next wake.
 
         The step interval is re-read before each step, so eating food speeds up
         the very next step. A stale timer firing while paused or after the game
@@ -288,15 +304,25 @@ class GameScreen(Screen[None]):
         if game.game_over or game.paused:
             return
         self._advance_clock()
-        stepped = False
+        steps = 0
+        result: StepResult | None = None
         while self._clock.take_step(game.current_interval):
-            stepped = True
-            if not self._step():
+            result = self._step()
+            if result is None:
                 return
-        if stepped:
+            steps += 1
+        if steps:
             self._sync_reactives()
-            self.query_one(SnakeView).update_board()
+            # Several steps in one wake means the loop fell behind; draw whole.
+            self._motion = result if steps == 1 else None
+        self._draw()
         self._arm()
+
+    def _draw(self) -> None:
+        """Update the board, part way through the current step when interpolating."""
+        interval = _snake_app(self).game.current_interval
+        motion = self._motion if self._substeps(interval) > 1 else None
+        self.query_one(SnakeView).update_board(motion, self._clock.progress(interval))
 
     def _advance_clock(self) -> None:
         """Credit the step clock with the wall time since the previous wake."""
@@ -306,13 +332,14 @@ class GameScreen(Screen[None]):
         self._clock.advance(elapsed)
 
     def tick(self) -> None:
-        """Advance the game exactly one step and redraw."""
-        if self._step():
+        """Advance the game exactly one step and redraw it whole."""
+        if self._step() is not None:
+            self._motion = None
             self._sync_reactives()
             self.query_one(SnakeView).update_board()
 
-    def _step(self) -> bool:
-        """Advance the model one step; return False once the game has ended."""
+    def _step(self) -> StepResult | None:
+        """Advance the model one step; return None once the game has ended."""
         app = _snake_app(self)
         if self.demo_ai:
             # In demo mode, let the demo strategy choose the direction
@@ -327,14 +354,17 @@ class GameScreen(Screen[None]):
             app.theme = app.game.world_path.get_world(result.new_world).theme_name
 
         if result.game_over:
-            # Stop the loop to prevent multiple game over modals.
+            # Stop the loop to prevent multiple game over modals, and settle
+            # any part-drawn step so the final board is whole.
             self._disarm()
+            self._motion = None
+            self.query_one(SnakeView).update_board()
             # Push a FRESH modal instance (not the registered singleton) so its
             # compose() re-reads the current game: the win/death banner and the
             # final food count reflect *this* game, not a cached earlier one.
             app.push_screen(GameOverModal())
-            return False
-        return True
+            return None
+        return result
 
     def action_pause(self) -> None:
         """Pause the game."""
@@ -665,7 +695,8 @@ class BoardState:
 
     Every line is rendered from this snapshot rather than from the live game, so
     the view always knows exactly what is on screen and can repaint only the
-    cells that differ from the next snapshot.
+    cells that differ from the next snapshot. `partial` holds the cells drawn
+    part way through an interpolated step.
     """
 
     width: int
@@ -674,9 +705,12 @@ class BoardState:
     food: Position
     world: int
     food_symbol: str
+    partial: Mapping[Position, PartialCell] = field(default_factory=dict)
 
     @classmethod
-    def capture(cls, game: Game) -> BoardState:
+    def capture(
+        cls, game: Game, partial: Mapping[Position, PartialCell] | None = None
+    ) -> BoardState:
         """Snapshot the parts of `game` the board draws."""
         return cls(
             game.width,
@@ -685,6 +719,7 @@ class BoardState:
             game.food,
             game.current_world,
             game.food_symbol,
+            {} if partial is None else partial,
         )
 
 
@@ -719,7 +754,11 @@ class SnakeView(Widget):
     Lines are drawn from a `BoardState` snapshot. `update_board()` takes a new
     snapshot and refreshes only the cells that changed, so Textual re-renders
     just those lines and writes just those cells to the terminal. A full
-    `refresh()` re-snapshots the live game.
+    `refresh()` re-snapshots the live game, drawn whole.
+
+    Given the step just taken and how far the clock is through the next one,
+    `update_board()` draws the head and vacated tail cells part filled, so the
+    snake slides between cells (see `rendering.motion_cells`).
     """
 
     # How many terminal characters draw one logical cell, per axis-unit. Updated
@@ -728,6 +767,10 @@ class SnakeView(Widget):
     _grid_established: bool = False
     # The snapshot being drawn; None means "take a fresh one on next use".
     _drawn: BoardState | None = None
+    # Board rows built for one snapshot at one scale, keyed by logical row. A
+    # cell spans `scale` terminal rows, and each is rendered as its own line.
+    _rows_for: tuple[BoardState, int] | None = None
+    _rows: dict[int, list[list[Segment]]] | None = None
 
     def on_resize(self, event: events.Resize) -> None:
         """Establish the logical grid once, then make every resize visual-only."""
@@ -765,15 +808,47 @@ class SnakeView(Widget):
             *regions, repaint=repaint, layout=layout, recompose=recompose
         )
 
-    def update_board(self) -> None:
-        """Snapshot the game and repaint only the cells that changed."""
-        drawn = self._drawn
-        if drawn is None:
-            self.refresh()
-            return
-        state = BoardState.capture(_snake_app(self).game)
-        if (state.width, state.height) != (drawn.width, drawn.height):
-            self.refresh()
+    def motion_units(self) -> int:
+        """Increments per step when interpolating at this scale; 1 when disabled.
+
+        Partial cells are drawn with block elements, so interpolation needs the
+        default snake and blank glyphs as well as `smooth_motion`.
+        """
+        config = _snake_app(self).config
+        if (
+            config.smooth_motion
+            and config.snake_block == SMOOTH_SNAKE_BLOCK
+            and config.empty_cell == SMOOTH_EMPTY_CELL
+        ):
+            return motion_units(self._scale)
+        return 1
+
+    def update_board(
+        self, motion: StepResult | None = None, progress: float = 1.0
+    ) -> None:
+        """Snapshot the game and repaint only the cells that changed.
+
+        With `motion`, the step just taken is drawn `progress` of the way done.
+        """
+        partial: dict[Position, PartialCell] = {}
+        if (
+            motion is not None
+            and motion.head is not None
+            and motion.heading is not None
+            and self.motion_units() > 1
+        ):
+            partial = motion_cells(
+                motion.head,
+                motion.heading,
+                motion.vacated,
+                motion.vacated_heading,
+                progress,
+                self._scale,
+            )
+        state = BoardState.capture(_snake_app(self).game, partial)
+        drawn, self._drawn = self._drawn, state
+        if drawn is None or (state.width, state.height) != (drawn.width, drawn.height):
+            super().refresh()
             return
         changed = set(drawn.snake ^ state.snake)
         if (drawn.food, drawn.world, drawn.food_symbol) != (
@@ -782,7 +857,11 @@ class SnakeView(Widget):
             state.food_symbol,
         ):
             changed.update((drawn.food, state.food))
-        self._drawn = state
+        changed.update(
+            cell
+            for cell in drawn.partial.keys() | state.partial.keys()
+            if drawn.partial.get(cell) != state.partial.get(cell)
+        )
         if changed:
             geometry = self._geometry(state)
             super().refresh(*(self._cell_region(geometry, cell) for cell in changed))
@@ -854,7 +933,29 @@ class SnakeView(Widget):
         return strip.apply_style(base_style).adjust_cell_length(width, base_style)
 
     def _board_rows(self, state: BoardState, logical_y: int) -> list[list[Segment]]:
-        """The `scale` terminal rows that draw one logical row of `state`."""
+        """The `scale` terminal rows that draw one logical row of `state`.
+
+        Built once per snapshot and scale, so the lines of one logical row share
+        a single render.
+        """
+        rows_for = self._rows_for
+        if (
+            self._rows is None
+            or rows_for is None
+            or rows_for[0] is not state
+            or rows_for[1] != self._scale
+        ):
+            self._rows_for = (state, self._scale)
+            self._rows = {}
+        rows = self._rows.get(logical_y)
+        if rows is None:
+            rows = self._rows[logical_y] = self._render_board_rows(state, logical_y)
+        return rows
+
+    def _render_board_rows(
+        self, state: BoardState, logical_y: int
+    ) -> list[list[Segment]]:
+        """Render one logical row of `state` (see `_board_rows`)."""
         config = _snake_app(self).config
         return render_board_row(
             state.width,
@@ -865,6 +966,7 @@ class SnakeView(Widget):
             config.snake_block,
             config.empty_cell,
             self._food_tile(state),
+            state.partial,
         )
 
     def _food_tile(self, state: BoardState) -> list[list[Segment]]:

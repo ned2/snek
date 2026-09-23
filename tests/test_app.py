@@ -199,7 +199,7 @@ async def test_game_controls():
 
         # Stop the auto-timer so only our explicit ticks advance the model; the
         # 0.1s interval would otherwise drain the turn buffer between key presses.
-        game_screen.timer.stop()
+        game_screen._disarm()
 
         # Park a length-1 snake with food out of the way so each step is a plain
         # move and never ends the game while we exercise the controls.
@@ -282,7 +282,7 @@ def _record_loop_timers(monkeypatch, game_screen) -> list[_RecordedTimer]:
         return timer
 
     def set_interval(*args, **kwargs):
-        raise AssertionError("no frame timer should run without animation")
+        raise AssertionError("the loop only schedules one-shot wakes")
 
     monkeypatch.setattr(game_screen, "set_timer", set_timer)
     monkeypatch.setattr(game_screen, "set_interval", set_interval)
@@ -294,8 +294,9 @@ async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
     """The loop sleeps until each step is due, keeps waited time across a pause,
     re-reads the interval after eating, and stops for good at game over."""
     now = [0.0]
-    # A binary-exact interval keeps the fake-clock arithmetic exact.
-    app = SnakeApp(GameConfig(initial_speed_interval=0.125))
+    # A binary-exact interval keeps the fake-clock arithmetic exact. Without
+    # interpolation the loop wakes only at step deadlines.
+    app = SnakeApp(GameConfig(initial_speed_interval=0.125, smooth_motion=False))
     async with app.run_test() as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -354,6 +355,137 @@ async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
         count = len(armed)
         game_screen._on_frame()
         assert len(armed) == count
+
+
+@pytest.mark.asyncio
+async def test_stale_queued_wakes_are_ignored() -> None:
+    """A wake queued by a timer that was since stopped or replaced does nothing.
+
+    Textual queues timer callbacks on the screen, so stopping a timer that has
+    already fired cannot recall its wake; the loop must ignore it itself.
+    """
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        stale = game_screen._generation
+        game_screen._disarm()
+        head = app.game.snake[0]
+        game_screen._last_frame = -100.0  # A real wake would now be long overdue.
+        game_screen._on_wake(stale)
+        assert app.game.snake[0] == head
+        assert game_screen.timer is None
+
+
+@pytest.mark.asyncio
+async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
+    """While interpolating, the loop wakes at each substep and the board shows
+    the step part done; fast, late or final steps are drawn whole."""
+    now = [0.0]
+    app = SnakeApp(GameConfig(initial_speed_interval=0.125))
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        view = game_screen.query_one(SnakeView)
+        units = view.motion_units()
+        assert units > 1
+        game_screen._now = lambda: now[0]
+        armed = _record_loop_timers(monkeypatch, game_screen)
+        game = app.game
+        game.set_snake_position([(5, 5)])
+        game.set_food_position((0, 0))
+        game.direction = Direction.RIGHT
+        game_screen._restart_loop()
+        view.refresh()
+        substep = game.current_interval / units
+        assert armed[-1].delay == pytest.approx(substep)
+
+        def wake_at(t: float) -> None:
+            now[0] = t
+            game_screen._on_frame()
+
+        # The step shows its first increment at once: the head starts entering
+        # its new cell as the vacated one starts draining.
+        wake_at(0.125)
+        assert game.snake[0] == (6, 5)
+        assert view._drawn is not None
+        assert view._drawn.partial == {
+            (6, 5): (Direction.LEFT, 1),
+            (5, 5): (Direction.RIGHT, units - 1),
+        }
+        assert armed[-1].delay == pytest.approx(substep)
+        # By the last substep the step is drawn whole.
+        wake_at(0.125 + (units - 1) * substep)
+        assert view._drawn.partial == {}
+        assert armed[-1].delay == pytest.approx(substep)
+
+        # A late wake that runs two steps at once draws them whole.
+        wake_at(0.125 + 3 * game.current_interval)
+        assert game.snake[0] == (8, 5)
+        assert view._drawn.partial == {}
+
+        # Steps shorter than two frames are drawn whole, waking at deadlines.
+        game.current_interval = 0.03125
+        wake_at(now[0] + 0.03125)
+        assert view._drawn.partial == {}
+        assert armed[-1].delay == pytest.approx(0.03125)
+
+        # Game over settles the board whole.
+        game.current_interval = 0.125
+        wake_at(now[0] + 0.125)
+        assert view._drawn.partial != {}
+        _arm_self_collision(game)
+        wake_at(now[0] + 0.125)
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverModal)
+        assert view._drawn is not None
+        assert view._drawn.partial == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [(80, 24), (200, 50)])
+async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> None:
+    """Every substep repaints exactly the cells whose drawing changed.
+
+    Demo play covers turns, wraps and eating. After each wake, Textual's cached
+    lines must equal a fresh render of the same snapshot; a missed cell would
+    survive as a stale cached line.
+    """
+    now = [0.0]
+    app = SnakeApp()
+    async with app.run_test(size=size) as pilot:
+        await pilot.press("d")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        view = game_screen.query_one(SnakeView)
+        assert view.motion_units() > 1
+        game_screen._now = lambda: now[0]
+        armed = _record_loop_timers(monkeypatch, game_screen)
+        game = app.game
+        game_screen._restart_loop()
+        eaten = game.symbols_consumed
+        partial_wakes = 0
+        for _ in range(600):
+            # Keep food close so the run covers eating, growth and food moves.
+            head_x, head_y = game.snake[0]
+            if game.symbols_consumed == eaten and game.food[1] != head_y:
+                game.set_food_position(((head_x + 4) % game.width, head_y))
+            now[0] += armed[-1].delay
+            game_screen._on_frame()
+            if game.game_over:
+                break
+            assert view._drawn is not None
+            partial_wakes += bool(view._drawn.partial)
+            cached = [strip.text for strip in view.render_lines(view.size.region)]
+            fresh = [view.render_line(y).text for y in range(view.size.height)]
+            assert cached == fresh
+        assert game.symbols_consumed > eaten
+        assert partial_wakes > 0
 
 
 @pytest.mark.asyncio
@@ -486,7 +618,7 @@ async def test_new_game_from_menu_resets_and_plays():
         app.game.won = True
         app.game.game_over = True
         app.game.symbols_consumed = 42
-        game_screen.timer.stop()
+        game_screen._disarm()
         app.push_screen(GameOverModal())
         await pilot.pause()
 
@@ -525,7 +657,7 @@ async def test_game_over_banner_reflects_current_game():
         app.game.won = True
         app.game.game_over = True
         app.game.symbols_consumed = 99
-        game_screen.timer.stop()
+        game_screen._disarm()
         app.push_screen(GameOverModal())
         await pilot.pause()
         assert "BOARD FILLED" in _death_message(app)
@@ -630,7 +762,7 @@ async def test_theme_changes_with_world():
         initial_theme = app.theme
         old_world = game.current_world
 
-        game_screen.timer.stop()
+        game_screen._disarm()
         head_x, head_y = game.snake[0]
         game.direction = Direction.RIGHT
         game.set_food_position(((head_x + 1) % game.width, head_y))
@@ -656,7 +788,7 @@ async def test_resize_handling():
         await pilot.pause()
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
-        game_screen.timer.stop()
+        game_screen._disarm()
 
         game = app.game
         cycle = _serpentine_cycle(game.width, game.height)
@@ -700,7 +832,7 @@ async def test_resize_preserves_stateful_demo_strategy():
         await pilot.pause()
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
-        game_screen.timer.stop()
+        game_screen._disarm()
         strategy = game_screen.demo_ai
         assert strategy is not None
         strategy.get_next_direction()
@@ -798,7 +930,7 @@ async def test_partial_board_updates_match_a_full_render(size) -> None:
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
         assert game_screen.timer is not None
-        game_screen.timer.stop()
+        game_screen._disarm()
         view = game_screen.query_one(SnakeView)
         game = app.game
         eaten = game.symbols_consumed
@@ -826,7 +958,7 @@ async def test_food_uses_glyph_at_scale_one():
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.press("space")
         await pilot.pause()
-        app.screen.timer.stop()
+        app.screen._disarm()
         game = app.game
         game.reset()
         hx, hy = game.snake[0]
@@ -843,7 +975,7 @@ async def test_food_uses_sprite_at_large_scale():
     async with app.run_test(size=(280, 70)) as pilot:
         await pilot.press("space")
         await pilot.pause()
-        app.screen.timer.stop()
+        app.screen._disarm()
         game = app.game
         game.reset()
         hx, hy = game.snake[0]
@@ -862,7 +994,7 @@ async def test_food_sprites_can_be_disabled():
     async with app.run_test(size=(280, 70)) as pilot:
         await pilot.press("space")
         await pilot.pause()
-        app.screen.timer.stop()
+        app.screen._disarm()
         game = app.game
         game.reset()
         hx, hy = game.snake[0]
@@ -879,7 +1011,7 @@ async def test_scale_only_resize_does_not_rescale_snake():
     async with app.run_test(size=(180, 50)) as pilot:
         await pilot.press("space")
         await pilot.pause()
-        app.screen.timer.stop()
+        app.screen._disarm()
         snake_view = app.screen.query_one(SnakeView)
         scale_before = snake_view._scale
         before = list(app.game.snake)
