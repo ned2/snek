@@ -35,13 +35,13 @@ from .rendering import (
     glyph_food_tile,
     render_board_row,
 )
-from .timing import StepClock
+from .timing import StepClock, next_wake_delay
 
 if TYPE_CHECKING:
     from .app import SnakeApp
 
-# The game loop runs at Textual's default screen-update rate. Model steps are
-# scheduled against this frame clock rather than a per-speed timer.
+# Textual's default screen-update rate. The loop never wakes more often than
+# this; when not animating it wakes only at step deadlines.
 _FRAME_INTERVAL = 1 / 60
 
 
@@ -167,10 +167,12 @@ class GameScreen(Screen[None]):
 
     def __init__(self) -> None:
         super().__init__()
-        # The frame timer drives the game loop; `_clock` decides when a model
-        # step is due. `_last_frame` is None until the first frame after a
-        # (re)start or resume, so paused time is never counted.
+        # `timer` is the single loop timer, created only by `_arm()`: a one-shot
+        # at the next step deadline, or a 60 Hz interval while animating.
+        # `_clock` decides when a model step is due. `_last_frame` is None until
+        # the first wake after a (re)start or resume, so paused time never counts.
         self.timer: Timer | None = None
+        self._timer_animating: bool = False
         self._clock = StepClock()
         self._last_frame: float | None = None
         # Injectable so tests can drive frames without patching the global clock.
@@ -207,17 +209,57 @@ class GameScreen(Screen[None]):
 
     def on_unmount(self) -> None:
         """Clean up timer when screen is unmounted."""
+        self._disarm()
+
+    def _restart_loop(self) -> None:
+        """(Re)start the loop with an empty step clock."""
+        self._disarm()
+        self._clock.reset()
+        self._last_frame = None
+        self._arm()
+
+    def _should_animate(self, interval: float) -> bool:
+        """Whether frames between steps would draw anything new.
+
+        Nothing interpolates between steps yet, so the loop only needs to wake
+        at step deadlines. Render interpolation will return True here when the
+        interval spans at least two frames.
+        """
+        return False
+
+    def _arm(self) -> None:
+        """Schedule the next wake; the only place that creates loop timers.
+
+        While animating, a 60 Hz interval timer runs steps on frame boundaries,
+        and render interpolation hides that quantisation. Otherwise a one-shot
+        timer fires exactly when the next step is due, so steps keep an even
+        rhythm instead of snapping to a frame grid.
+        """
+        game = _snake_app(self).game
+        animate = self._should_animate(game.current_interval)
+        if self.timer is not None and animate and self._timer_animating:
+            return  # The running frame timer already covers this.
+        self._disarm()
+        if game.game_over or game.paused:
+            return
+        if self._last_frame is None:
+            # Count from now, so the first wake after a (re)start or resume
+            # credits the time spent waiting for it.
+            self._last_frame = self._now()
+        self._timer_animating = animate
+        if animate:
+            self.timer = self.set_interval(_FRAME_INTERVAL, self._on_frame)
+        else:
+            delay = next_wake_delay(
+                game.current_interval, self._clock.accumulated, _FRAME_INTERVAL
+            )
+            self.timer = self.set_timer(delay, self._on_frame)
+
+    def _disarm(self) -> None:
+        """Stop and forget the loop timer, if any."""
         if self.timer is not None:
             self.timer.stop()
             self.timer = None
-
-    def _restart_loop(self) -> None:
-        """(Re)start the frame timer with an empty step clock."""
-        if self.timer is not None:
-            self.timer.stop()
-        self._clock.reset()
-        self._last_frame = None
-        self.timer = self.set_interval(_FRAME_INTERVAL, self._on_frame)
 
     def _sync_reactives(self) -> None:
         """Recompute the display-ready stat strings from the game model.
@@ -236,24 +278,32 @@ class GameScreen(Screen[None]):
         self.speed_label = f"{game.get_moves_per_second():.1f}/sec"
 
     def _on_frame(self) -> None:
-        """Run every model step that has come due since the previous frame.
+        """Run every model step that has come due, then schedule the next wake.
 
         The step interval is re-read before each step, so eating food speeds up
-        the very next step without restarting any timer.
+        the very next step. A stale timer firing while paused or after the game
+        ends does nothing and schedules nothing.
         """
-        now = self._now()
-        elapsed = 0.0 if self._last_frame is None else now - self._last_frame
-        self._last_frame = now
-        self._clock.advance(elapsed)
-        app = _snake_app(self)
+        game = _snake_app(self).game
+        if game.game_over or game.paused:
+            return
+        self._advance_clock()
         stepped = False
-        while self._clock.take_step(app.game.current_interval):
+        while self._clock.take_step(game.current_interval):
             stepped = True
             if not self._step():
                 return
         if stepped:
             self._sync_reactives()
             self.query_one(SnakeView).update_board()
+        self._arm()
+
+    def _advance_clock(self) -> None:
+        """Credit the step clock with the wall time since the previous wake."""
+        now = self._now()
+        elapsed = 0.0 if self._last_frame is None else now - self._last_frame
+        self._last_frame = now
+        self._clock.advance(elapsed)
 
     def tick(self) -> None:
         """Advance the game exactly one step and redraw."""
@@ -277,9 +327,8 @@ class GameScreen(Screen[None]):
             app.theme = app.game.world_path.get_world(result.new_world).theme_name
 
         if result.game_over:
-            # Stop the timer to prevent multiple game over modals.
-            if self.timer is not None:
-                self.timer.stop()
+            # Stop the loop to prevent multiple game over modals.
+            self._disarm()
             # Push a FRESH modal instance (not the registered singleton) so its
             # compose() re-reads the current game: the win/death banner and the
             # final food count reflect *this* game, not a cached earlier one.
@@ -291,10 +340,20 @@ class GameScreen(Screen[None]):
         """Pause the game."""
         app = _snake_app(self)
         if not app.game.game_over:
-            app.game.paused = True
-            if self.timer is not None:
-                self.timer.pause()
+            self._pause_loop()
             app.push_screen("pause")
+
+    def _pause_loop(self) -> None:
+        """Pause the model and stop the loop, keeping progress towards the next step.
+
+        Between deadline wakes no frames run, so the time since the last wake is
+        credited now; resuming then waits only for the rest of the interval.
+        """
+        game = _snake_app(self).game
+        if self.timer is not None and not game.paused:
+            self._advance_clock()
+        game.paused = True
+        self._disarm()
 
     def action_diagnostics(self) -> None:
         """Pause the game and show the live diagnostics overlay.
@@ -304,9 +363,7 @@ class GameScreen(Screen[None]):
         """
         app = _snake_app(self)
         if not app.game.game_over:
-            app.game.paused = True
-            if self.timer is not None:
-                self.timer.pause()
+            self._pause_loop()
             app.push_screen(DiagnosticsModal())
 
     def action_toggle_sidebar(self) -> None:
@@ -337,8 +394,7 @@ class GameScreen(Screen[None]):
             app.game.paused = False
             # Don't count the paused time as elapsed game time.
             self._last_frame = None
-            if self.timer is not None:
-                self.timer.resume()
+            self._arm()
 
     def restart_game(self) -> None:
         """Restart the game."""
@@ -377,13 +433,13 @@ class GameScreen(Screen[None]):
         `game_over`/`won`/score: the board freezes (`Game.step` early-returns
         while `game_over`) and a stale "you win" banner can appear. So reset the
         model, set the mode, and — if the screen is already mounted — re-establish
-        the timer, theme and view. (On the very first start the timer is still
-        `None`; `on_mount` does this once the screen is pushed.)
+        the loop, theme and view. (On the very first start the screen is not yet
+        mounted; `on_mount` does this once the screen is pushed.)
         """
         app = _snake_app(self)
         app.game.reset()
         self.demo_ai = make_demo_ai(app.game, app.demo_strategy) if demo else None
-        if self.timer is not None:
+        if self.is_mounted:
             self._restart_loop()
             app.theme = app.game.world_path.get_world(0).theme_name
             self._sync_reactives()

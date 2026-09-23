@@ -14,6 +14,11 @@ accumulator loop from "Fix Your Timestep"
 `progress()` exposes how far the clock is into the next step, which is what a
 renderer needs to interpolate motion between steps.
 
+`next_wake_delay()` says when the loop should next wake: exactly at the next
+step's deadline, or once per frame when steps are shorter than a frame. Waking at
+the deadline rather than on a fixed frame grid keeps the step rhythm even when
+the interval is not a whole number of frames.
+
 Framework-free (no Textual) so it can be unit-tested with plain numbers.
 """
 
@@ -72,3 +77,22 @@ class StepClock:
     def progress(self, interval: float) -> float:
         """Fraction of the way to the next step, clamped to ``[0, 1]``."""
         return min(max(self.accumulated / interval, 0.0), 1.0)
+
+
+# Floor on a scheduled wake, so an overdue (or float-early) step re-fires
+# promptly without ever asking the timer for a zero or negative delay.
+MIN_WAKE_DELAY = 0.001
+
+
+def next_wake_delay(
+    interval: float, accumulated: float, frame_interval: float
+) -> float:
+    """Seconds until the loop should next wake to run a step.
+
+    Normally this is the time left until the next step is due. Intervals shorter
+    than a frame wake once per frame instead, and the clock batches the steps
+    due, so short intervals never schedule more wakes than frames.
+    """
+    if interval < frame_interval:
+        return frame_interval
+    return max(interval - accumulated, MIN_WAKE_DELAY)

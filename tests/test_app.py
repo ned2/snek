@@ -261,9 +261,38 @@ async def test_pause_functionality():
         assert app.game.paused is False
 
 
+class _RecordedTimer:
+    """Stands in for a loop timer: records its delay and whether it was stopped."""
+
+    def __init__(self, delay: float) -> None:
+        self.delay = delay
+        self.stopped = False
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+def _record_loop_timers(monkeypatch, game_screen) -> list[_RecordedTimer]:
+    """Replace the screen's timer factories so each scheduled wake is recorded."""
+    armed: list[_RecordedTimer] = []
+
+    def set_timer(delay: float, callback, **kwargs) -> _RecordedTimer:
+        timer = _RecordedTimer(delay)
+        armed.append(timer)
+        return timer
+
+    def set_interval(*args, **kwargs):
+        raise AssertionError("no frame timer should run without animation")
+
+    monkeypatch.setattr(game_screen, "set_timer", set_timer)
+    monkeypatch.setattr(game_screen, "set_interval", set_interval)
+    return armed
+
+
 @pytest.mark.asyncio
-async def test_frame_loop_steps_on_the_model_interval() -> None:
-    """The frame loop steps on elapsed time, skips paused time, and speeds up in place."""
+async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
+    """The loop sleeps until each step is due, keeps waited time across a pause,
+    re-reads the interval after eating, and stops for good at game over."""
     now = [0.0]
     # A binary-exact interval keeps the fake-clock arithmetic exact.
     app = SnakeApp(GameConfig(initial_speed_interval=0.125))
@@ -272,53 +301,59 @@ async def test_frame_loop_steps_on_the_model_interval() -> None:
         await pilot.pause()
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
-        timer = game_screen.timer
-        assert timer is not None
-        # Drive frames by hand against a fake clock.
         game_screen._now = lambda: now[0]
-        timer.pause()
+        armed = _record_loop_timers(monkeypatch, game_screen)
         game = app.game
         game.set_snake_position([(5, 5)])
         game.set_food_position((0, 0))
         game.direction = Direction.RIGHT
         game_screen._restart_loop()
-        assert game_screen.timer is not None
-        game_screen.timer.pause()
         interval = game.current_interval
+        assert [timer.delay for timer in armed] == [interval]
 
-        def frame_at(t: float) -> None:
+        def wake_at(t: float) -> None:
             now[0] = t
             game_screen._on_frame()
 
-        frame_at(0.0)
-        frame_at(interval / 2)
-        assert game.snake[0] == (5, 5)
-        frame_at(interval)
+        # The wake at the deadline steps and sleeps a full interval again.
+        wake_at(0.125)
         assert game.snake[0] == (6, 5)
+        assert armed[-1].delay == pytest.approx(interval)
+        # A stray early wake doesn't step; it sleeps only for the remainder.
+        wake_at(0.1875)
+        assert game.snake[0] == (6, 5)
+        assert armed[-1].delay == pytest.approx(0.0625)
 
-        # Time spent paused is not game time.
+        # Pausing keeps the time already waited and discards the paused time.
+        now[0] = 0.21875
         game_screen.action_pause()
         await pilot.pause()
+        assert game_screen.timer is None
+        assert armed[-1].stopped
         now[0] = 100.0
         await pilot.press("space")
         await pilot.pause()
         assert not game.paused
-        assert game_screen.timer is not None
-        game_screen.timer.pause()
-        frame_at(100.0 + interval / 2)
-        assert game.snake[0] == (6, 5)
-        frame_at(100.0 + interval)
+        assert armed[-1].delay == pytest.approx(0.03125)
+        wake_at(100.03125)
         assert game.snake[0] == (7, 5)
 
-        # Eating speeds up the next step without replacing the frame timer.
-        running_timer = game_screen.timer
+        # Eating speeds up the very next step.
         game.set_food_position((8, 5))
-        frame_at(100.0 + 2 * interval)
+        wake_at(100.03125 + interval)
         assert game.symbols_consumed == 1
         assert game.current_interval < interval
-        assert game_screen.timer is running_timer
-        frame_at(100.0 + 2 * interval + game.current_interval + 1e-9)
-        assert game.snake[0] == (9, 5)
+        assert armed[-1].delay == pytest.approx(game.current_interval)
+
+        # Game over stops the loop, and a stale wake schedules nothing more.
+        _arm_self_collision(game)
+        wake_at(200.0)
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverModal)
+        assert game_screen.timer is None
+        count = len(armed)
+        game_screen._on_frame()
+        assert len(armed) == count
 
 
 @pytest.mark.asyncio

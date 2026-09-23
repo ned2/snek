@@ -2,7 +2,7 @@
 
 import pytest
 
-from snek.timing import StepClock
+from snek.timing import MIN_WAKE_DELAY, StepClock, next_wake_delay
 
 
 def _steps(clock: StepClock, elapsed: float, interval: float) -> int:
@@ -94,3 +94,22 @@ def test_progress_is_the_fraction_of_the_next_step() -> None:
 def test_rejects_invalid_limits(kwargs: dict[str, float], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         StepClock(**kwargs)  # type: ignore[arg-type]
+
+
+FRAME = 1 / 60
+
+
+def test_wake_delay_is_the_time_left_until_the_step() -> None:
+    assert next_wake_delay(0.1, 0.0, FRAME) == pytest.approx(0.1)
+    assert next_wake_delay(0.1, 0.04, FRAME) == pytest.approx(0.06)
+
+
+def test_overdue_step_wakes_promptly_but_never_with_zero_delay() -> None:
+    assert next_wake_delay(0.1, 0.1, FRAME) == MIN_WAKE_DELAY
+    assert next_wake_delay(0.1, 0.3, FRAME) == MIN_WAKE_DELAY
+
+
+def test_intervals_shorter_than_a_frame_wake_once_per_frame() -> None:
+    """Sub-frame steps are batched by the clock, not scheduled one by one."""
+    assert next_wake_delay(0.002, 0.0, FRAME) == pytest.approx(FRAME)
+    assert next_wake_delay(0.002, 0.0015, FRAME) == pytest.approx(FRAME)
