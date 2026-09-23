@@ -128,6 +128,10 @@ def render_board(
     cells tile their base glyph (`snake_block` / `empty_cell`) and stay unstyled
     so they inherit the widget colour; the food cell uses `food_tile`, whose rows
     already span the block width and may carry their own styles.
+
+    Each row is simplified so runs of same-style cells become one Segment. Textual
+    emits a style reset and a full colour escape per Segment, so an uncoalesced
+    row costs one escape pair per cell — most of the bytes written per frame.
     """
     snake_text = snake_block * scale
     empty_text = empty_cell * scale
@@ -146,7 +150,7 @@ def render_board(
             else:
                 for r in range(scale):
                     block_rows[r].append(Segment(empty_text))
-        lines.extend(block_rows)
+        lines.extend(list(Segment.simplify(row)) for row in block_rows)
     return lines
 
 

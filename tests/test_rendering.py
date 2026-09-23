@@ -139,6 +139,14 @@ class TestRenderBoard:
         assert "X" in lines[scale // 2]
         assert lines[-1].strip() == ""
 
+    def test_same_style_cells_coalesce_into_one_segment_per_run(self):
+        """Adjacent unstyled cells merge, so each row emits few style escapes."""
+        tile = glyph_food_tile("X", "  ", 2)
+        lines = render_board(5, 1, {(0, 0), (1, 0)}, (-1, -1), 2, "██", "  ", tile)
+        # Snake and empty cells are both unstyled, so each row is a single run.
+        assert all(len(line) == 1 for line in lines)
+        assert board_to_text(lines).split("\n")[0] == "█" * 8 + " " * 12
+
     def test_empty_board_is_all_spaces(self):
         # Off-board food: nothing drawn.
         text = _render(3, 3, set(), (-1, -1), "X", 2)

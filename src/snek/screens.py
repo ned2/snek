@@ -286,9 +286,9 @@ class GameScreen(Screen[None]):
             # Don't allow manual control in demo mode
             return
 
+        # Turns are buffered until the next tick, so there is nothing new to
+        # draw yet; `tick` refreshes the board once the turn is applied.
         _snake_app(self).game.turn(Direction[dir_name])
-        # Force a refresh after key press to show immediate response
-        self.query_one(SnakeView).refresh()
 
     def action_quit(self) -> None:
         """Quit the application."""
