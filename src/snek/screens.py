@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 from rich.segment import Segment, Segments
 from textual import events, work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Center, Horizontal, Vertical, VerticalScroll
 from textual.dom import DOMNode
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
@@ -68,23 +68,28 @@ class SplashScreen(Screen[None]):
         """Compose the splash screen with the figlet title."""
         app = _snake_app(self)
         with Vertical(id="splash-container"):
-            yield FigletText(
-                "SNEK",
-                font="doh",
-                id="splash-title",
-                classes="title-text",
-                colors=["$primary", "$panel"],
-                # FigletText owns preference, visibility, and timer lifecycle;
-                # the CSS breakpoints decide whether this large title is shown.
-                animate=True,
-            )
-            yield FigletText(
-                "SNEK",
-                font="small",
-                id="splash-title-compact",
-                classes="title-text",
-                colors=["$primary", "$panel"],
-            )
+            # Textual aligns a container's children as one block, and the
+            # full-width prompts make that block span the screen. Each title
+            # gets its own Center so it is centred independently of them.
+            with Center():
+                yield FigletText(
+                    "SNEK",
+                    font="doh",
+                    id="splash-title",
+                    classes="title-text",
+                    colors=["$primary", "$panel"],
+                    # FigletText owns preference, visibility, and timer lifecycle;
+                    # the CSS breakpoints decide whether this large title is shown.
+                    animate=True,
+                )
+            with Center():
+                yield FigletText(
+                    "SNEK",
+                    font="small",
+                    id="splash-title-compact",
+                    classes="title-text",
+                    colors=["$primary", "$panel"],
+                )
             yield Static(
                 f"Press SPACE to start or D for the {app.demo_strategy} demo.",
                 id="splash-start-prompt",

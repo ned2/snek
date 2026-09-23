@@ -64,6 +64,13 @@ def _assert_fully_in_view(widget: Static, width: int, height: int) -> None:
     assert widget.region.bottom <= height
 
 
+def _assert_horizontally_centred(widget: Static, width: int) -> None:
+    """Assert a widget's region sits centred (to within a cell) across the terminal."""
+    left_gap = widget.region.x
+    right_gap = width - widget.region.right
+    assert abs(left_gap - right_gap) <= 1, (left_gap, right_gap)
+
+
 def _death_message(app) -> str:
     """The rendered text of the game-over modal's banner line."""
     return str(app.screen.query_one(".death-message", Static).render())
@@ -111,6 +118,7 @@ async def test_splash_is_fully_usable_at_80_by_24() -> None:
         assert compact_title._timer is None
         for widget in (compact_title, start_prompt, controls_prompt, version):
             _assert_fully_in_view(widget, 80, 24)
+        _assert_horizontally_centred(compact_title, 80)
 
         assert compact_title.region.height == len(compact_title._lines) == 5
         assert start_prompt.region.height == controls_prompt.region.height == 1
@@ -132,6 +140,7 @@ async def test_splash_retains_large_title_at_120_by_40() -> None:
         assert large_title.display
         assert not compact_title.display
         _assert_fully_in_view(large_title, 120, 40)
+        _assert_horizontally_centred(large_title, 120)
         _assert_fully_in_view(screen.query_one("#splash-start-prompt"), 120, 40)
         _assert_fully_in_view(screen.query_one("#splash-controls-prompt"), 120, 40)
         _assert_fully_in_view(screen.query_one("#splash-version"), 120, 40)

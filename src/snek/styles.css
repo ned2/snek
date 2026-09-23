@@ -56,7 +56,6 @@ StatDisplay {
 #splash-container {
     height: auto;
     width: 100%;
-    align-horizontal: center;
 }
 
 /* Compact is the safe default. The 85x25 title needs both dimensions roomy. */
