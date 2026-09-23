@@ -158,8 +158,14 @@ Within the game loop:
   initial logical grid grows to fill the viewport.
 - The supported UI floor is 80×24. Below it, model invariants remain valid and scale never drops
   below one, but Textual may clip interface or board content.
-- `SnakeView.render()` delegates board construction to the pure helpers in `rendering.py`. Food is
-  a cached pixel sprite when enabled and scale permits, otherwise the world's Unicode glyph.
+- `SnakeView` uses Textual's Line API: `render_line()` centres and frames the board itself and
+  delegates each board row to the pure `render_board_row()` in `rendering.py`. Food is a cached
+  pixel sprite when enabled and scale permits, otherwise the world's Unicode glyph.
+- Lines are drawn from a `BoardState` snapshot, not the live game. After each frame's steps,
+  `SnakeView.update_board()` takes a new snapshot and refreshes only the changed cells' regions, so
+  Textual re-renders those lines and writes only those cells. Call `update_board()` after model
+  steps; a plain full `refresh()` re-snapshots the live game (use it after resets or direct model
+  edits, as tests do).
 
 ### Diagnostics and clipboard flow
 

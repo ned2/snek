@@ -15,12 +15,14 @@ Once play begins the logical grid is fixed. `fit_grid_scale` changes only the
 visual scale as the viewport changes, so a terminal resize can never rewrite
 snake or food coordinates.
 
-`render_board` turns a game state into Rich `Segment`s (so individual cells can
+`render_board_row` turns one logical row of a game state into Rich `Segment`s (so individual cells can
 carry their own colour — e.g. a food sprite). The food cell is supplied as a
 pre-built *tile* so the board walker stays independent of how food is drawn:
 `glyph_food_tile` keeps the single themed glyph; a sprite tile (see `sprites`)
 swaps in pixel art. Both are `scale` rows tall and `2*scale` columns wide.
 """
+
+from collections.abc import Set as AbstractSet
 
 from rich.segment import Segment
 from rich.style import Style
@@ -112,22 +114,23 @@ def glyph_food_tile(food_symbol: str, empty_cell: str, scale: int) -> FoodTile:
     ]
 
 
-def render_board(
+def render_board_row(
     width: int,
-    height: int,
-    snake: set[Position],
+    y: int,
+    snake: AbstractSet[Position],
     food: Position,
     scale: int,
     snake_block: str,
     empty_cell: str,
     food_tile: FoodTile,
 ) -> list[list[Segment]]:
-    """Draw the board as Segments: one inner list per terminal row.
+    """Draw logical row `y` as Segments: one inner list per terminal row.
 
-    Each logical cell becomes a ``(2*scale) x scale`` block. Snake and empty
-    cells tile their base glyph (`snake_block` / `empty_cell`) and stay unstyled
-    so they inherit the widget colour; the food cell uses `food_tile`, whose rows
-    already span the block width and may carry their own styles.
+    Each logical cell becomes a ``(2*scale) x scale`` block, so this returns
+    `scale` terminal rows. Snake and empty cells tile their base glyph
+    (`snake_block` / `empty_cell`) and stay unstyled so they inherit the widget
+    colour; the food cell uses `food_tile`, whose rows already span the block
+    width and may carry their own styles.
 
     Each row is simplified so runs of same-style cells become one Segment. Textual
     emits a style reset and a full colour escape per Segment, so an uncoalesced
@@ -136,22 +139,39 @@ def render_board(
     snake_text = snake_block * scale
     empty_text = empty_cell * scale
 
-    lines: list[list[Segment]] = []
-    for y in range(height):
-        block_rows: list[list[Segment]] = [[] for _ in range(scale)]
-        for x in range(width):
-            pos = (x, y)
-            if pos in snake:
-                for r in range(scale):
-                    block_rows[r].append(Segment(snake_text))
-            elif pos == food:
-                for r in range(scale):
-                    block_rows[r].extend(food_tile[r])
-            else:
-                for r in range(scale):
-                    block_rows[r].append(Segment(empty_text))
-        lines.extend(list(Segment.simplify(row)) for row in block_rows)
-    return lines
+    block_rows: list[list[Segment]] = [[] for _ in range(scale)]
+    for x in range(width):
+        pos = (x, y)
+        if pos in snake:
+            for r in range(scale):
+                block_rows[r].append(Segment(snake_text))
+        elif pos == food:
+            for r in range(scale):
+                block_rows[r].extend(food_tile[r])
+        else:
+            for r in range(scale):
+                block_rows[r].append(Segment(empty_text))
+    return [list(Segment.simplify(row)) for row in block_rows]
+
+
+def render_board(
+    width: int,
+    height: int,
+    snake: AbstractSet[Position],
+    food: Position,
+    scale: int,
+    snake_block: str,
+    empty_cell: str,
+    food_tile: FoodTile,
+) -> list[list[Segment]]:
+    """Draw the whole board: `render_board_row` for every logical row."""
+    return [
+        line
+        for y in range(height)
+        for line in render_board_row(
+            width, y, snake, food, scale, snake_block, empty_cell, food_tile
+        )
+    ]
 
 
 def frame_board(
@@ -165,14 +185,24 @@ def frame_board(
     only when there's room to spare (i.e. the capped board sits inside a larger
     terminal — see `SnakeView`).
     """
+    side = frame_side(style)
+    return [
+        [frame_rule(board_cols, top=True, style=style)],
+        *([side, *line, side] for line in lines),
+        [frame_rule(board_cols, top=False, style=style)],
+    ]
+
+
+def frame_rule(board_cols: int, *, top: bool, style: Style | None = None) -> Segment:
+    """The frame's top or bottom edge, `board_cols + 2` wide."""
     style = _BORDER_STYLE if style is None else style
-    horizontal = "─" * board_cols
-    framed: list[list[Segment]] = [[Segment(f"┌{horizontal}┐", style)]]
-    side = Segment("│", style)
-    for line in lines:
-        framed.append([side, *line, side])
-    framed.append([Segment(f"└{horizontal}┘", style)])
-    return framed
+    left, right = ("┌", "┐") if top else ("└", "┘")
+    return Segment(f"{left}{'─' * board_cols}{right}", style)
+
+
+def frame_side(style: Style | None = None) -> Segment:
+    """One vertical frame edge, drawn either side of every board row."""
+    return Segment("│", _BORDER_STYLE if style is None else style)
 
 
 def board_to_text(lines: list[list[Segment]]) -> str:

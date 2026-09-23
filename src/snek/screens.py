@@ -4,39 +4,41 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from rich.segment import Segment, Segments
+from rich.segment import Segment
 from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Center, Horizontal, Vertical, VerticalScroll
 from textual.dom import DOMNode
+from textual.geometry import Region
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
+from textual.strip import Strip
 from textual.timer import Timer
+from textual.widget import Widget
 from textual.widgets import Label, Static
-from typing_extensions import override
+from typing_extensions import Self, override
 
 from . import __version__, clipboard, sprites
 from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game import Game
-from .game_rules import Direction
+from .game_rules import Direction, Position
 from .rendering import (
     CELL_BASE_WIDTH,
     compute_layout,
     fit_grid_scale,
-    frame_board,
+    frame_rule,
+    frame_side,
     glyph_food_tile,
-    render_board,
+    render_board_row,
 )
 from .timing import StepClock
 
 if TYPE_CHECKING:
     from .app import SnakeApp
-
-# Reused row separator for the Segments stream returned by SnakeView.render.
-_NEWLINE = Segment("\n")
 
 # The game loop runs at Textual's default screen-update rate. Model steps are
 # scheduled against this frame clock rather than a per-speed timer.
@@ -251,13 +253,13 @@ class GameScreen(Screen[None]):
                 return
         if stepped:
             self._sync_reactives()
-            self.query_one(SnakeView).refresh()
+            self.query_one(SnakeView).update_board()
 
     def tick(self) -> None:
         """Advance the game exactly one step and redraw."""
         if self._step():
             self._sync_reactives()
-            self.query_one(SnakeView).refresh()
+            self.query_one(SnakeView).update_board()
 
     def _step(self) -> bool:
         """Advance the model one step; return False once the game has ended."""
@@ -601,19 +603,75 @@ class GameOverModal(ModalScreen[None]):
         self.app.exit()
 
 
-class SnakeView(Static):
-    """Renders the game as text.
+@dataclass(frozen=True)
+class BoardState:
+    """The board contents a `SnakeView` last drew.
+
+    Every line is rendered from this snapshot rather than from the live game, so
+    the view always knows exactly what is on screen and can repaint only the
+    cells that differ from the next snapshot.
+    """
+
+    width: int
+    height: int
+    snake: frozenset[Position]
+    food: Position
+    world: int
+    food_symbol: str
+
+    @classmethod
+    def capture(cls, game: Game) -> BoardState:
+        """Snapshot the parts of `game` the board draws."""
+        return cls(
+            game.width,
+            game.height,
+            frozenset(game.snake),
+            game.food,
+            game.current_world,
+            game.food_symbol,
+        )
+
+
+@dataclass(frozen=True)
+class BoardGeometry:
+    """Where the (optionally framed) board sits inside the view."""
+
+    left: int
+    top: int
+    board_cols: int
+    board_rows: int
+    framed: bool
+
+    @property
+    def board_left(self) -> int:
+        """First column of the board proper, inside any frame."""
+        return self.left + self.framed
+
+    @property
+    def board_top(self) -> int:
+        """First row of the board proper, inside any frame."""
+        return self.top + self.framed
+
+
+class SnakeView(Widget):
+    """Renders the game board line by line (Textual's Line API).
 
     The first valid layout establishes the logical grid. After that this widget
     only changes how big each cell is drawn, so viewport changes cannot corrupt
-    model coordinates. CSS (`content-align: center middle`) centres the scaled
-    board in the leftover space.
+    model coordinates. The widget centres the scaled board itself.
+
+    Lines are drawn from a `BoardState` snapshot. `update_board()` takes a new
+    snapshot and refreshes only the cells that changed, so Textual re-renders
+    just those lines and writes just those cells to the terminal. A full
+    `refresh()` re-snapshots the live game.
     """
 
     # How many terminal characters draw one logical cell, per axis-unit. Updated
     # on resize; the board is drawn at this scale.
     _scale: int = 1
     _grid_established: bool = False
+    # The snapshot being drawn; None means "take a fresh one on next use".
+    _drawn: BoardState | None = None
 
     def on_resize(self, event: events.Resize) -> None:
         """Establish the logical grid once, then make every resize visual-only."""
@@ -637,42 +695,123 @@ class SnakeView(Static):
             self.refresh()
 
     @override
-    def render(self) -> Segments:
-        """Render the game grid: solid blocks for the snake, sprite/glyph food."""
-        app = _snake_app(self)
-        game = app.game
-        empty_cell = app.config.empty_cell
-        food_tile = self._food_tile(game)
-        lines = render_board(
-            game.width,
-            game.height,
-            set(game.snake),
-            game.food,
-            self._scale,
-            game.config.snake_block,
-            empty_cell,
-            food_tile,
+    def refresh(
+        self,
+        *regions: Region,
+        repaint: bool = True,
+        layout: bool = False,
+        recompose: bool = False,
+    ) -> Self:
+        """Refresh as usual; a full refresh also re-snapshots the live game."""
+        if not regions:
+            self._drawn = None
+        return super().refresh(
+            *regions, repaint=repaint, layout=layout, recompose=recompose
         )
-        # Frame the capped board to make its boundary (and the wrap-around)
-        # visible inside the letterbox margin. "fill" mode covers the terminal
-        # edge-to-edge, so there's no margin to frame.
-        board_cols = CELL_BASE_WIDTH * game.width * self._scale
-        board_rows = game.height * self._scale
-        if (
-            app.config.sizing_mode == "cap"
-            and self.size.width >= board_cols + 2
-            and self.size.height >= board_rows + 2
-        ):
-            lines = frame_board(lines, board_cols)
-        flat: list[Segment] = []
-        for line in lines:
-            flat.extend(line)
-            flat.append(_NEWLINE)
-        if flat:
-            flat.pop()  # no trailing newline after the last row
-        return Segments(flat)
 
-    def _food_tile(self, game: Game) -> list[list[Segment]]:
+    def update_board(self) -> None:
+        """Snapshot the game and repaint only the cells that changed."""
+        drawn = self._drawn
+        if drawn is None:
+            self.refresh()
+            return
+        state = BoardState.capture(_snake_app(self).game)
+        if (state.width, state.height) != (drawn.width, drawn.height):
+            self.refresh()
+            return
+        changed = set(drawn.snake ^ state.snake)
+        if (drawn.food, drawn.world, drawn.food_symbol) != (
+            state.food,
+            state.world,
+            state.food_symbol,
+        ):
+            changed.update((drawn.food, state.food))
+        self._drawn = state
+        if changed:
+            geometry = self._geometry(state)
+            super().refresh(*(self._cell_region(geometry, cell) for cell in changed))
+
+    def _state(self) -> BoardState:
+        """The snapshot to draw, taking one if a full refresh cleared it."""
+        if self._drawn is None:
+            self._drawn = BoardState.capture(_snake_app(self).game)
+        return self._drawn
+
+    def _geometry(self, state: BoardState) -> BoardGeometry:
+        """Centre the board, framed when capped with room to spare.
+
+        "fill" mode covers the terminal edge-to-edge, so there's no margin to
+        frame. The frame makes the capped board's boundary (and the wrap-around)
+        visible inside the letterbox margin.
+        """
+        width, height = self.size
+        board_cols = CELL_BASE_WIDTH * state.width * self._scale
+        board_rows = state.height * self._scale
+        framed = (
+            _snake_app(self).config.sizing_mode == "cap"
+            and width >= board_cols + 2
+            and height >= board_rows + 2
+        )
+        block_cols = board_cols + 2 * framed
+        block_rows = board_rows + 2 * framed
+        return BoardGeometry(
+            left=max(0, (width - block_cols) // 2),
+            top=max(0, (height - block_rows) // 2),
+            board_cols=board_cols,
+            board_rows=board_rows,
+            framed=framed,
+        )
+
+    def _cell_region(self, geometry: BoardGeometry, cell: Position) -> Region:
+        """The widget region one logical cell occupies."""
+        x, y = cell
+        cell_cols = CELL_BASE_WIDTH * self._scale
+        return Region(
+            geometry.board_left + x * cell_cols,
+            geometry.board_top + y * self._scale,
+            cell_cols,
+            self._scale,
+        )
+
+    @override
+    def render_line(self, y: int) -> Strip:
+        """Render one terminal row: margin, frame edge or board row, margin."""
+        width = self.size.width
+        base_style = self.visual_style.rich_style
+        state = self._state()
+        geometry = self._geometry(state)
+        row = y - geometry.board_top
+        segments: list[Segment]
+        if 0 <= row < geometry.board_rows:
+            logical_y, sub_row = divmod(row, self._scale)
+            line = self._board_rows(state, logical_y)[sub_row]
+            if geometry.framed:
+                side = frame_side()
+                segments = [side, *line, side]
+            else:
+                segments = line
+        elif geometry.framed and row in (-1, geometry.board_rows):
+            segments = [frame_rule(geometry.board_cols, top=row == -1)]
+        else:
+            return Strip.blank(width, base_style)
+        strip = Strip([Segment(" " * geometry.left), *segments])
+        return strip.apply_style(base_style).adjust_cell_length(width, base_style)
+
+    def _board_rows(self, state: BoardState, logical_y: int) -> list[list[Segment]]:
+        """The `scale` terminal rows that draw one logical row of `state`."""
+        config = _snake_app(self).config
+        return render_board_row(
+            state.width,
+            logical_y,
+            state.snake,
+            state.food,
+            self._scale,
+            config.snake_block,
+            config.empty_cell,
+            self._food_tile(state),
+        )
+
+    def _food_tile(self, state: BoardState) -> list[list[Segment]]:
         """Pick the food rendering: a pixel sprite when big enough, else the glyph.
 
         At scale 1 (and when sprites are disabled) the cell is too small for pixel
@@ -680,10 +819,8 @@ class SnakeView(Static):
         """
         config = _snake_app(self).config
         if config.food_sprites and self._scale >= sprites.MIN_SPRITE_SCALE:
-            return sprites.food_tile(
-                sprites.get_food_sprite(game.current_world), self._scale
-            )
-        return glyph_food_tile(game.food_symbol, config.empty_cell, self._scale)
+            return sprites.food_tile(sprites.get_food_sprite(state.world), self._scale)
+        return glyph_food_tile(state.food_symbol, config.empty_cell, self._scale)
 
 
 class StatDisplay(Horizontal):

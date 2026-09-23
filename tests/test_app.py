@@ -741,8 +741,47 @@ async def test_fill_mode_grows_grid_to_fill_terminal():
 
 
 def _board_text(snake_view) -> str:
-    """Flatten a SnakeView's rendered Segments to plain text."""
-    return "".join(seg.text for seg in snake_view.render().segments)
+    """Re-snapshot the live game and flatten every rendered line to plain text."""
+    snake_view.refresh()
+    return "\n".join(
+        snake_view.render_line(y).text for y in range(snake_view.size.height)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [(80, 24), (200, 50)])
+async def test_partial_board_updates_match_a_full_render(size) -> None:
+    """Cell-level repaints leave the screen identical to redrawing everything.
+
+    Each step repaints only the cells that changed, and Textual keeps every
+    other line cached. A missed cell would survive here as a stale cached line.
+    """
+    app = SnakeApp()
+    async with app.run_test(size=size) as pilot:
+        await pilot.press("d")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        assert game_screen.timer is not None
+        game_screen.timer.stop()
+        view = game_screen.query_one(SnakeView)
+        game = app.game
+        eaten = game.symbols_consumed
+        for _ in range(60):
+            # Keep food close so the run covers eating, growth and food moves.
+            head_x, head_y = game.snake[0]
+            if game.symbols_consumed == eaten and game.food[1] != head_y:
+                game.set_food_position(((head_x + 4) % game.width, head_y))
+            game_screen.tick()
+            await pilot.pause()
+            if game.game_over:
+                break
+        assert game.symbols_consumed > eaten
+
+        cached = [strip.text for strip in view.render_lines(view.size.region)]
+        view.refresh()
+        fresh = [strip.text for strip in view.render_lines(view.size.region)]
+        assert cached == fresh
 
 
 @pytest.mark.asyncio
