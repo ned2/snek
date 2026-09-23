@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from rich.segment import Segment, Segments
@@ -28,12 +30,17 @@ from .rendering import (
     glyph_food_tile,
     render_board,
 )
+from .timing import StepClock
 
 if TYPE_CHECKING:
     from .app import SnakeApp
 
 # Reused row separator for the Segments stream returned by SnakeView.render.
 _NEWLINE = Segment("\n")
+
+# The game loop runs at Textual's default screen-update rate. Model steps are
+# scheduled against this frame clock rather than a per-speed timer.
+_FRAME_INTERVAL = 1 / 60
 
 
 def _snake_app(node: DOMNode) -> SnakeApp:
@@ -158,7 +165,14 @@ class GameScreen(Screen[None]):
 
     def __init__(self) -> None:
         super().__init__()
+        # The frame timer drives the game loop; `_clock` decides when a model
+        # step is due. `_last_frame` is None until the first frame after a
+        # (re)start or resume, so paused time is never counted.
         self.timer: Timer | None = None
+        self._clock = StepClock()
+        self._last_frame: float | None = None
+        # Injectable so tests can drive frames without patching the global clock.
+        self._now: Callable[[], float] = time.monotonic
         self.sidebar_visible: bool = True
         self.demo_ai: DemoStrategy | None = None
 
@@ -185,7 +199,7 @@ class GameScreen(Screen[None]):
     def on_mount(self) -> None:
         """Start the game timer and set initial theme when the screen mounts."""
         app = _snake_app(self)
-        self.timer = self.set_interval(app.game.current_interval, self.tick)
+        self._restart_loop()
         app.theme = app.game.world_path.get_world(0).theme_name
         self._sync_reactives()
 
@@ -195,13 +209,13 @@ class GameScreen(Screen[None]):
             self.timer.stop()
             self.timer = None
 
-    def _restart_timer(self) -> None:
-        """Restart the game timer at the game's current speed interval."""
+    def _restart_loop(self) -> None:
+        """(Re)start the frame timer with an empty step clock."""
         if self.timer is not None:
             self.timer.stop()
-        self.timer = self.set_interval(
-            _snake_app(self).game.current_interval, self.tick
-        )
+        self._clock.reset()
+        self._last_frame = None
+        self.timer = self.set_interval(_FRAME_INTERVAL, self._on_frame)
 
     def _sync_reactives(self) -> None:
         """Recompute the display-ready stat strings from the game model.
@@ -219,8 +233,34 @@ class GameScreen(Screen[None]):
         self.foods_label = str(game.symbols_consumed)
         self.speed_label = f"{game.get_moves_per_second():.1f}/sec"
 
+    def _on_frame(self) -> None:
+        """Run every model step that has come due since the previous frame.
+
+        The step interval is re-read before each step, so eating food speeds up
+        the very next step without restarting any timer.
+        """
+        now = self._now()
+        elapsed = 0.0 if self._last_frame is None else now - self._last_frame
+        self._last_frame = now
+        self._clock.advance(elapsed)
+        app = _snake_app(self)
+        stepped = False
+        while self._clock.take_step(app.game.current_interval):
+            stepped = True
+            if not self._step():
+                return
+        if stepped:
+            self._sync_reactives()
+            self.query_one(SnakeView).refresh()
+
     def tick(self) -> None:
-        """Advance the game one step and react to the result."""
+        """Advance the game exactly one step and redraw."""
+        if self._step():
+            self._sync_reactives()
+            self.query_one(SnakeView).refresh()
+
+    def _step(self) -> bool:
+        """Advance the model one step; return False once the game has ended."""
         app = _snake_app(self)
         if self.demo_ai:
             # In demo mode, let the demo strategy choose the direction
@@ -242,14 +282,8 @@ class GameScreen(Screen[None]):
             # compose() re-reads the current game: the win/death banner and the
             # final food count reflect *this* game, not a cached earlier one.
             app.push_screen(GameOverModal())
-            return
-
-        if result.ate_food:
-            # The model already scaled current_interval; restart at the new rate.
-            self._restart_timer()
-
-        self._sync_reactives()
-        self.query_one(SnakeView).refresh()
+            return False
+        return True
 
     def action_pause(self) -> None:
         """Pause the game."""
@@ -299,6 +333,8 @@ class GameScreen(Screen[None]):
         app = _snake_app(self)
         if app.game.paused:
             app.game.paused = False
+            # Don't count the paused time as elapsed game time.
+            self._last_frame = None
             if self.timer is not None:
                 self.timer.resume()
 
@@ -309,7 +345,7 @@ class GameScreen(Screen[None]):
         if self.demo_ai:
             # Recreate the demo strategy for a fresh game, keeping the selection.
             self.demo_ai = make_demo_ai(app.game, app.demo_strategy)
-        self._restart_timer()
+        self._restart_loop()
         self._sync_reactives()
         # Update theme to initial world before refreshing view
         app.theme = app.game.world_path.get_world(0).theme_name
@@ -346,7 +382,7 @@ class GameScreen(Screen[None]):
         app.game.reset()
         self.demo_ai = make_demo_ai(app.game, app.demo_strategy) if demo else None
         if self.timer is not None:
-            self._restart_timer()
+            self._restart_loop()
             app.theme = app.game.world_path.get_world(0).theme_name
             self._sync_reactives()
             self.query_one(SnakeView).refresh()

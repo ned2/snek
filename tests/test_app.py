@@ -262,6 +262,66 @@ async def test_pause_functionality():
 
 
 @pytest.mark.asyncio
+async def test_frame_loop_steps_on_the_model_interval() -> None:
+    """The frame loop steps on elapsed time, skips paused time, and speeds up in place."""
+    now = [0.0]
+    # A binary-exact interval keeps the fake-clock arithmetic exact.
+    app = SnakeApp(GameConfig(initial_speed_interval=0.125))
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        timer = game_screen.timer
+        assert timer is not None
+        # Drive frames by hand against a fake clock.
+        game_screen._now = lambda: now[0]
+        timer.pause()
+        game = app.game
+        game.set_snake_position([(5, 5)])
+        game.set_food_position((0, 0))
+        game.direction = Direction.RIGHT
+        game_screen._restart_loop()
+        assert game_screen.timer is not None
+        game_screen.timer.pause()
+        interval = game.current_interval
+
+        def frame_at(t: float) -> None:
+            now[0] = t
+            game_screen._on_frame()
+
+        frame_at(0.0)
+        frame_at(interval / 2)
+        assert game.snake[0] == (5, 5)
+        frame_at(interval)
+        assert game.snake[0] == (6, 5)
+
+        # Time spent paused is not game time.
+        game_screen.action_pause()
+        await pilot.pause()
+        now[0] = 100.0
+        await pilot.press("space")
+        await pilot.pause()
+        assert not game.paused
+        assert game_screen.timer is not None
+        game_screen.timer.pause()
+        frame_at(100.0 + interval / 2)
+        assert game.snake[0] == (6, 5)
+        frame_at(100.0 + interval)
+        assert game.snake[0] == (7, 5)
+
+        # Eating speeds up the next step without replacing the frame timer.
+        running_timer = game_screen.timer
+        game.set_food_position((8, 5))
+        frame_at(100.0 + 2 * interval)
+        assert game.symbols_consumed == 1
+        assert game.current_interval < interval
+        assert game_screen.timer is running_timer
+        frame_at(100.0 + 2 * interval + game.current_interval + 1e-9)
+        assert game.snake[0] == (9, 5)
+
+
+@pytest.mark.asyncio
 async def test_game_actions_tolerate_timer_teardown() -> None:
     """Lifecycle actions remain safe after Textual has cleared the timer."""
     app = SnakeApp()

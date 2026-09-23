@@ -104,6 +104,8 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 - **`demo/`**: pluggable demo drivers. `__init__.py` owns the strategy registry, default, and
   factory; `base.py` defines their contract; `greedy.py`, `safe_bfs.py`, `floodfill.py`, and
   `hamiltonian.py` provide the CLI-selectable implementations. `floodfill` is the default.
+- **`timing.py`**: `StepClock`, the framework-free fixed-step accumulator that decides how
+  many model steps each frame runs (and how far the next step has progressed).
 - **`worlds.py`**: world/theme progression (`WorldPath`) — tracks the current world and hands
   out themed food symbols.
 - **`themes.py`**: per-world Textual themes (colors) and Unicode symbol sets.
@@ -129,17 +131,22 @@ navigated with `push_screen` / `pop_screen`. Splash, game, and pause are registe
 diagnostics and game-over are fresh instances so their displayed state cannot go stale.
 
 Within the game loop:
-1. In demo mode, `GameScreen.tick` first asks the selected `DemoStrategy` for a direction.
-2. The interval timer calls `Game.step()`, which returns a `StepResult` describing the
-   consequences (moved / ate food / world changed / game over). The view reacts to those flags
-   rather than inferring model deltas.
-3. `Game` owns world progression via `WorldPath`. A world change updates the Textual theme; eating
-   restarts the interval at the model's new speed; game-over stops the timer and pushes a fresh
-   modal.
+1. A single 60 Hz frame timer calls `GameScreen._on_frame`, which feeds the elapsed wall time
+   into a `StepClock` and runs one model step for each `current_interval` that has come due.
+   The interval is re-read before every step, so eating speeds up the next step without
+   restarting a timer. Pausing pauses the frame timer, and resuming discards the paused time.
+   `GameScreen.tick()` runs exactly one step and redraws; tests use it to advance by hand.
+2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction, then calls
+   `Game.step()`, which returns a `StepResult` describing the consequences (moved / ate food /
+   world changed / game over). The view reacts to those flags rather than inferring model
+   deltas.
+3. `Game` owns world progression and speed via `WorldPath` and `current_interval`. A world change
+   updates the Textual theme; game-over stops the frame timer and pushes a fresh modal.
 4. The stats panel has one source of truth: `GameScreen` holds display-ready string
    reactives (`world_name`, `progress`, `foods_label`, `speed_label`), each `data_bind`'d
-   (parent → child, read-only) to a `StatDisplay` in the `SidePanel`. `tick` calls
-   `_sync_reactives()` once; the bindings propagate to the panel.
+   (parent → child, read-only) to a `StatDisplay` in the `SidePanel`. After a frame's steps,
+   `_sync_reactives()` runs once and the board refreshes once; the bindings propagate to the
+   panel.
 
 ### Layout and rendering policy
 
