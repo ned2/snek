@@ -42,6 +42,7 @@ StatDisplay {
 #panel-title {
     dock: bottom;
     width: 100%;
+    content-align-horizontal: center;
     margin-bottom: 1;
 }
 
