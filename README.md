@@ -58,6 +58,11 @@ default), `greedy`, `safe-bfs`, and `hamiltonian`. Select one before pressing D 
 
     snek --demo-strategy hamiltonian
 
+The board wraps around: leave one edge and you come back in at the opposite one. For solid edges
+that end the game, play with:
+
+    snek --walls
+
 The supported minimum terminal size is **80 columns × 24 rows**. The game model remains safe if
 the terminal is made smaller, but interface elements may be clipped.
 

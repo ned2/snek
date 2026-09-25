@@ -1,7 +1,7 @@
 """Naive tier — beeline to the food, no survival planning.
 
 Picks, among the legal non-reversing moves that don't collide, the one minimising
-toroidal Manhattan distance to the food. Deliberately dumb: no flood-fill, no
+Manhattan distance to the food (the short way round when the board wraps). Deliberately dumb: no flood-fill, no
 lookahead, no reachability check — it just chases the food and traps itself, dying
 young (~31 foods on 20x10). Its naivety is purely the absence of *planning*, not a
 misread of the board: like every strategy it models the rules correctly — only
@@ -14,7 +14,7 @@ dies forward on a legal direction rather than returning `None`).
 from typing_extensions import override
 
 from ..game_rules import Direction
-from ._helpers import blocked_cells, legal_turns, neighbour, toroidal_manhattan
+from ._helpers import blocked_cells, board_distance, legal_turns, neighbour
 from .base import DemoStrategy
 
 
@@ -33,9 +33,9 @@ class GreedyStrategy(DemoStrategy):
             nxt = neighbour(g, head, d)
             # Tail-vacate aware (contract #2): the tail's cell is enterable on a
             # non-growing step (the engine checks against snake[:-1]).
-            if nxt in blocked_cells(g, nxt == g.food):
+            if nxt is None or nxt in blocked_cells(g, nxt == g.food):
                 continue
-            dist = toroidal_manhattan(g, nxt, g.food)
+            dist = board_distance(g, nxt, g.food)
             if best_dist is None or dist < best_dist:
                 best_dist = dist
                 best = d

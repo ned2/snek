@@ -88,13 +88,15 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   the splash on startup; owns the immutable configuration, live `Game`, and selected demo
   strategy name.
 - **`cli.py`**: `main()`, the console entry point (`uv run snek`). Parses speed, sizing,
-  logical-grid cap, visual scale, and demo-strategy options into a validated `GameConfig`.
+  logical-grid cap, visual scale, smoothing, walls, and demo-strategy options into a
+  validated `GameConfig`.
 - **`screens.py`**: the screens-as-states UI — `SplashScreen`, `GameScreen` (the game loop +
   side panel), `PauseModal`, the scrollable `DiagnosticsModal`, and `GameOverModal`, plus the
   `SnakeView` board and the `SidePanel` / `StatDisplay` panel widgets.
 - **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
   model→view contract returned by `Game.step()`.
-- **`game_rules.py`**: pure game mechanics — movement, collision detection.
+- **`game_rules.py`**: pure game mechanics — movement (`next_position` wraps, or returns None
+  at a wall), collision detection.
 - **`rendering.py`**: framework-free board sizing and Rich `Segment` rendering. Separates
   logical game dimensions from visual cell scale and frames capped boards.
 - **`sprites.py`**: cached Pillow/Rich Pixels food-sprite construction. World sprite IDs map
@@ -116,6 +118,15 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   input buffering, and render glyphs.
 - **`styles.css`**: Textual layout, compact-terminal breakpoints, modal sizing, and theme-token
   styling.
+
+### Board edges
+
+The board wraps around by default: the snake leaves one edge and enters the opposite one.
+With `config.walls` (`--walls`) the edges are solid and moving off the board ends the game.
+Every move goes through `GameRules.next_position`, and the demo strategies reach it through
+`demo/_helpers.neighbour`, which returns None for a wall that callers treat as blocked. The
+Hamiltonian strategy validates its cycle against the same rule, so on a walled board it uses a
+cycle without wrap edges (one exists iff the cell count is even).
 
 ### Game Progression System
 
@@ -164,6 +175,8 @@ Within the game loop:
 - In `cap` mode, the grid grows only to `max_grid_*` and cells scale up to `cell_scale`, so larger
   terminals may letterbox a consistently sized game. In `fill` mode, `cell_scale` is fixed and the
   initial logical grid grows to fill the viewport.
+- The frame is dim on a wrapping board and drawn only when capped with room to spare. With walls
+  it is heavy and full intensity, and `SnakeView` reserves room for it in both sizing modes.
 - The supported UI floor is 80×24. Below it, model invariants remain valid and scale never drops
   below one, but Textual may clip interface or board content.
 - `SnakeView` uses Textual's Line API: `render_line()` centres and frames the board itself and

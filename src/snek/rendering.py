@@ -42,6 +42,14 @@ from .game_rules import Direction, GameRules, Position
 # Subtle frame around the play area; dim so it reads as chrome, not as snake.
 # No explicit colour, so it inherits the widget's colour (theme primary).
 _BORDER_STYLE = Style(dim=True)
+# With walls the frame is solid: heavy lines at full intensity.
+_WALL_STYLE = Style()
+# Box-drawing glyphs: top-left, top-right, bottom-left, bottom-right,
+# horizontal, vertical.
+_BORDER_GLYPHS = "┌┐└┘─│"
+_WALL_GLYPHS = "┏┓┗┛━┃"
+# Columns and rows a frame adds around the board: one edge on each side.
+FRAME_MARGIN = 2
 
 # A logical cell is drawn `CELL_BASE_WIDTH` columns wide by one row tall at
 # scale 1. Terminal character cells are roughly twice as tall as wide, so two
@@ -273,34 +281,47 @@ def render_board(
 
 
 def frame_board(
-    lines: list[list[Segment]], board_cols: int, style: Style | None = None
+    lines: list[list[Segment]],
+    board_cols: int,
+    style: Style | None = None,
+    *,
+    walls: bool = False,
 ) -> list[list[Segment]]:
     """Wrap rendered board rows in a box-drawing frame.
 
-    Makes the play-area boundary explicit so that toroidal wrapping reads as
-    "through the wall" rather than the snake splitting across empty margin. The
+    Makes the play-area boundary explicit. On a wrapping board the frame is dim,
+    so the snake reads as passing "through the wall" rather than splitting across
+    empty margin; with `walls` it is heavy and full intensity, a solid edge. The
     framed block is `board_cols + 2` wide and two rows taller; callers draw it
-    only when there's room to spare (i.e. the capped board sits inside a larger
-    terminal — see `SnakeView`).
+    only when there's room to spare (see `SnakeView`).
     """
-    side = frame_side(style)
+    side = frame_side(style, walls=walls)
     return [
-        [frame_rule(board_cols, top=True, style=style)],
+        [frame_rule(board_cols, top=True, style=style, walls=walls)],
         *([side, *line, side] for line in lines),
-        [frame_rule(board_cols, top=False, style=style)],
+        [frame_rule(board_cols, top=False, style=style, walls=walls)],
     ]
 
 
-def frame_rule(board_cols: int, *, top: bool, style: Style | None = None) -> Segment:
+def frame_rule(
+    board_cols: int, *, top: bool, style: Style | None = None, walls: bool = False
+) -> Segment:
     """The frame's top or bottom edge, `board_cols + 2` wide."""
-    style = _BORDER_STYLE if style is None else style
-    left, right = ("┌", "┐") if top else ("└", "┘")
-    return Segment(f"{left}{'─' * board_cols}{right}", style)
+    glyphs = _WALL_GLYPHS if walls else _BORDER_GLYPHS
+    left, right = (glyphs[0], glyphs[1]) if top else (glyphs[2], glyphs[3])
+    return Segment(f"{left}{glyphs[4] * board_cols}{right}", _frame_style(style, walls))
 
 
-def frame_side(style: Style | None = None) -> Segment:
+def frame_side(style: Style | None = None, *, walls: bool = False) -> Segment:
     """One vertical frame edge, drawn either side of every board row."""
-    return Segment("│", _BORDER_STYLE if style is None else style)
+    glyphs = _WALL_GLYPHS if walls else _BORDER_GLYPHS
+    return Segment(glyphs[5], _frame_style(style, walls))
+
+
+def _frame_style(style: Style | None, walls: bool) -> Style:
+    if style is not None:
+        return style
+    return _WALL_STYLE if walls else _BORDER_STYLE
 
 
 def board_to_text(lines: list[list[Segment]]) -> str:

@@ -17,12 +17,14 @@ cycle-distance from the landing cell to the food. Shortcuts are disabled once th
 snake exceeds ~50% of the board, falling back to pure cycle-following for a
 guaranteed survival mode. It solves the board every game (198->199 foods on 20x10).
 
-Toroidal wrap is handled for free: the cycle is just an ordering of cells whose
-consecutive edges are validated against ``GameRules.calculate_new_position`` (the
-same modulo-wrap the engine moves with), so wrap-adjacency is honoured. Odd x odd
-grids admit no Hamiltonian cycle; we degrade gracefully to a Hamiltonian path
-whose single non-adjacent seam is covered by a tail-vacate-aware safe fallback.
-The cycle is rebuilt whenever ``(width, height)`` changes, so a freshly
+Wrap-around and walls are handled the same way: the cycle is just an ordering of
+cells whose consecutive edges are validated against ``GameRules.next_position``
+(the same move the engine makes), so a cycle that relies on crossing an edge is
+rejected on a walled board and the next construction is tried. The vertical
+weave needs wrap edges unless the width is even; the horizontal weave needs none.
+Odd x odd grids admit no Hamiltonian cycle; we degrade gracefully to a
+Hamiltonian path whose single non-adjacent seam is covered by a tail-vacate-aware
+safe fallback. The cycle is rebuilt whenever ``(width, height, walls)`` changes, so a freshly
 established model grid never strands the snake on a stale plan (contract #3 /
 0005-B7). Normal viewport resizes change only rendering scale and leave the
 cycle untouched.
@@ -32,6 +34,7 @@ from typing_extensions import override
 
 from ..game import Game
 from ..game_rules import Direction, GameRules, Position
+from ._helpers import neighbour
 from .base import DemoStrategy
 
 
@@ -42,14 +45,15 @@ class HamiltonianStrategy(DemoStrategy):
         super().__init__(game)
         self.cycle: list[Position] = []  # cells in visiting order, len == N
         self.order: dict[Position, int] = {}  # cell -> index in [0, N)
-        self._built_for: tuple[int, int] | None = None  # (width, height) built for
+        # (width, height, walls) the cycle was built for
+        self._built_for: tuple[int, int, bool] | None = None
         self._is_true_cycle = False  # False when only a path (odd x odd grid)
 
     # ------------------------------------------------------------------ public
     @override
     def get_next_direction(self) -> Direction | None:
         g = self.game
-        if (g.width, g.height) != self._built_for:  # first call or new model grid
+        if (g.width, g.height, g.config.walls) != self._built_for:  # new grid
             self._build_cycle(g.width, g.height)  # auto-invalidates stale plan
 
         n = len(self.cycle)
@@ -65,7 +69,7 @@ class HamiltonianStrategy(DemoStrategy):
 
         # The cycle-successor is the always-safe default, BUT on an odd x odd grid
         # the path has one non-adjacent seam; if the successor is not actually a
-        # torus neighbour, follow a safe fallback instead.
+        # board neighbour, follow a safe fallback instead.
         default_dir = self._direction_between(head, cyc_next)
         if default_dir is None or not GameRules.is_valid_turn(g.direction, default_dir):
             # Either the seam (path mode) or a transient grid-change reversal.
@@ -94,9 +98,9 @@ class HamiltonianStrategy(DemoStrategy):
             for d in Direction:
                 if not GameRules.is_valid_turn(g.direction, d):
                     continue  # never emit a 180; honours the one-turn-per-tick model
-                nxt = GameRules.calculate_new_position(head, d, g.width, g.height)
-                if nxt == cyc_next:
-                    continue  # already the baseline
+                nxt = neighbour(g, head, d)
+                if nxt is None or nxt == cyc_next:
+                    continue  # a wall, or already the baseline
                 if nxt not in self.order:  # off-grid (cannot happen) / broken seam
                     continue
                 # Don't shortcut into the body. For a contiguous arc a safe
@@ -149,17 +153,24 @@ class HamiltonianStrategy(DemoStrategy):
 
     # --------------------------------------------- cycle construction & checks
     def _build_cycle(self, w: int, h: int) -> None:
-        cells = None
         self._is_true_cycle = False
+        candidates: list[list[Position]] = []
         if h % 2 == 0:
-            cells = self._serpentine_h_even(w, h)
+            candidates.append(self._serpentine_h_even(w, h))
         elif w % 2 == 0:
-            cells = [(b, a) for (a, b) in self._serpentine_h_even(h, w)]
+            candidates.append([(b, a) for (a, b) in self._serpentine_h_even(h, w)])
+        # Without wrap edges: needed on a walled board unless the weave above
+        # happened not to cross an edge.
+        if h % 2 == 0 and w >= 2:
+            candidates.append(self._serpentine_rows(w, h))
+        elif w % 2 == 0 and h >= 2:
+            candidates.append([(b, a) for (a, b) in self._serpentine_rows(h, w)])
 
-        if cells is not None and self._is_valid_cycle(cells, w, h):
+        cells = next((c for c in candidates if self._is_valid_cycle(c, w, h)), None)
+        if cells is not None:
             self._is_true_cycle = True
         else:
-            # Odd x odd (no cycle exists) or an unexpected build failure: fall back
+            # Odd x odd (no cycle exists) or no candidate fits: fall back
             # to a Hamiltonian PATH that still covers every cell. Its last->first
             # seam is non-adjacent; the safe fallback bridges that single tick.
             cells = self._serpentine_path(w, h)
@@ -169,7 +180,7 @@ class HamiltonianStrategy(DemoStrategy):
 
         self.cycle = cells
         self.order = {c: i for i, c in enumerate(cells)}
-        self._built_for = (w, h)
+        self._built_for = (w, h, self.game.config.walls)
 
     def _serpentine_h_even(self, w: int, h: int) -> list[Position]:
         """Hamiltonian cycle requiring ``h`` even (any ``w`` >= 1).
@@ -202,6 +213,20 @@ class HamiltonianStrategy(DemoStrategy):
                 path.append((0, y))
         return path
 
+    def _serpentine_rows(self, w: int, h: int) -> list[Position]:
+        """Hamiltonian cycle with no wrap edges, requiring ``h`` even, ``w`` >= 2.
+
+        Row 0 runs left->right; rows ``1 .. h-1`` weave back and forth over
+        columns ``w-1 .. 1``, ending beside column 0, which returns up to (0, 0).
+        """
+        assert h % 2 == 0 and h >= 2 and w >= 2
+        path: list[Position] = [(x, 0) for x in range(w)]
+        for y in range(1, h):
+            xs = range(w - 1, 0, -1) if y % 2 == 1 else range(1, w)
+            path.extend((x, y) for x in xs)
+        path.extend((0, y) for y in range(h - 1, 0, -1))
+        return path
+
     def _serpentine_path(self, w: int, h: int) -> list[Position]:
         """Simple boustrophedon covering every cell exactly once (a Hamiltonian
         path; consecutive cells are adjacent except possibly the wrap seam)."""
@@ -223,13 +248,13 @@ class HamiltonianStrategy(DemoStrategy):
         )
 
     def _are_neighbours(self, a: Position, b: Position, w: int, h: int) -> bool:
-        return any(GameRules.calculate_new_position(a, d, w, h) == b for d in Direction)
+        walls = self.game.config.walls
+        return any(GameRules.next_position(a, d, w, h, walls) == b for d in Direction)
 
     # ----------------------------------------------------------------- helpers
     def _direction_between(self, frm: Position, to: Position) -> Direction | None:
-        g = self.game
         for d in Direction:
-            if GameRules.calculate_new_position(frm, d, g.width, g.height) == to:
+            if neighbour(self.game, frm, d) == to:
                 return d
         return None
 
@@ -245,18 +270,19 @@ class HamiltonianStrategy(DemoStrategy):
             if not GameRules.is_valid_turn(g.direction, d):
                 continue
             any_legal = d
-            nxt = GameRules.calculate_new_position(head, d, g.width, g.height)
+            nxt = neighbour(g, head, d)
+            if nxt is None:
+                continue  # a wall
             grows = nxt == g.food
             blocked = set(g.snake) if grows else set(g.snake[:-1])
             if nxt in blocked:
                 continue
             # one-ply openness proxy, tail-vacate aware
-            free = sum(
-                1
-                for dd in Direction
-                if GameRules.calculate_new_position(nxt, dd, g.width, g.height)
-                not in blocked
-            )
+            free = 0
+            for dd in Direction:
+                beyond = neighbour(g, nxt, dd)
+                if beyond is not None and beyond not in blocked:
+                    free += 1
             if best is None or free > best[0]:
                 best = (free, d)
         if best is not None:

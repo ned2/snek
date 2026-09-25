@@ -3,7 +3,7 @@
 Stateless each tick (holding no cross-tick topology, so it cannot retain a stale
 path if model dimensions are freshly established):
 
-1. BFS the torus from head to food over the cells the body will NOT occupy,
+1. BFS the board from head to food over the cells the body will NOT occupy,
    modelling the tail as free (it vacates on a non-growing step).
 2. If a food path exists, SIMULATE eating along it and accept the path's first
    step ONLY if, after the simulated eat, the new head can still reach its own
@@ -25,22 +25,22 @@ from collections import deque
 from typing_extensions import override
 
 from ..game_rules import Direction, Position
-from ._helpers import legal_turns, neighbour, toroidal_manhattan
+from ._helpers import board_distance, legal_turns, neighbour
 from .base import DemoStrategy
 
 
 class SafeBfsStrategy(DemoStrategy):
     """Shortest-path-to-food gated by a tail-reachability survival check."""
 
-    # ---- torus helpers ----
-    def _step(self, pos: Position, direction: Direction) -> Position:
+    # ---- board helpers (wrap- and wall-aware) ----
+    def _step(self, pos: Position, direction: Direction) -> Position | None:
         return neighbour(self.game, pos, direction)
 
-    def _toroidal_dist(self, a: Position, b: Position) -> int:
-        return toroidal_manhattan(self.game, a, b)
+    def _dist(self, a: Position, b: Position) -> int:
+        return board_distance(self.game, a, b)
 
     def _dir_between(self, a: Position, b: Position) -> Direction | None:
-        """Exact, integer wrap-aware single-step direction from a to b.
+        """Exact, integer wrap- and wall-aware single-step direction from a to b.
 
         Returns the Direction d with step(a, d) == b, or None if not adjacent.
         """
@@ -49,7 +49,7 @@ class SafeBfsStrategy(DemoStrategy):
                 return d
         return None
 
-    # ---- BFS over the torus ----
+    # ---- BFS over the board ----
     def _bfs(
         self, start: Position, goal: Position, blocked: set[Position]
     ) -> list[Position]:
@@ -66,7 +66,7 @@ class SafeBfsStrategy(DemoStrategy):
             cur = q.popleft()
             for d in Direction:
                 nb = self._step(cur, d)
-                if nb in parent:
+                if nb is None or nb in parent:
                     continue
                 if nb in blocked and nb != goal:
                     continue
@@ -98,7 +98,7 @@ class SafeBfsStrategy(DemoStrategy):
             c = stack.pop()
             for d in Direction:
                 nb = self._step(c, d)
-                if nb not in seen and nb not in blocked:
+                if nb is not None and nb not in seen and nb not in blocked:
                     seen.add(nb)
                     stack.append(nb)
         return len(seen)
@@ -154,6 +154,8 @@ class SafeBfsStrategy(DemoStrategy):
         best_score: tuple[int, int, int] | None = None
         for d in legal:
             nxt = self._step(head, d)
+            if nxt is None:
+                continue  # a wall
             grew = nxt == food
             blocked = set(snake) if grew else set(snake[:-1])
             if nxt in blocked:
@@ -164,7 +166,7 @@ class SafeBfsStrategy(DemoStrategy):
             reach_tail = self._can_reach(
                 new_body[0], new_body[-1], blocked=set(new_body[:-1])
             )
-            score = (1 if reach_tail else 0, space, -self._toroidal_dist(nxt, food))
+            score = (1 if reach_tail else 0, space, -self._dist(nxt, food))
             if best_score is None or score > best_score:
                 best_score = score
                 best_dir = d
@@ -176,6 +178,6 @@ class SafeBfsStrategy(DemoStrategy):
         body_without_tail = set(snake[:-1])
         for d in legal:
             nxt = self._step(head, d)
-            if nxt == tail or nxt not in body_without_tail:
+            if nxt is not None and (nxt == tail or nxt not in body_without_tail):
                 return d
         return legal[0]  # truly trapped; emit a legal move anyway

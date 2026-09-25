@@ -3,13 +3,13 @@
 Stateless per tick. Enumerate the (at most 3) legal non-reversing turns, simulate
 one step for each (correctly modelling tail-vacate vs grow-on-food), and score the
 resulting position. The score is dominated by reachable free-space via a
-tail-aware flood-fill (the tail recedes as the fill spends ticks), with toroidal
+tail-aware flood-fill (the tail recedes as the fill spends ticks), with
 distance-to-food only breaking ties among moves that are "roomy enough". Lively
 and varied (it occasionally traps itself, ~22% mortal on 20x10), which makes the
 liveliest attract-loop demo — hence the active default.
 
-Contract compliance: every neighbour goes through the shared toroidal helper
-(live-grid safe, no cached state); the obstacle set models the vacating tail; only
+Contract compliance: every neighbour goes through the shared helper, which
+knows about wrap-around and walls (live-grid safe, no cached state); the obstacle set models the vacating tail; only
 non-reversing turns are considered and exactly one `Direction` is returned; when
 every legal move is immediately fatal it still returns a legal move (dies
 deterministically) rather than `None`.
@@ -20,7 +20,7 @@ from collections import deque
 from typing_extensions import override
 
 from ..game_rules import Direction, Position
-from ._helpers import blocked_cells, legal_turns, neighbour, toroidal_manhattan
+from ._helpers import blocked_cells, board_distance, legal_turns, neighbour
 from .base import DemoStrategy
 
 
@@ -39,6 +39,8 @@ class FloodFillStrategy(DemoStrategy):
         scored: list[tuple[bool, int, int, Direction]] = []
         for d in legal:
             nxt = neighbour(g, head, d)
+            if nxt is None:  # a wall: immediately fatal
+                continue
             grows = nxt == g.food
             future_solid = blocked_cells(g, grows)
             new_body = [nxt] + (body if grows else body[:-1])
@@ -50,7 +52,7 @@ class FloodFillStrategy(DemoStrategy):
             area = self._reachable_area(nxt, new_body)
             snake_len = len(new_body)
             safe_roomy = area >= snake_len
-            fdist = toroidal_manhattan(g, nxt, g.food)
+            fdist = board_distance(g, nxt, g.food)
             scored.append((safe_roomy, area, fdist, d))
 
         if not scored:
@@ -91,7 +93,7 @@ class FloodFillStrategy(DemoStrategy):
             count += 1
             for d in Direction:
                 nb = neighbour(g, cell, d)
-                if nb in seen:
+                if nb is None or nb in seen:
                     continue
                 idx = body_index.get(nb)
                 if idx is not None:

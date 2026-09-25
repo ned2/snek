@@ -907,6 +907,31 @@ async def test_fill_mode_grows_grid_to_fill_terminal():
         assert snake_view._scale == 1
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sizing_mode", ["cap", "fill"])
+async def test_walls_are_always_drawn(sizing_mode):
+    """With walls the heavy frame is part of the game, so the layout leaves room
+    for it even in 'fill' mode, which otherwise covers the view edge to edge."""
+    config = GameConfig(sizing_mode=sizing_mode, cell_scale=1, walls=True)
+    app = SnakeApp(config=config)
+    async with app.run_test(size=(172, 48)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        view = app.screen.query_one(SnakeView)
+        lines = _board_text(view).split("\n")
+        top = next(i for i, line in enumerate(lines) if "┏" in line)
+        bottom = next(i for i, line in enumerate(lines) if "┗" in line)
+        board_cols = 2 * app.game.width
+        assert lines[top].strip() == "┏" + "━" * board_cols + "┓"
+        assert bottom - top - 1 == app.game.height
+        assert all(
+            line.strip().startswith("┃") and line.strip().endswith("┃")
+            for line in lines[top + 1 : bottom]
+        )
+        if sizing_mode == "fill":
+            assert app.game.width == (view.size.width - 2) // 2
+
+
 def _board_text(snake_view) -> str:
     """Re-snapshot the live game and flatten every rendered line to plain text."""
     snake_view.refresh()
@@ -1143,6 +1168,7 @@ async def test_diagnostics_shows_live_config_and_state():
         assert "cell scale (k)" in text
         assert f"{app.game.width} x {app.game.height}" in text  # logical grid value
         assert "demo strategy" in text
+        assert "walls : False" in text
 
 
 @pytest.mark.asyncio

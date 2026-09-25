@@ -194,3 +194,20 @@ def test_main_applies_smooth_motion_flag(monkeypatch, argv, smooth):
     monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
     main(argv)
     assert captured["config"].smooth_motion is smooth
+
+
+@pytest.mark.parametrize(("argv", "walls"), [([], False), (["--walls"], True)])
+def test_main_applies_walls_flag(monkeypatch, argv, walls):
+    """`--walls` makes the board edges solid; the default wraps around."""
+    captured = {}
+
+    class FakeApp:
+        def __init__(self, config=None, demo_strategy=None):
+            captured["config"] = config
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
+    main(argv)
+    assert captured["config"].walls is walls

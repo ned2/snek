@@ -7,9 +7,11 @@ are the behavioural guardrails that run in CI.
 """
 
 import random
+from dataclasses import replace
 
 import pytest
 
+from snek.config import default_config
 from snek.demo import (
     DEFAULT_STRATEGY,
     STRATEGIES,
@@ -31,6 +33,12 @@ TAIL_VACATE = list(STRATEGIES)
 # even contrived states. `hamiltonian` relies on a cycle invariant it maintains
 # from a length-1 start, so it is not robust to artificially-constructed snakes.
 PER_TICK_SURVIVAL = ["greedy", "safe-bfs", "floodfill"]
+WALLED = replace(default_config, walls=True)
+
+
+def _game(w: int, h: int, seed: int, walls: bool = False) -> Game:
+    config = WALLED if walls else default_config
+    return Game(width=w, height=h, config=config, rng=random.Random(seed))
 
 
 def _legal(game: Game) -> list[Direction]:
@@ -44,27 +52,36 @@ def _survivable(game: Game, direction: Direction) -> bool:
     against `snake[:-1]` unless the move eats).
     """
     head = game.snake[0]
-    nxt = GameRules.calculate_new_position(head, direction, game.width, game.height)
+    nxt = GameRules.next_position(
+        head, direction, game.width, game.height, game.config.walls
+    )
+    if nxt is None:  # a wall
+        return False
     grows = nxt == game.food
     blocked = set(game.snake) if grows else set(game.snake[:-1])
     return nxt not in blocked
 
 
-def _adjacent(a: tuple[int, int], b: tuple[int, int], w: int, h: int) -> bool:
-    return any(GameRules.calculate_new_position(a, d, w, h) == b for d in Direction)
+def _adjacent(
+    a: tuple[int, int], b: tuple[int, int], w: int, h: int, walls: bool
+) -> bool:
+    return any(GameRules.next_position(a, d, w, h, walls) == b for d in Direction)
 
 
-def _is_valid_torus_cycle(cells: list[tuple[int, int]], w: int, h: int) -> bool:
-    """Every cell visited exactly once, consecutive pairs (incl. wrap) adjacent."""
+def _is_valid_cycle(
+    cells: list[tuple[int, int]], w: int, h: int, walls: bool = False
+) -> bool:
+    """Every cell visited exactly once, consecutive pairs (incl. last->first)
+    adjacent — across the wrap seam only when the board has no walls."""
     n = len(cells)
     if n != w * h or len(set(cells)) != w * h:
         return False
-    return all(_adjacent(cells[i], cells[(i + 1) % n], w, h) for i in range(n))
+    return all(_adjacent(cells[i], cells[(i + 1) % n], w, h, walls) for i in range(n))
 
 
-def _play(name: str, w: int, h: int, seed: int, cap: int) -> Game:
+def _play(name: str, w: int, h: int, seed: int, cap: int, walls: bool = False) -> Game:
     """Drive a headless game to completion (or the step cap) and return it."""
-    game = Game(width=w, height=h, rng=random.Random(seed))
+    game = _game(w, h, seed, walls)
     ai = STRATEGIES[name](game)
     steps = 0
     while not game.game_over and steps < cap:
@@ -98,12 +115,13 @@ def test_registry_and_factory():
 # ----------------------------------------------------------------- contract: B1 + #4
 
 
+@pytest.mark.parametrize("walls", [False, True], ids=["wrap", "walls"])
 @pytest.mark.parametrize("name", list(STRATEGIES))
-def test_never_silent_none(name):
+def test_never_silent_none(name, walls):
     """Contract #1 (0005-B1): never return None while a legal move exists; never
     return a reversing turn."""
     for seed in range(6):
-        game = Game(width=20, height=10, rng=random.Random(seed))
+        game = _game(20, 10, seed, walls)
         ai = STRATEGIES[name](game)
         steps = 0
         while not game.game_over and steps < 500:
@@ -150,15 +168,17 @@ def test_deterministic(name):
 # ----------------------------------------------------------------- contract: B4
 
 
+@pytest.mark.parametrize("walls", [False, True], ids=["wrap", "walls"])
 @pytest.mark.parametrize("name", TAIL_VACATE)
-def test_takes_survivable_move_when_one_exists(name):
+def test_takes_survivable_move_when_one_exists(name, walls):
     """Contract #2 (0005-B4): model the vacating tail; whenever a survivable
-    legal move exists, take one rather than stepping into a still-occupied cell.
+    legal move exists, take one rather than stepping into a still-occupied cell
+    or, with walls, off the board.
 
     Holds for *every* strategy, including `greedy` — being naive means not
     planning ahead, not misreading which cells are legal."""
     for seed in range(6):
-        game = Game(width=20, height=10, rng=random.Random(seed))
+        game = _game(20, 10, seed, walls)
         ai = STRATEGIES[name](game)
         steps = 0
         while not game.game_over and steps < 500:
@@ -206,9 +226,31 @@ def test_hamiltonian_builds_valid_cycle(w, h):
     game = Game(width=w, height=h, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     ai.get_next_direction()  # triggers the build
-    assert ai._built_for == (w, h)
+    assert ai._built_for == (w, h, False)
     assert ai._is_true_cycle is True
-    assert _is_valid_torus_cycle(ai.cycle, w, h)
+    assert _is_valid_cycle(ai.cycle, w, h)
+
+
+@pytest.mark.parametrize("w,h", [(20, 10), (6, 4), (5, 4), (4, 5), (7, 6), (6, 7)])
+def test_hamiltonian_builds_a_cycle_without_wrap_edges_on_walled_boards(w, h):
+    """A walled board has a Hamiltonian cycle iff it has an even cell count. The
+    torus weave crosses an edge when the other side is odd, so those boards need
+    the construction that stays on the board."""
+    game = _game(w, h, 0, walls=True)
+    ai = HamiltonianStrategy(game)
+    ai.get_next_direction()
+    assert ai._built_for == (w, h, True)
+    assert ai._is_true_cycle is True
+    assert _is_valid_cycle(ai.cycle, w, h, walls=True)
+
+
+def test_hamiltonian_odd_odd_walled_board_degrades_to_path():
+    game = _game(5, 5, 0, walls=True)
+    ai = HamiltonianStrategy(game)
+    direction = ai.get_next_direction()
+    assert ai._is_true_cycle is False
+    assert len(set(ai.cycle)) == 25
+    assert direction is None or GameRules.is_valid_turn(game.direction, direction)
 
 
 @pytest.mark.parametrize("w,h", [(5, 5), (7, 3)])
@@ -217,7 +259,7 @@ def test_hamiltonian_odd_odd_degrades_to_path(w, h):
     game = Game(width=w, height=h, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     direction = ai.get_next_direction()  # must not raise
-    assert ai._built_for == (w, h)
+    assert ai._built_for == (w, h, False)
     assert ai._is_true_cycle is False
     # Still covers every cell exactly once (a Hamiltonian path).
     assert len(ai.cycle) == w * h and len(set(ai.cycle)) == w * h
@@ -279,21 +321,23 @@ def test_hamiltonian_rebuilds_if_a_fresh_game_uses_a_new_grid():
     game = Game(width=20, height=10, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     ai.get_next_direction()
-    assert ai._built_for == (20, 10)
+    assert ai._built_for == (20, 10, False)
     assert len(ai.cycle) == 200
 
     game.reset(width=12, height=8)
     ai.get_next_direction()
-    assert ai._built_for == (12, 8)
+    assert ai._built_for == (12, 8, False)
     assert len(ai.cycle) == 96
-    assert _is_valid_torus_cycle(ai.cycle, 12, 8)
+    assert _is_valid_cycle(ai.cycle, 12, 8)
 
 
-@pytest.mark.parametrize("w,h", [(6, 4), (8, 6)])
-def test_hamiltonian_solves_small_board(w, h):
+@pytest.mark.parametrize(
+    "w,h,walls", [(6, 4, False), (8, 6, False), (6, 4, True), (7, 6, True)]
+)
+def test_hamiltonian_solves_small_board(w, h, walls):
     """End-to-end: the solver fills an even board to a clean win."""
     cells = w * h
-    game = _play("hamiltonian", w, h, seed=3, cap=20_000)
+    game = _play("hamiltonian", w, h, seed=3, cap=20_000, walls=walls)
     assert game.won, (
         f"hamiltonian did not solve {w}x{h} (foods={game.symbols_consumed})"
     )

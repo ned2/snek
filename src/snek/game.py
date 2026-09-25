@@ -147,6 +147,8 @@ class Game:
         Owns every consequence of a tick — movement, world transition, speed-up,
         and game-over — returning a `StepResult` for the view to react to instead
         of leaving it to infer them from changes in snake length or world index.
+        The game ends when the head hits the body or, with `config.walls`, the
+        board edge; otherwise the board wraps around.
         """
         if self.game_over or self.paused:
             return StepResult()
@@ -154,9 +156,12 @@ class Game:
         # single tick can never reverse the snake (see `turn`).
         if self._pending_turns:
             self.direction = self._pending_turns.pop(0)
-        new_head_pos = GameRules.calculate_new_position(
-            self.snake[0], self.direction, self.width, self.height
+        new_head_pos = GameRules.next_position(
+            self.snake[0], self.direction, self.width, self.height, self.config.walls
         )
+        if new_head_pos is None:  # ran into a wall
+            self.game_over = True
+            return StepResult(game_over=True)
         grows = GameRules.is_food_collision(new_head_pos, self.food)
         # Only include the tail in collision check if we grow this turn
         body_to_check = self.snake if grows else self.snake[:-1]

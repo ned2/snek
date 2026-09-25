@@ -12,6 +12,15 @@ class Direction(Enum):
     RIGHT = auto()
 
 
+# The (dx, dy) of a one-cell move in each direction; y grows downwards.
+_DELTAS: dict[Direction, tuple[int, int]] = {
+    Direction.UP: (0, -1),
+    Direction.DOWN: (0, 1),
+    Direction.LEFT: (-1, 0),
+    Direction.RIGHT: (1, 0),
+}
+
+
 class GameRules:
     """Pure game logic and rules, separated from state."""
 
@@ -36,15 +45,25 @@ class GameRules:
         head: Position, direction: Direction, width: int, height: int
     ) -> Position:
         """Calculate new head position based on direction, with wrapping."""
-        delta = {
-            Direction.UP: (0, -1),
-            Direction.DOWN: (0, 1),
-            Direction.LEFT: (-1, 0),
-            Direction.RIGHT: (1, 0),
-        }[direction]
+        delta = _DELTAS[direction]
         new_x = (head[0] + delta[0]) % width
         new_y = (head[1] + delta[1]) % height
         return (new_x, new_y)
+
+    @staticmethod
+    def next_position(
+        head: Position, direction: Direction, width: int, height: int, walls: bool
+    ) -> Position | None:
+        """The cell one step from `head`, or None if a wall is in the way.
+
+        With `walls` the board edges are solid, so a move off the board has no
+        destination; otherwise the board wraps (see `calculate_new_position`).
+        """
+        if walls:
+            dx, dy = _DELTAS[direction]
+            x, y = head[0] + dx, head[1] + dy
+            return (x, y) if 0 <= x < width and 0 <= y < height else None
+        return GameRules.calculate_new_position(head, direction, width, height)
 
     @staticmethod
     def direction_between(

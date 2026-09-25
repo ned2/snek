@@ -728,3 +728,48 @@ class TestPositionSetup:
         assert game._is_valid_position((5, -1)) is False
         assert game._is_valid_position((10, 5)) is False
         assert game._is_valid_position((5, 10)) is False
+
+
+class TestWalls:
+    """With `config.walls`, moving off the board ends the game."""
+
+    @pytest.mark.parametrize(
+        ("head", "direction"),
+        [
+            ((5, 0), Direction.UP),
+            ((5, 9), Direction.DOWN),
+            ((0, 5), Direction.LEFT),
+            ((9, 5), Direction.RIGHT),
+        ],
+    )
+    def test_moving_off_the_board_ends_the_game(self, head, direction):
+        game = Game(10, 10, config=GameConfig(walls=True))
+        game.set_snake_position([head])
+        game.set_food_position((2, 2) if head != (2, 2) else (3, 3))
+        game.direction = direction
+
+        result = game.step()
+
+        assert result == StepResult(game_over=True)
+        assert game.game_over
+        assert not game.won
+        assert game.snake == [head]
+
+    def test_the_board_wraps_by_default(self):
+        game = Game(10, 10)
+        game.set_snake_position([(9, 5)])
+        game.set_food_position((2, 2))
+
+        result = game.step()
+
+        assert not result.game_over
+        assert game.snake == [(0, 5)]
+
+    def test_moves_up_to_the_edge_are_safe(self):
+        game = Game(10, 10, config=GameConfig(walls=True))
+        game.set_snake_position([(8, 5)])
+        game.set_food_position((2, 2))
+
+        assert game.step().moved
+        assert game.snake == [(9, 5)]
+        assert game.step().game_over

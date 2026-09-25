@@ -122,6 +122,10 @@ class GameConfig:
     # a step lasts less than two frames.
     smooth_motion: bool = True
 
+    # Solid board edges: moving off the board ends the game. By default the
+    # board wraps around, so the snake leaves one edge and enters the opposite.
+    walls: bool = False
+
     def __post_init__(self) -> None:
         """Reject invalid configuration at its construction boundary."""
         if not isinstance(self.sizing_mode, str) or self.sizing_mode not in {
@@ -196,6 +200,7 @@ class GameConfig:
         for name, flag in (
             ("food_sprites", self.food_sprites),
             ("smooth_motion", self.smooth_motion),
+            ("walls", self.walls),
         ):
             if not isinstance(flag, bool):
                 raise ValueError(f"{name} must be a boolean, got {flag!r}")

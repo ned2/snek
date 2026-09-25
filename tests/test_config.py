@@ -136,3 +136,10 @@ def test_smooth_motion_flag_is_boolean() -> None:
     assert GameConfig().smooth_motion is True
     with pytest.raises(ValueError, match="smooth_motion must be a boolean"):
         GameConfig(smooth_motion="no")
+
+
+def test_walls_flag_is_boolean() -> None:
+    assert GameConfig().walls is False
+    assert GameConfig(walls=True).walls is True
+    with pytest.raises(ValueError, match="walls must be a boolean"):
+        GameConfig(walls=1)

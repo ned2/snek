@@ -28,6 +28,7 @@ from .game import Game, StepResult
 from .game_rules import Direction, Position
 from .rendering import (
     CELL_BASE_WIDTH,
+    FRAME_MARGIN,
     SMOOTH_EMPTY_CELL,
     SMOOTH_SNAKE_BLOCK,
     PartialCell,
@@ -567,6 +568,7 @@ class DiagnosticsModal(ModalScreen[None]):
                 f"{config.default_grid_width} x {config.default_grid_height}",
             ),
             ("food sprites", str(config.food_sprites)),
+            ("walls", str(config.walls)),
             None,
             ("interval", f"{game.current_interval:.4f} s"),
             ("speed", f"{game.get_moves_per_second():.1f} /sec"),
@@ -773,20 +775,27 @@ class SnakeView(Widget):
     _rows: dict[int, list[list[Segment]]] | None = None
 
     def on_resize(self, event: events.Resize) -> None:
-        """Establish the logical grid once, then make every resize visual-only."""
+        """Establish the logical grid once, then make every resize visual-only.
+
+        With walls the frame is part of the game, so the board is fitted inside
+        the space left once the frame has room.
+        """
         app = _snake_app(self)
         if self.size.width > 0 and self.size.height > 0:
+            reserve = FRAME_MARGIN if app.config.walls else 0
+            avail_cols = max(1, self.size.width - reserve)
+            avail_rows = max(1, self.size.height - reserve)
             if not self._grid_established:
                 grid_width, grid_height, self._scale = compute_layout(
-                    self.size.width, self.size.height, app.config
+                    avail_cols, avail_rows, app.config
                 )
                 cast(GameScreen, self.screen).establish_grid(grid_width, grid_height)
                 self._grid_established = True
             else:
                 game = app.game
                 self._scale = fit_grid_scale(
-                    self.size.width,
-                    self.size.height,
+                    avail_cols,
+                    avail_rows,
                     game.width,
                     game.height,
                     app.config.cell_scale,
@@ -873,22 +882,24 @@ class SnakeView(Widget):
         return self._drawn
 
     def _geometry(self, state: BoardState) -> BoardGeometry:
-        """Centre the board, framed when capped with room to spare.
+        """Centre the board, framed when capped or walled, with room to spare.
 
-        "fill" mode covers the terminal edge-to-edge, so there's no margin to
-        frame. The frame makes the capped board's boundary (and the wrap-around)
-        visible inside the letterbox margin.
+        "fill" mode covers the terminal edge-to-edge, so a wrapping board has no
+        margin to frame. The frame makes the capped board's boundary (and the
+        wrap-around) visible inside the letterbox margin. With walls the frame
+        is the wall, so the layout leaves room for it in either mode.
         """
         width, height = self.size
+        config = _snake_app(self).config
         board_cols = CELL_BASE_WIDTH * state.width * self._scale
         board_rows = state.height * self._scale
         framed = (
-            _snake_app(self).config.sizing_mode == "cap"
-            and width >= board_cols + 2
-            and height >= board_rows + 2
+            (config.sizing_mode == "cap" or config.walls)
+            and width >= board_cols + FRAME_MARGIN
+            and height >= board_rows + FRAME_MARGIN
         )
-        block_cols = board_cols + 2 * framed
-        block_rows = board_rows + 2 * framed
+        block_cols = board_cols + FRAME_MARGIN * framed
+        block_rows = board_rows + FRAME_MARGIN * framed
         return BoardGeometry(
             left=max(0, (width - block_cols) // 2),
             top=max(0, (height - block_rows) // 2),
@@ -913,6 +924,7 @@ class SnakeView(Widget):
         """Render one terminal row: margin, frame edge or board row, margin."""
         width = self.size.width
         base_style = self.visual_style.rich_style
+        walls = _snake_app(self).config.walls
         state = self._state()
         geometry = self._geometry(state)
         row = y - geometry.board_top
@@ -921,12 +933,12 @@ class SnakeView(Widget):
             logical_y, sub_row = divmod(row, self._scale)
             line = self._board_rows(state, logical_y)[sub_row]
             if geometry.framed:
-                side = frame_side()
+                side = frame_side(walls=walls)
                 segments = [side, *line, side]
             else:
                 segments = line
         elif geometry.framed and row in (-1, geometry.board_rows):
-            segments = [frame_rule(geometry.board_cols, top=row == -1)]
+            segments = [frame_rule(geometry.board_cols, top=row == -1, walls=walls)]
         else:
             return Strip.blank(width, base_style)
         strip = Strip([Segment(" " * geometry.left), *segments])

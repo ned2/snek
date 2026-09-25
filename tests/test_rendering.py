@@ -182,6 +182,19 @@ class TestFrameBoard:
         for r in rows[1:-1]:
             assert r[0] == "│" and r[-1] == "│"
 
+    def test_walls_draw_a_solid_heavy_frame(self):
+        tile = glyph_food_tile("X", "  ", 1)
+        lines = render_board(3, 2, set(), (-1, -1), 1, "██", "  ", tile)
+        framed = frame_board(lines, 6, walls=True)
+        rows = board_to_text(framed).split("\n")
+        assert rows[0] == "┏━━━━━━┓"
+        assert rows[-1] == "┗━━━━━━┛"
+        for r in rows[1:-1]:
+            assert r[0] == "┃" and r[-1] == "┃"
+        # Full intensity, unlike the dim frame of a wrapping board.
+        assert not framed[0][0].style.dim
+        assert frame_board(lines, 6)[0][0].style.dim
+
 
 # Half-cell coverage of each glyph a partial tile may use: (upper, lower).
 _HALVES = {"█": (1, 1), "▀": (1, 0), "▄": (0, 1), " ": (0, 0)}

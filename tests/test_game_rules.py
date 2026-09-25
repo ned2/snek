@@ -81,6 +81,32 @@ class TestPositionCalculation:
         )
 
 
+class TestNextPosition:
+    """`next_position` wraps by default and stops at the edge with walls."""
+
+    @pytest.mark.parametrize(
+        ("head", "direction"),
+        [
+            ((5, 0), Direction.UP),
+            ((5, 9), Direction.DOWN),
+            ((0, 5), Direction.LEFT),
+            ((9, 5), Direction.RIGHT),
+        ],
+    )
+    def test_edges(self, head, direction):
+        wrapped = GameRules.calculate_new_position(head, direction, 10, 10)
+        assert GameRules.next_position(head, direction, 10, 10, False) == wrapped
+        assert GameRules.next_position(head, direction, 10, 10, True) is None
+
+    @pytest.mark.parametrize("walls", [False, True])
+    def test_interior_moves_are_unchanged(self, walls):
+        assert GameRules.next_position((5, 5), Direction.UP, 10, 10, walls) == (5, 4)
+        assert GameRules.next_position((5, 5), Direction.RIGHT, 10, 10, walls) == (
+            6,
+            5,
+        )
+
+
 class TestCollisionDetection:
     """Test collision detection logic."""
 
