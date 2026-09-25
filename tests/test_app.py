@@ -16,6 +16,7 @@ from snek.screens import (
     DiagnosticsModal,
     GameOverModal,
     GameScreen,
+    SettingsModal,
     SidePanel,
     SnakeView,
     SplashScreen,
@@ -1380,3 +1381,90 @@ class TestWorldProgression:
 
         game.current_interval = 0.5
         assert game.get_moves_per_second() == pytest.approx(2.0)
+
+
+@pytest.mark.asyncio
+async def test_settings_open_from_the_splash_and_fit_80_by_24() -> None:
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, SettingsModal)
+        for widget in modal.query(Static):
+            _assert_fully_in_view(widget, 80, 24)
+        first = modal.query_one("#setting-0", Static)
+        assert first.has_class("-selected")
+        assert "Walls" in str(first.render())
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+
+
+@pytest.mark.asyncio
+async def test_settings_apply_to_the_next_game() -> None:
+    """Changing walls and speed on the settings screen changes the next game."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        await pilot.press("right")  # walls on
+        await pilot.press("down", "left")  # speed 10 -> 8 moves/sec
+        await pilot.pause()
+        assert app.config.walls is True
+        assert app.config.initial_speed_interval == pytest.approx(1 / 8)
+        help_text = str(app.screen.query_one("#settings-help", Static).render())
+        assert "Moves per second" in help_text
+
+        await pilot.press("enter")
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        assert app.game.config is app.config
+        assert app.game.current_interval == pytest.approx(1 / 8)
+        view = game_screen.query_one(SnakeView)
+        assert "┏" in _board_text(view)
+
+
+@pytest.mark.asyncio
+async def test_layout_settings_re_establish_the_grid_for_the_next_game() -> None:
+    """The grid is fixed during a game, but a new game after changing the grid
+    cap uses the new cap."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        assert (app.game.width, app.game.height) == (36, 20)
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        app.game.game_over = True
+        app.pop_screen()
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+
+        await pilot.press("s")
+        await pilot.pause()
+        await pilot.press("down", "down", "down", "left")  # grid cap 36x20 -> 24x14
+        await pilot.press("escape", "space")
+        await pilot.pause()
+        assert (app.game.width, app.game.height) == (24, 14)
+        assert not app.game.game_over
+
+
+@pytest.mark.asyncio
+async def test_splash_prompt_names_the_chosen_demo_strategy() -> None:
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        await pilot.press("up", "right")  # the last row: demo strategy
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.demo_strategy == "greedy"
+        prompt = app.screen.query_one("#splash-start-prompt", Static)
+        assert "D for the greedy demo" in str(prompt.render())
+        assert "S for settings" in str(prompt.render())

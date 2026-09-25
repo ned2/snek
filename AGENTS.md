@@ -85,14 +85,18 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 ### Core Components
 
 - **`app.py`**: `SnakeApp`, the Textual `App`. Registers the screens in `SCREENS` and pushes
-  the splash on startup; owns the immutable configuration, live `Game`, and selected demo
-  strategy name.
+  the splash on startup; owns the current immutable configuration, live `Game`, and selected
+  demo strategy name. `settings` / `apply_settings()` read and replace the config and strategy
+  together for the settings screen.
 - **`cli.py`**: `main()`, the console entry point (`uv run snek`). Parses speed, sizing,
   logical-grid cap, visual scale, smoothing, walls, and demo-strategy options into a
   validated `GameConfig`.
-- **`screens.py`**: the screens-as-states UI — `SplashScreen`, `GameScreen` (the game loop +
-  side panel), `PauseModal`, the scrollable `DiagnosticsModal`, and `GameOverModal`, plus the
-  `SnakeView` board and the `SidePanel` / `StatDisplay` panel widgets.
+- **`screens.py`**: the screens-as-states UI — `SplashScreen`, `SettingsModal`, `GameScreen`
+  (the game loop + side panel), `PauseModal`, the scrollable `DiagnosticsModal`, and
+  `GameOverModal`, plus the `SnakeView` board and the `SidePanel` / `StatDisplay` panel widgets.
+- **`settings.py`**: framework-free settings rows for `SettingsModal`. `Settings` pairs the
+  `GameConfig` with the demo strategy; each `SettingRow` offers fixed choices and steps through
+  them, writing back through `dataclasses.replace` so `GameConfig` validates every change.
 - **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
   model→view contract returned by `Game.step()`.
 - **`game_rules.py`**: pure game mechanics — movement (`next_position` wraps, or returns None
@@ -139,8 +143,15 @@ The game uses a world-based progression system where:
 
 State is the **Textual screen stack**, not a separate state machine — each state is a screen:
 `SplashScreen` → `GameScreen` → (`PauseModal` / `DiagnosticsModal` / `GameOverModal`),
-navigated with `push_screen` / `pop_screen`. Splash, game, and pause are registered screens;
-diagnostics and game-over are fresh instances so their displayed state cannot go stale.
+navigated with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`. Splash,
+game, and pause are registered screens; settings, diagnostics, and game-over are fresh instances
+so their displayed state cannot go stale.
+
+Settings are session-only and reachable only from the splash, so no game is running when they
+change. `apply_settings()` replaces `app.config` and the live `Game`'s config at once; the next
+`start_new_game()` resets the game with it and calls `SnakeView.relayout()`, which
+re-establishes the logical grid only if a layout setting (sizing, scale, grid cap, walls)
+changed since the grid was last established.
 
 Within the game loop:
 1. `GameScreen._on_frame` feeds the elapsed wall time into a `StepClock` and runs one model

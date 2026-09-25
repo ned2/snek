@@ -22,6 +22,7 @@ from textual.widgets import Label, Static
 from typing_extensions import Self, override
 
 from . import __version__, clipboard, sprites
+from .config import GameConfig
 from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game import Game, StepResult
@@ -41,6 +42,7 @@ from .rendering import (
     motion_units,
     render_board_row,
 )
+from .settings import ROWS, Settings
 from .timing import StepClock, next_wake_delay
 
 if TYPE_CHECKING:
@@ -79,6 +81,7 @@ class SplashScreen(Screen[None]):
     BINDINGS = [
         ("space", "start_game", "Start Game"),
         ("d", "start_demo", "Start Demo"),
+        ("s", "settings", "Settings"),
         ("q", "quit", "Quit"),
     ]
 
@@ -110,7 +113,7 @@ class SplashScreen(Screen[None]):
                     colors=["$primary", "$panel"],
                 )
             yield Static(
-                f"Press SPACE to start or D for the {app.demo_strategy} demo.",
+                self._start_prompt(app.demo_strategy),
                 id="splash-start-prompt",
                 classes="splash-prompt",
             )
@@ -129,9 +132,21 @@ class SplashScreen(Screen[None]):
             title.pause_animation()
 
     def on_screen_resume(self) -> None:
-        """Resume eligible visible titles without creating another timer."""
+        """Resume eligible visible titles without creating another timer.
+
+        Also refresh the start prompt, which names the demo strategy that the
+        settings screen may have changed.
+        """
         for title in self.query(FigletText):
             title.resume_animation()
+        prompt = self.query_one("#splash-start-prompt", Static)
+        prompt.update(self._start_prompt(_snake_app(self).demo_strategy))
+
+    @staticmethod
+    def _start_prompt(demo_strategy: str) -> str:
+        return (
+            f"Press SPACE to start, D for the {demo_strategy} demo, or S for settings."
+        )
 
     def action_start_game(self) -> None:
         """Start a fresh game under user control."""
@@ -144,6 +159,10 @@ class SplashScreen(Screen[None]):
         game_screen = _game_screen(self)
         game_screen.start_new_game(demo=True)
         self.app.push_screen("game")
+
+    def action_settings(self) -> None:
+        """Open the settings, which apply from the next game."""
+        self.app.push_screen(SettingsModal())
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -471,6 +490,8 @@ class GameScreen(Screen[None]):
         app.game.reset()
         self.demo_ai = make_demo_ai(app.game, app.demo_strategy) if demo else None
         if self.is_mounted:
+            # Settings may have changed the layout since the last game.
+            self.query_one(SnakeView).relayout()
             self._restart_loop()
             app.theme = app.game.world_path.get_world(0).theme_name
             self._sync_reactives()
@@ -631,6 +652,97 @@ class DiagnosticsModal(ModalScreen[None]):
         self.app.exit()
 
 
+class SettingsModal(ModalScreen[None]):
+    """Session settings, opened with S from the splash.
+
+    Up and down pick a setting; left and right change it. Each change applies
+    at once to the app's settings (see `settings.ROWS`), which the next game
+    uses. A fresh instance is pushed each time so it shows the current values.
+    """
+
+    BINDINGS = [
+        ("up", "move(-1)", "Previous"),
+        ("down", "move(1)", "Next"),
+        ("w", "move(-1)", None),
+        ("s", "move(1)", None),
+        ("left", "change(-1)", "Change"),
+        ("right", "change(1)", "Change"),
+        ("a", "change(-1)", None),
+        ("d", "change(1)", None),
+        ("escape", "close", "Done"),
+        ("enter", "close", "Done"),
+        ("space", "close", "Done"),
+        ("q", "quit", "Quit"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.selected = 0
+
+    @override
+    def compose(self) -> ComposeResult:
+        """Compose the title, one line per setting, and the selected one's help."""
+        with Vertical(id="settings-container"):
+            yield FigletText(
+                "SETTINGS",
+                font="doom",
+                id="settings-title",
+                colors=["$primary"],
+                classes="title-text",
+            )
+            yield Static("↑/↓ choose · ←/→ change · ENTER done", id="settings-prompt")
+            with Center(id="settings-rows-center"), Vertical(id="settings-rows"):
+                for index in range(len(ROWS)):
+                    yield Static(id=f"setting-{index}", classes="setting-row")
+            yield Static(id="settings-help")
+            yield Static("Settings apply from the next game.", id="settings-note")
+
+    def on_mount(self) -> None:
+        """Show the current values."""
+        self._show()
+
+    def _show(self) -> None:
+        """Redraw every row, marking the selected one, and its help line."""
+        settings = _snake_app(self).settings
+        label_width = max(len(row.label) for row in ROWS)
+        # Pad every value to the widest the settings can show, so the block
+        # keeps one width (and stays centred) as values change.
+        value_width = max(
+            len(text)
+            for row in ROWS
+            for text in (row.value_text(settings), *map(row.show, row.choices))
+        )
+        for index, row in enumerate(ROWS):
+            line = self.query_one(f"#setting-{index}", Static)
+            selected = index == self.selected
+            marker = "▸" if selected else " "
+            value = f"{row.value_text(settings):^{value_width}}"
+            shown = f"◂ {value} ▸" if selected else f"  {value}  "
+            line.update(f"{marker} {row.label:<{label_width}}   {shown}")
+            line.set_class(selected, "-selected")
+        self.query_one("#settings-help", Static).update(ROWS[self.selected].help)
+
+    def action_move(self, delta: int) -> None:
+        """Select the previous or next setting, wrapping round."""
+        self.selected = (self.selected + delta) % len(ROWS)
+        self._show()
+
+    def action_change(self, delta: int) -> None:
+        """Step the selected setting and apply it to the session."""
+        app = _snake_app(self)
+        settings: Settings = ROWS[self.selected].step(app.settings, delta)
+        app.apply_settings(settings)
+        self._show()
+
+    def action_close(self) -> None:
+        """Return to the splash."""
+        self.app.pop_screen()
+
+    def action_quit(self) -> None:
+        """Quit the application."""
+        self.app.exit()
+
+
 class GameOverModal(ModalScreen[None]):
     """Modal screen shown when snek dies."""
 
@@ -746,6 +858,17 @@ class BoardGeometry:
         return self.top + self.framed
 
 
+def _layout_key(config: GameConfig) -> tuple[object, ...]:
+    """The settings that decide the logical grid and how the board is fitted."""
+    return (
+        config.sizing_mode,
+        config.cell_scale,
+        config.max_grid_width,
+        config.max_grid_height,
+        config.walls,
+    )
+
+
 class SnakeView(Widget):
     """Renders the game board line by line (Textual's Line API).
 
@@ -767,6 +890,8 @@ class SnakeView(Widget):
     # on resize; the board is drawn at this scale.
     _scale: int = 1
     _grid_established: bool = False
+    # The layout settings the grid was established with (see `_layout_key`).
+    _established_for: tuple[object, ...] | None = None
     # The snapshot being drawn; None means "take a fresh one on next use".
     _drawn: BoardState | None = None
     # Board rows built for one snapshot at one scale, keyed by logical row. A
@@ -775,7 +900,22 @@ class SnakeView(Widget):
     _rows: dict[int, list[list[Segment]]] | None = None
 
     def on_resize(self, event: events.Resize) -> None:
-        """Establish the logical grid once, then make every resize visual-only.
+        """Establish the logical grid once, then make every resize visual-only."""
+        self._layout()
+
+    def relayout(self) -> None:
+        """Establish the grid again if the layout settings changed since.
+
+        Called when a new game starts, which is the only time the grid may
+        change. Settings changed on the splash take effect here.
+        """
+        config = _snake_app(self).config
+        if self._grid_established and self._established_for != _layout_key(config):
+            self._grid_established = False
+            self._layout()
+
+    def _layout(self) -> None:
+        """Fit the board to the view, establishing the grid if it isn't yet.
 
         With walls the frame is part of the game, so the board is fitted inside
         the space left once the frame has room.
@@ -791,6 +931,7 @@ class SnakeView(Widget):
                 )
                 cast(GameScreen, self.screen).establish_grid(grid_width, grid_height)
                 self._grid_established = True
+                self._established_for = _layout_key(app.config)
             else:
                 game = app.game
                 self._scale = fit_grid_scale(

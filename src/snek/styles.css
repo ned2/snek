@@ -176,3 +176,53 @@ SplashScreen.-wide.-tall .version-display {
     text-wrap: wrap;
     text-style: dim;
 }
+
+/* Settings modal styling */
+#settings-container {
+    align: center middle;
+    width: auto;
+    height: auto;
+}
+
+#settings-title {
+    margin-bottom: 1;
+}
+
+#settings-prompt,
+#settings-note {
+    width: 100%;
+    text-align: center;
+    text-style: bold dim;
+}
+
+#settings-prompt {
+    margin-bottom: 1;
+}
+
+#settings-rows {
+    width: auto;
+    height: auto;
+}
+
+#settings-rows-center {
+    width: 100%;
+    height: auto;
+}
+
+.setting-row {
+    width: auto;
+    text-style: dim;
+}
+
+.setting-row.-selected {
+    text-style: bold;
+    color: $primary;
+}
+
+#settings-help {
+    width: 100%;
+    height: 2;
+    margin-top: 1;
+    text-align: center;
+    text-style: italic;
+}

@@ -71,6 +71,8 @@ the terminal is made smaller, but interface elements may be clipped.
 - **Arrow keys** or **WASD**: Move the snake
 - **Space**: Start game / Pause/unpause the game / Restart after game over
 - **D** (on the splash screen): Watch the snek play itself in demo mode
+- **S** (on the splash screen): Settings — walls, speed, board sizing, grid cap, cell scale,
+  smooth motion, food sprites and demo strategy, for the rest of the session
 - **Enter**: Toggle sidebar visibility
 - **?**: Open scrollable live diagnostics; press **C** there to copy them
 - **Q**: Quit the game
