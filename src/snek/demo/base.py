@@ -18,9 +18,10 @@ class DemoStrategy(ABC):
        all — never as a silent "no opinion" that makes the snake coast straight
        into its own body.
     2. **Tail-vacate aware** (kills 0005/B4): when testing whether a target cell
-       is blocked, model the tail as *free* on a non-growing step — the engine
-       checks collision against `snake[:-1]` unless the move eats. Use the shared
-       helpers (`_helpers.blocked_cells`) so this is uniform.
+       is blocked, model the tail as *free* when it moves — the engine checks
+       collision against `snake[:-1]` unless the move eats or the snake is still
+       growing in (`Game.pending_growth`). Use the shared helpers
+       (`_helpers.blocked_cells`, `body_after`) so this is uniform.
     3. **Grid-aware** (kills 0005/B7): hold no stale grid-coordinate state when
        model dimensions change; rebuild any precomputed structure (e.g. a
        Hamiltonian cycle) when `(game.width, game.height)` changes. Normal

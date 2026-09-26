@@ -5,12 +5,14 @@ from dataclasses import replace
 
 import pytest
 
-from snek.config import GameConfig
+from snek.config import DIAMOND, GameConfig
 from snek.game import Game, StepResult
 from snek.game_rules import Direction
 
 # Most model tests were written for a wrapping board; walls are opt-in there.
 WRAPPING = GameConfig(walls=False)
+# A snake that starts whole, at length one, so a first step moves its tail.
+SINGLE = GameConfig(start_length=1)
 
 
 class _FixedRankRng:
@@ -227,7 +229,8 @@ class TestDeterminism:
         Walks through every world so each world's shuffled character pool is exercised,
         not just world 0's.
         """
-        game = Game(width=10, height=10, rng=random.Random(seed))
+        config = GameConfig(food_type="glyphs")
+        game = Game(width=10, height=10, config=config, rng=random.Random(seed))
         sequence = [(game.food, game.food_symbol)]
         for index in range(steps):
             game.current_world = index % len(game.world_path.worlds)
@@ -284,7 +287,7 @@ class TestMovement:
 
     def test_step_normal_movement(self):
         """Test normal snake movement."""
-        game = Game()
+        game = Game(config=SINGLE)
         initial_head = game.snake[0]
         game.set_food_position((0, 0))  # keep the random food off the move path
 
@@ -443,7 +446,7 @@ class TestStepResult:
 
     def test_plain_move(self):
         """A move into empty space reports moved only."""
-        game = Game(width=40, height=40)
+        game = Game(width=40, height=40, config=SINGLE)
         head = game.snake[0]
         game.food = (head[0], head[1] + 2)  # not where a RIGHT step lands
         new_head = (head[0] + 1, head[1])
@@ -776,3 +779,88 @@ class TestWalls:
         assert game.step().moved
         assert game.snake == [(9, 5)]
         assert game.step().game_over
+
+
+class TestGrowIn:
+    """The snake starts as one cell and unrolls to `config.start_length`."""
+
+    def test_starts_as_one_cell_with_the_rest_to_grow(self):
+        game = Game(width=20, height=11)
+        assert game.snake == [(10, 5)]
+        assert game.pending_growth == game.config.start_length - 1 == 7
+
+    def test_tail_stays_put_until_the_start_length(self):
+        game = Game(width=20, height=11)
+        game.set_food_position((0, 0))  # off the path
+        start = game.snake[0]
+        for moved in range(1, 8):
+            result = game.step()
+            assert result == StepResult(
+                moved=True, head=(start[0] + moved, 5), heading=Direction.RIGHT
+            )
+            assert game.snake[-1] == start
+            assert len(game.snake) == moved + 1
+        assert game.pending_growth == 0
+        result = game.step()  # grown in: the tail moves from now on
+        assert result.vacated == start
+        assert len(game.snake) == 8
+
+    def test_growing_in_is_not_eating(self):
+        game = Game(width=20, height=11)
+        game.set_food_position((0, 0))
+        game.step()
+        assert game.symbols_consumed == 0
+        assert game.current_interval == game.config.initial_speed_interval
+
+    def test_food_eaten_while_growing_in_adds_a_segment(self):
+        game = Game(width=20, height=11)
+        head = game.snake[0]
+        game.set_food_position((head[0] + 1, head[1]))
+        assert game.step().ate_food
+        assert game.pending_growth == 7  # eating used none of it
+        game.set_food_position((0, 0))
+        for _ in range(8):
+            game.step()
+        assert len(game.snake) == 8 + 1
+
+    def test_the_stationary_tail_is_a_collision(self):
+        """While growing in, the tail cell can't be entered as it would vacate."""
+        game = Game(width=20, height=11, config=replace(SINGLE, start_length=8))
+        game.set_food_position((0, 0))
+        for turn in (Direction.DOWN, Direction.LEFT, Direction.UP):
+            game.turn(turn)
+            game.step()
+        # Four cells in a square, with the tail beside the head.
+        assert game.snake == [(9, 5), (9, 6), (10, 6), (10, 5)]
+        assert game.pending_growth == 4
+        game.turn(Direction.RIGHT)
+        assert game.step().game_over
+
+    def test_tiny_boards_leave_a_cell_for_food(self):
+        game = Game(width=1, height=2)
+        assert game.pending_growth == 0
+        game = Game(width=3, height=2)
+        assert game.pending_growth == 4  # 5 of the 6 cells, then food fills it
+
+    def test_a_placed_snake_has_no_growing_in_left(self):
+        game = Game(width=20, height=11)
+        game.snake = [(5, 5), (4, 5)]
+        assert game.pending_growth == 0
+        game.set_snake_position([(5, 5)])
+        assert game.pending_growth == 0
+
+
+class TestDiamondFood:
+    def test_diamond_food_is_the_diamond_in_every_world(self):
+        game = Game(width=20, height=11, rng=random.Random(0))
+        for world in range(len(game.world_path.worlds)):
+            game.current_world = world
+            game.place_food()
+            assert game.food_symbol == DIAMOND
+            game.set_food_position((0, 0))
+            assert game.food_symbol == DIAMOND
+
+    def test_glyph_food_is_the_world_glyph(self):
+        config = GameConfig(food_type="glyphs")
+        game = Game(width=20, height=11, config=config, rng=random.Random(0))
+        assert game.food_symbol != DIAMOND

@@ -4,7 +4,9 @@ Every strategy routes its board math through here so the four contract
 properties (legality, tail-vacate, grid-awareness, determinism) are honoured
 uniformly: movement goes through `GameRules` so wrap-around (or, with
 `config.walls`, the solid edge) matches the engine exactly, and `blocked_cells`
-models the receding tail per `Game.step`'s `snake[:-1]` collision rule.
+models the receding tail per `Game.step`'s `snake[:-1]` collision rule. The tail
+stays put while the snake grows in to its starting length (`Game.pending_growth`),
+as it does on a step that eats.
 """
 
 from ..game import Game
@@ -27,14 +29,29 @@ def neighbour(game: Game, pos: Position, direction: Direction) -> Position | Non
     )
 
 
+def tail_moves(game: Game, grows: bool) -> bool:
+    """Whether the tail leaves its cell this step: not if eating or growing in."""
+    return not grows and not game.tail_stays
+
+
 def blocked_cells(game: Game, grows: bool) -> set[Position]:
     """The cells that block the head this step.
 
-    On a non-growing step the tail vacates (the engine checks collision against
-    `snake[:-1]`), so its current cell is enterable; on a growing step the whole
-    body stays put.
+    When the tail moves (the engine checks collision against `snake[:-1]`) its
+    current cell is enterable; when eating or growing in the whole body stays put.
     """
-    return set(game.snake) if grows else set(game.snake[:-1])
+    return set(game.snake[:-1]) if tail_moves(game, grows) else set(game.snake)
+
+
+def body_after(game: Game, head: Position, grows: bool) -> list[Position]:
+    """The snake after its head steps to `head` this step, head first."""
+    body = game.snake[:-1] if tail_moves(game, grows) else game.snake
+    return [head, *body]
+
+
+def growth_after(game: Game, grows: bool) -> int:
+    """The growing in left after this step: a step that doesn't eat uses one."""
+    return game.pending_growth if grows else max(0, game.pending_growth - 1)
 
 
 def board_distance(game: Game, a: Position, b: Position) -> int:

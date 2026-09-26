@@ -1,10 +1,11 @@
 """The in-game settings: which options the settings screen offers and how they step.
 
 Framework-free so the rules can be unit-tested without Textual. A `Settings`
-value pairs the immutable `GameConfig` with the demo-strategy name (which lives
+value (see `modes`) holds config values and the demo-strategy name (which lives
 on the app, not the config). Each `SettingRow` reads one option from it, offers
-a fixed list of choices, and writes a chosen value back as a new `Settings` —
-through `dataclasses.replace`, so `GameConfig` still validates every change.
+a fixed list of choices, and writes a chosen value back as a new `Settings`.
+Writing does not validate: the settings screen steps freely through invalid
+combinations, shows `Settings.error()`, and applies only valid settings.
 
 Every setting applies from the next game: the screen is only reachable from the
 splash, so nothing changes under a running game. Settings last for the session.
@@ -12,21 +13,13 @@ splash, so nothing changes under a running game. Settings last for the session.
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from rich.cells import cell_len
 
-from .config import GameConfig
+from .config import FOOD_TYPES
 from .demo import STRATEGIES
-from .modes import CUSTOM, MODES, apply_mode, describe, mode_of
-
-
-@dataclass(frozen=True)
-class Settings:
-    """Everything the settings screen edits."""
-
-    config: GameConfig
-    demo_strategy: str
+from .modes import CUSTOM, MODES, Settings, apply_mode, describe, mode_of
 
 
 @dataclass(frozen=True)
@@ -85,7 +78,7 @@ def _config(field: str) -> Callable[[Settings, Any], Settings]:
     """A `put` that sets one `GameConfig` field."""
 
     def put(settings: Settings, value: object) -> Settings:
-        return replace(settings, config=replace(settings.config, **{field: value}))
+        return settings.with_values(**{field: value})
 
     return put
 
@@ -96,7 +89,7 @@ def _on_off(value: bool) -> str:
 
 def _speed(settings: Settings) -> float:
     """The starting speed in moves per second, rounded so presets compare equal."""
-    return round(1.0 / settings.config.initial_speed_interval, 6)
+    return round(1.0 / cast(float, settings.get("initial_speed_interval")), 6)
 
 
 def _put_speed(settings: Settings, speed: float) -> Settings:
@@ -104,27 +97,34 @@ def _put_speed(settings: Settings, speed: float) -> Settings:
 
 
 def _grid(settings: Settings) -> tuple[int, int]:
-    return (settings.config.max_grid_width, settings.config.max_grid_height)
+    width, height = settings.get("max_grid_width"), settings.get("max_grid_height")
+    return cast(int, width), cast(int, height)
 
 
 def _put_grid(settings: Settings, grid: tuple[int, int]) -> Settings:
     width, height = grid
-    config = replace(settings.config, max_grid_width=width, max_grid_height=height)
-    return replace(settings, config=config)
+    return settings.with_values(max_grid_width=width, max_grid_height=height)
 
 
 SPEEDS = (2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50)
-GRIDS = ((16, 10), (24, 14), (36, 20), (48, 26), (60, 34))
+START_LENGTHS = tuple(range(1, 11))
+GRIDS = ((20, 11), (24, 14), (36, 20), (48, 26), (60, 34))
 SCALES = (1, 2, 3, 4, 5)
+
+FOOD_HELP = {
+    "diamond": "The classic Nokia diamond, in each world's colours.",
+    "glyphs": "A new set of Unicode glyphs in each world.",
+    "sprites": "Pixel-art food. Needs cell scale 2+.",
+}
 
 # The mode: one step applies a whole designed mix of the rows below it. The
 # splash offers this row too.
 MODE_ROW = SettingRow(
     label="Mode",
-    help=lambda s: describe(mode_of(s.config)),
+    help=lambda s: describe(mode_of(s)),
     choices=tuple(mode.name for mode in MODES),
-    get=lambda s: mode_of(s.config),
-    put=lambda s, name: replace(s, config=apply_mode(s.config, name)),
+    get=mode_of,
+    put=apply_mode,
     wrap=True,
 )
 
@@ -134,7 +134,7 @@ ROWS: tuple[SettingRow, ...] = (
         label="Walls",
         help="Solid edges end the game; off, the board wraps around.",
         choices=(False, True),
-        get=lambda s: s.config.walls,
+        get=lambda s: s.get("walls"),
         put=_config("walls"),
         show=_on_off,
         wrap=True,
@@ -148,10 +148,17 @@ ROWS: tuple[SettingRow, ...] = (
         show=lambda v: f"{v:g} /sec",
     ),
     SettingRow(
+        label="Starting length",
+        help="Segments the snake unrolls to at the start.",
+        choices=START_LENGTHS,
+        get=lambda s: s.get("start_length"),
+        put=_config("start_length"),
+    ),
+    SettingRow(
         label="Board sizing",
         help="Cap: a fixed grid, letterboxed. Fill: the grid fills the terminal.",
         choices=("cap", "fill"),
-        get=lambda s: s.config.sizing_mode,
+        get=lambda s: s.get("sizing_mode"),
         put=_config("sizing_mode"),
         show=lambda v: "Cap" if v == "cap" else "Fill",
         wrap=True,
@@ -168,25 +175,25 @@ ROWS: tuple[SettingRow, ...] = (
         label="Cell scale",
         help="Characters per cell: the largest in cap sizing, exact in fill.",
         choices=SCALES,
-        get=lambda s: s.config.cell_scale,
+        get=lambda s: s.get("cell_scale"),
         put=_config("cell_scale"),
     ),
     SettingRow(
         label="Smooth motion",
         help="Slide the snake between cells instead of jumping.",
         choices=(True, False),
-        get=lambda s: s.config.smooth_motion,
+        get=lambda s: s.get("smooth_motion"),
         put=_config("smooth_motion"),
         show=_on_off,
         wrap=True,
     ),
     SettingRow(
-        label="Food sprites",
-        help="Pixel-art food. Needs cell scale 2+ and a terminal to fit it.",
-        choices=(True, False),
-        get=lambda s: s.config.food_sprites,
-        put=_config("food_sprites"),
-        show=_on_off,
+        label="Food type",
+        help=lambda s: FOOD_HELP[cast(str, s.get("food_type"))],
+        choices=FOOD_TYPES,
+        get=lambda s: s.get("food_type"),
+        put=_config("food_type"),
+        show=str.capitalize,
         wrap=True,
     ),
     SettingRow(
@@ -200,11 +207,13 @@ ROWS: tuple[SettingRow, ...] = (
 )
 
 
-def widest_help() -> int:
+def widest_help(settings: Settings) -> int:
     """The width of the longest help line any row can show, in cells.
 
-    Fixed help is counted as is; the Mode row's help is a mode description.
+    Help worked out from the settings is counted for each of the row's choices,
+    plus the Custom mode's description, which no choice selects.
     """
-    texts = [row.help for row in ROWS if isinstance(row.help, str)]
-    texts += [describe(mode.name) for mode in MODES] + [describe(CUSTOM)]
+    texts = [describe(CUSTOM)]
+    for row in ROWS:
+        texts += [row.help_text(row.put(settings, choice)) for choice in row.choices]
     return max(cell_len(text) for text in texts)

@@ -228,13 +228,17 @@ SplashScreen.-wide.-tall .version-display {
 }
 
 #settings-help {
-    /* Sized in code to the longest help line (SettingsModal.on_mount). */
-    height: 2;
+    /* Sized in code to the longest help line (SettingsModal.on_mount), so one
+       row holds any help; the error line below takes the next. */
+    height: 1;
     margin-top: 1;
     text-align: center;
     text-style: italic;
 }
 
-#settings-help.-refused {
+#settings-error {
+    /* Sized in code with the help line; blank, but still reserved, when valid. */
+    height: 1;
+    text-align: center;
     color: $error;
 }

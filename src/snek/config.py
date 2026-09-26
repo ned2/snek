@@ -10,6 +10,13 @@ from rich.cells import cell_len
 # 2x1 characters, far too small for pixel art.
 MIN_SPRITE_SCALE: Final = 2
 
+# How food is drawn: "diamond" is Nokia Snake's one fixed food; "glyphs" draws each
+# world's themed Unicode symbols; "sprites" draws pixel art.
+FOOD_TYPES: Final = ("diamond", "glyphs", "sprites")
+
+# The "diamond" food's symbol.
+DIAMOND: Final = "❖"
+
 
 def _require_positive_int(name: str, value: object) -> int:
     """Return a positive integer or raise an actionable configuration error."""
@@ -69,9 +76,10 @@ class GameConfig:
     # Logical grid cap for "cap" mode (game cells = difficulty). The board grows
     # with the terminal up to this size, then stops. 36x20 (widescreen 9:5) fills
     # a ~280-col terminal at scale 3. Unused in "fill" mode. The defaults here and
-    # below are the Classic mode's values (see `modes`).
-    max_grid_width: int = 36
-    max_grid_height: int = 20
+    # below are the Classic mode's values (see `modes`): 20x11 is Nokia Snake's
+    # board.
+    max_grid_width: int = 20
+    max_grid_height: int = 11
 
     # Cell magnification factor (k): each logical cell is drawn (2*k) x k glyphs.
     #   "cap" mode  — the *ceiling*; cells grow up to this as space allows.
@@ -117,11 +125,15 @@ class GameConfig:
     snake_block: str = "██"
     empty_cell: str = "  "
 
-    # Draw food as pixel-art sprites instead of the world's themed glyph. Sprites
-    # need cells of at least `MIN_SPRITE_SCALE`, and the food style never changes
-    # with the terminal size: a terminal too small for the board at that scale
-    # holds the game behind a message rather than falling back to the glyph.
-    food_sprites: bool = False
+    # How food is drawn, one of `FOOD_TYPES`. Sprites need cells of at least
+    # `MIN_SPRITE_SCALE`, and the food style never changes with the terminal size:
+    # a terminal too small for the board at that scale holds the game behind a
+    # message rather than falling back to a glyph.
+    food_type: str = "diamond"
+
+    # The length the snake grows to at the start. It starts as one cell and
+    # unrolls from there (see `Game.pending_growth`), so any length suits any board.
+    start_length: int = 8
 
     # Interpolate movement between steps: the head slides into its new cell and
     # the tail drains out of the old one, instead of both jumping a whole cell.
@@ -170,7 +182,14 @@ class GameConfig:
                 "max_grid_height must be greater than or equal to min_game_height"
             )
 
+        if not isinstance(self.food_type, str) or self.food_type not in FOOD_TYPES:
+            raise ValueError(
+                f"food_type must be one of {', '.join(FOOD_TYPES)}, "
+                f"got {self.food_type!r}"
+            )
+
         _require_positive_int("cell_scale", self.cell_scale)
+        _require_positive_int("start_length", self.start_length)
         _require_positive_int("symbols_per_world", self.symbols_per_world)
         _require_positive_int("max_buffered_turns", self.max_buffered_turns)
         _require_positive_int("side_panel_width", self.side_panel_width)
@@ -205,7 +224,6 @@ class GameConfig:
                 )
 
         for name, flag in (
-            ("food_sprites", self.food_sprites),
             ("smooth_motion", self.smooth_motion),
             ("walls", self.walls),
         ):
@@ -219,9 +237,14 @@ class GameConfig:
             )
 
     @property
+    def uses_sprites(self) -> bool:
+        """Whether food is drawn as pixel-art sprites."""
+        return self.food_type == "sprites"
+
+    @property
     def min_cell_scale(self) -> int:
         """The smallest scale the board may be drawn at: sprites need room."""
-        return MIN_SPRITE_SCALE if self.food_sprites else 1
+        return MIN_SPRITE_SCALE if self.uses_sprites else 1
 
 
 default_config: Final = GameConfig()

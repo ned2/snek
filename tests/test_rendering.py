@@ -69,7 +69,7 @@ class TestComputeLayoutWithSprites:
 
     def _cfg(self, **kw):
         kw.setdefault("cell_scale", 3)
-        return GameConfig(food_sprites=True, **kw)
+        return GameConfig(food_type="sprites", **kw)
 
     def test_cap_uses_the_whole_cap_on_a_small_terminal(self):
         """No smaller grid: the view reports the terminal too small instead."""
@@ -119,11 +119,11 @@ class TestComputeLayoutFillMode:
 
     def test_floored_grid_fits_the_largest_scale_that_fits(self):
         """80x24 leaves a 50x24 view: 10x10 cells fit at scale two, not three."""
-        cfg = GameConfig(sizing_mode="fill", cell_scale=3, food_sprites=True)
+        cfg = GameConfig(sizing_mode="fill", cell_scale=3, food_type="sprites")
         assert compute_layout(50, 24, cfg) == (10, 10, 2)
 
     def test_floored_grid_keeps_the_sprite_floor(self):
-        cfg = GameConfig(sizing_mode="fill", cell_scale=3, food_sprites=True)
+        cfg = GameConfig(sizing_mode="fill", cell_scale=3, food_type="sprites")
         assert compute_layout(4, 2, cfg)[2] == 2
 
 

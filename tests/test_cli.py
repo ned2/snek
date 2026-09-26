@@ -3,17 +3,16 @@
 import pytest
 
 from snek.app import SnakeApp
-from snek.cli import DEFAULT_SPEED, _build_parser, main
-from snek.config import GameConfig, default_config
+from snek.cli import _build_parser, main
+from snek.config import default_config
 from snek.demo import DEFAULT_STRATEGY, STRATEGIES
-from snek.modes import CUSTOM, DEFAULT_MODE, MODES, mode_of
+from snek.modes import CUSTOM, DEFAULT_MODE, MODES, Settings, mode_of
 from snek.screens import GameScreen
 
 
-def test_parser_default_speed_matches_config():
-    """With no flag, `--speed` defaults to the config's starting moves-per-second."""
-    assert _build_parser().parse_args([]).speed == DEFAULT_SPEED
-    assert DEFAULT_SPEED == pytest.approx(1.0 / default_config.initial_speed_interval)
+def test_parser_speed_defaults_to_the_mode():
+    """With no flag, the speed is the mode's: None until `main` applies it."""
+    assert _build_parser().parse_args([]).speed is None
 
 
 def test_parser_accepts_explicit_speed():
@@ -61,9 +60,9 @@ def test_app_starts_at_requested_speed():
     assert SnakeApp(config=fast).game.get_moves_per_second() == pytest.approx(25.0)
 
 
-def test_parser_default_is_default_strategy():
-    """With no flag, `--demo-strategy` defaults to the active default strategy."""
-    assert _build_parser().parse_args([]).demo_strategy == DEFAULT_STRATEGY
+def test_parser_demo_strategy_defaults_to_the_mode():
+    """With no flag, the strategy is the mode's, which is the default strategy."""
+    assert _build_parser().parse_args([]).demo_strategy is None
 
 
 @pytest.mark.parametrize("name", list(STRATEGIES))
@@ -180,7 +179,9 @@ def test_main_layout_defaults_match_config(monkeypatch):
     assert config.cell_scale == default_config.cell_scale
 
 
-@pytest.mark.parametrize(("argv", "smooth"), [([], True), (["--no-smooth"], False)])
+@pytest.mark.parametrize(
+    ("argv", "smooth"), [([], True), (["--no-smooth"], False), (["--smooth"], True)]
+)
 def test_main_applies_smooth_motion_flag(monkeypatch, argv, smooth):
     """`--no-smooth` turns off movement interpolation."""
     captured = {}
@@ -223,26 +224,49 @@ def test_main_applies_walls_flag(monkeypatch, argv, walls):
 
 
 @pytest.mark.parametrize(
-    ("argv", "sprites"),
+    ("argv", "food_type"),
     [
-        ([], default_config.food_sprites),
-        (["--sprites", "--scale", "2"], True),
-        (["--mode", "arcade", "--no-sprites"], False),
+        ([], "diamond"),
+        (["--food", "glyphs"], "glyphs"),
+        (["--food", "sprites", "--scale", "2"], "sprites"),
+        (["--mode", "arena"], "glyphs"),
+        (["--mode", "arcade", "--food", "diamond"], "diamond"),
     ],
 )
-def test_main_applies_sprites_flag(monkeypatch, argv, sprites):
-    captured = {}
+def test_main_applies_food_flag(monkeypatch, argv, food_type):
+    assert _launch(monkeypatch, argv).get("food_type") == food_type
 
-    class FakeApp:
-        def __init__(self, config=None, demo_strategy=None):
-            captured["config"] = config
 
-        def run(self):
-            pass
+def test_parser_rejects_unknown_food():
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["--food", "cake"])
 
-    monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
-    main(argv)
-    assert captured["config"].food_sprites is sprites
+
+@pytest.mark.parametrize(
+    ("argv", "length"),
+    [
+        ([], 8),
+        (["--mode", "arena"], 3),
+        (["--start-length", "1"], 1),
+        (["--mode", "arena", "--start-length", "10"], 10),
+    ],
+)
+def test_main_applies_start_length_flag(monkeypatch, argv, length):
+    assert _launch(monkeypatch, argv).get("start_length") == length
+
+
+@pytest.mark.parametrize("value", ["0", "11", "-1", "two", "2.5"])
+def test_parser_rejects_start_lengths_off_the_settings_row(value):
+    """Only 1 to 10, the settings screen's choices."""
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["--start-length", value])
+
+
+def test_main_demo_strategy_comes_from_the_mode(monkeypatch):
+    assert _launch(monkeypatch, []).demo_strategy == DEFAULT_STRATEGY
+    chosen = _launch(monkeypatch, ["--demo-strategy", "greedy"])
+    assert chosen.demo_strategy == "greedy"
+    assert mode_of(chosen) == CUSTOM
 
 
 def test_main_reports_invalid_flag_combinations_as_usage_errors(monkeypatch, capsys):
@@ -253,56 +277,60 @@ def test_main_reports_invalid_flag_combinations_as_usage_errors(monkeypatch, cap
 
     monkeypatch.setattr("snek.cli.SnakeApp", no_app)
     with pytest.raises(SystemExit) as exit_info:
-        main(["--sprites", "--scale", "1"])
+        main(["--food", "sprites", "--scale", "1"])
     assert exit_info.value.code == 2
     err = capsys.readouterr().err
     assert "usage: snek" in err
     assert "food sprites need a cell scale of at least 2, got 1" in err
 
 
-def _config_from(monkeypatch, argv: list[str]) -> GameConfig:
-    """The config `main` would launch the app with for `argv`."""
+def _launch(monkeypatch, argv: list[str]) -> Settings:
+    """The config and demo strategy `main` would launch the app with."""
     captured = {}
 
     class FakeApp:
         def __init__(self, config=None, demo_strategy=None):
-            captured["config"] = config
+            captured["settings"] = Settings(base=config, demo_strategy=demo_strategy)
 
         def run(self):
             pass
 
     monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
     main(argv)
-    return captured["config"]
+    return captured["settings"]
 
 
 def test_default_launch_is_classic(monkeypatch):
-    assert mode_of(_config_from(monkeypatch, [])) == DEFAULT_MODE.name
+    settings = _launch(monkeypatch, [])
+    assert mode_of(settings) == DEFAULT_MODE.name
+    assert settings.to_config() == default_config
 
 
 @pytest.mark.parametrize("mode", MODES, ids=lambda mode: mode.key)
 def test_mode_flag_applies_the_mode(monkeypatch, mode):
-    assert mode_of(_config_from(monkeypatch, ["--mode", mode.key])) == mode.name
+    assert mode_of(_launch(monkeypatch, ["--mode", mode.key])) == mode.name
 
 
-def test_board_flags_override_the_mode(monkeypatch):
-    """A flag that changes a mode's value makes it Custom; one that matches it
+def test_flags_override_the_mode(monkeypatch):
+    """Any flag that changes a mode's value makes it Custom; one that matches it
     leaves the mode in force."""
-    assert mode_of(_config_from(monkeypatch, ["--mode", "arcade", "--scale", "3"])) == (
-        CUSTOM
-    )
-    assert mode_of(_config_from(monkeypatch, ["--mode", "arena", "--no-walls"])) == (
-        "Arena"
-    )
-    # Unowned options never make a mode Custom.
-    assert mode_of(_config_from(monkeypatch, ["--speed", "20", "--no-smooth"])) == (
-        "Classic"
-    )
+    for argv in (
+        ["--mode", "arcade", "--scale", "3"],
+        ["--speed", "20"],
+        ["--no-smooth"],
+        ["--start-length", "3"],
+    ):
+        assert mode_of(_launch(monkeypatch, argv)) == CUSTOM, argv
+    for argv, mode in (
+        (["--mode", "arena", "--no-walls"], "Arena"),
+        (["--speed", "10", "--smooth", "--start-length", "8"], "Classic"),
+    ):
+        assert mode_of(_launch(monkeypatch, argv)) == mode, argv
 
 
 def test_sprites_alone_needs_a_bigger_scale_than_classic(monkeypatch, capsys):
-    """Classic draws cells at scale one, so `--sprites` alone is refused rather
-    than raising the scale; `--mode arcade` is the designed alternative."""
+    """Classic draws cells at scale one, so `--food sprites` alone is refused
+    rather than raising the scale; `--mode arcade` is the designed alternative."""
     with pytest.raises(SystemExit):
-        _config_from(monkeypatch, ["--sprites"])
+        _launch(monkeypatch, ["--food", "sprites"])
     assert "food sprites need a cell scale of at least 2" in capsys.readouterr().err

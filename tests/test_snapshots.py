@@ -21,8 +21,9 @@ def test_game_screen_snapshot(snap_compare):
 
     async def run_before(pilot) -> None:
         # Splash -> game, then pin the board to a deterministic state: stop the
-        # loop and reset the snake to center, then fix the food cell + symbol so
-        # the capture never depends on timer ticks or RNG.
+        # loop and reset the snake to center, then fix the food cell so the
+        # capture never depends on timer ticks or RNG. Classic's food is always
+        # the diamond.
         await pilot.press("space")
         await pilot.pause()
         screen = pilot.app.get_screen("game")
@@ -30,7 +31,7 @@ def test_game_screen_snapshot(snap_compare):
         game = pilot.app.game
         game.reset()
         head_x, head_y = game.snake[0]
-        game.set_food_position((head_x + 3, head_y), symbol="🍎")
+        game.set_food_position((head_x + 3, head_y))
         screen._sync_reactives()
         screen.query_one(SnakeView).refresh()
         await pilot.pause()
@@ -41,7 +42,14 @@ def test_game_screen_snapshot(snap_compare):
 def test_game_screen_sprite_snapshot(snap_compare):
     """With sprites on, a large terminal renders food as a pixel-art sprite."""
     # The pre-mode sprite layout: the 36x20 cap up to scale 3, wrapping.
-    app = SnakeApp(config=GameConfig(food_sprites=True, cell_scale=3, walls=False))
+    config = GameConfig(
+        food_type="sprites",
+        cell_scale=3,
+        walls=False,
+        max_grid_width=36,
+        max_grid_height=20,
+    )
+    app = SnakeApp(config=config)
 
     async def run_before(pilot) -> None:
         # Splash -> game, then pin a deterministic state on a board big enough to

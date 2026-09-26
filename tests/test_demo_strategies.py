@@ -344,7 +344,8 @@ def test_hamiltonian_solves_small_board(w, h, walls):
     )
     assert game.game_over
     assert len(game.snake) == cells
-    assert game.symbols_consumed == cells - 1  # started at length 1
+    # Every cell but the ones the snake grew in to came from food.
+    assert game.symbols_consumed == cells - game.config.start_length
 
 
 # ----------------------------------------------------------------- skill floor
@@ -369,3 +370,24 @@ def test_skill_floor_strong_beats_greedy():
             f"{name} mean {mean_foods[name]} !> greedy mean {greedy}"
         )
     assert all(game.won for game in results["hamiltonian"])
+
+
+@pytest.mark.parametrize("name", sorted(STRATEGIES))
+def test_no_strategy_enters_a_tail_that_is_growing_in(name):
+    """While the snake grows in its tail stays put, so its cell is fatal.
+
+    The snake has curled round so its tail is beside its head, with the food
+    just beyond it: a strategy that assumed the tail vacates would take it.
+    """
+    game = Game(width=20, height=11, config=WRAPPING, rng=random.Random(0))
+    game.set_food_position((0, 0))
+    for turn in (Direction.DOWN, Direction.LEFT, Direction.UP):
+        game.turn(turn)
+        game.step()
+    assert game.snake == [(9, 5), (9, 6), (10, 6), (10, 5)]
+    assert game.pending_growth > 0
+    game.set_food_position((11, 5))
+    direction = STRATEGIES[name](game).get_next_direction()
+    assert direction is not None
+    game.turn(direction)
+    assert not game.step().game_over

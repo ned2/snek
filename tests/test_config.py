@@ -5,7 +5,7 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from snek.config import MIN_SPRITE_SCALE, GameConfig
+from snek.config import FOOD_TYPES, MIN_SPRITE_SCALE, GameConfig
 
 
 def test_config_is_an_immutable_value_object() -> None:
@@ -111,9 +111,18 @@ def test_render_cells_have_stable_terminal_width(
         GameConfig(**{field: value})
 
 
-def test_food_sprite_flag_is_boolean() -> None:
-    with pytest.raises(ValueError, match="food_sprites must be a boolean"):
-        GameConfig(food_sprites=1)
+def test_food_type_is_one_of_the_food_types() -> None:
+    for food_type in FOOD_TYPES:
+        assert GameConfig(food_type=food_type, cell_scale=2).food_type == food_type
+    with pytest.raises(ValueError, match="food_type must be one of"):
+        GameConfig(food_type="cake")
+
+
+def test_start_length_is_a_positive_integer() -> None:
+    assert GameConfig(start_length=1).start_length == 1
+    for value in (0, 2.5, True):
+        with pytest.raises(ValueError, match="start_length must be"):
+            GameConfig(start_length=value)
 
 
 def test_valid_boundary_values_are_accepted() -> None:
@@ -145,16 +154,21 @@ def test_walls_flag_is_boolean() -> None:
         GameConfig(walls=1)
 
 
-def test_food_sprites_are_off_by_default() -> None:
-    """Sprites need a big enough terminal, so the default is the glyph."""
-    assert GameConfig().food_sprites is False
-    assert GameConfig().min_cell_scale == 1
+def test_defaults_are_nokia_style() -> None:
+    """Classic, the default mode: the diamond, a length of 8, a 20x11 board."""
+    config = GameConfig()
+    assert config.food_type == "diamond"
+    assert config.uses_sprites is False
+    assert config.min_cell_scale == 1
+    assert config.start_length == 8
+    assert (config.max_grid_width, config.max_grid_height) == (20, 11)
 
 
 def test_food_sprites_need_a_cell_scale_of_at_least_two() -> None:
     with pytest.raises(
         ValueError, match="food sprites need a cell scale of at least 2"
     ):
-        GameConfig(food_sprites=True, cell_scale=1)
-    config = GameConfig(food_sprites=True, cell_scale=MIN_SPRITE_SCALE)
+        GameConfig(food_type="sprites", cell_scale=1)
+    config = GameConfig(food_type="sprites", cell_scale=MIN_SPRITE_SCALE)
+    assert config.uses_sprites is True
     assert config.min_cell_scale == MIN_SPRITE_SCALE

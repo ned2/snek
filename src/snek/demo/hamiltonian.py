@@ -34,7 +34,7 @@ from typing_extensions import override
 
 from ..game import Game
 from ..game_rules import Direction, GameRules, Position
-from ._helpers import neighbour
+from ._helpers import blocked_cells, neighbour
 from .base import DemoStrategy
 
 
@@ -81,9 +81,7 @@ class HamiltonianStrategy(DemoStrategy):
         # interior is NOT guaranteed free, and an external dimension change can
         # leave the body non-contiguous in cycle order. Tail-vacate-check the
         # successor and divert to the safe fallback rather than walking into it.
-        grows = cyc_next == g.food
-        blocked = set(g.snake) if grows else set(g.snake[:-1])
-        if cyc_next in blocked:
+        if cyc_next in blocked_cells(g, cyc_next == g.food):
             return self._safe_fallback()
 
         tail = g.snake[-1]
@@ -94,7 +92,7 @@ class HamiltonianStrategy(DemoStrategy):
         # invariant in _shortcut_is_safe). In path mode (odd x odd) follow the
         # cycle successor exactly; jumping there can self-trap.
         if self._is_true_cycle:
-            body_without_tail = set(g.snake[:-1])  # tail vacates this step
+            body_without_tail = blocked_cells(g, False)  # unless growing in
             for d in Direction:
                 if not GameRules.is_valid_turn(g.direction, d):
                     continue  # never emit a 180; honours the one-turn-per-tick model
@@ -273,8 +271,7 @@ class HamiltonianStrategy(DemoStrategy):
             nxt = neighbour(g, head, d)
             if nxt is None:
                 continue  # a wall
-            grows = nxt == g.food
-            blocked = set(g.snake) if grows else set(g.snake[:-1])
+            blocked = blocked_cells(g, nxt == g.food)
             if nxt in blocked:
                 continue
             # one-ply openness proxy, tail-vacate aware

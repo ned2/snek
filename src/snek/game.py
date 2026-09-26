@@ -3,7 +3,7 @@
 import random
 from dataclasses import dataclass
 
-from .config import GameConfig, default_config, validate_dimensions
+from .config import DIAMOND, GameConfig, default_config, validate_dimensions
 from .game_rules import Direction, GameRules, Position
 from .worlds import WorldPath
 
@@ -17,9 +17,10 @@ class StepResult:
     length or world index.
 
     A move also records what a renderer needs to animate it: the new `head` and
-    the `heading` it moved in and, unless the snake grew, the `vacated` tail
-    cell and the `vacated_heading` the tail moved in (None if a test placed a
-    tail that is not adjacent to the next segment).
+    the `heading` it moved in and, unless the snake grew (by eating or while it
+    grows in to its starting length), the `vacated` tail cell and the
+    `vacated_heading` the tail moved in (None if a test placed a tail that is not
+    adjacent to the next segment).
     """
 
     moved: bool = False
@@ -74,7 +75,13 @@ class Game:
             self.width = width
             self.height = height
         mid = (self.width // 2, self.height // 2)
-        self.snake: list[Position] = [mid]
+        self.snake = [mid]
+        # The snake starts as one cell and grows in to `config.start_length`: its
+        # tail stays put for that many more steps. Growing in from a single cell
+        # needs no room on any board, and the body is always a path the head
+        # took. A tiny board keeps a free cell for the food.
+        cells = self.width * self.height
+        self.pending_growth = min(self.config.start_length, cells - 1) - 1
         # `direction` is the *committed* heading — the way the last step actually
         # moved. Pending turns are queued in `_pending_turns` and applied one per
         # step so that rapid keys can never compound into a reversal.
@@ -92,6 +99,22 @@ class Game:
         self.won = False
         self.paused = False
         self.place_food()
+
+    @property
+    def snake(self) -> list[Position]:
+        """The snake's cells, head first."""
+        return self._snake
+
+    @snake.setter
+    def snake(self, positions: list[Position]) -> None:
+        """Replace the snake; a snake placed whole has no growing in left to do."""
+        self._snake = positions
+        self.pending_growth = 0
+
+    @property
+    def tail_stays(self) -> bool:
+        """Whether the tail stays put on a step that doesn't eat (growing in)."""
+        return self.pending_growth > 0
 
     def place_food(self) -> None:
         """Place food uniformly on an empty cell with bounded work.
@@ -114,7 +137,13 @@ class Game:
             position_index += 1
 
         self.food = (position_index % self.width, position_index // self.width)
-        self.food_symbol = self.world_path.get_food_character(self.current_world)
+        self.food_symbol = self._next_food_symbol()
+
+    def _next_food_symbol(self) -> str:
+        """The diamond, or a glyph from the current world's set."""
+        if self.config.food_type == "diamond":
+            return DIAMOND
+        return self.world_path.get_food_character(self.current_world)
 
     def turn(self, new_direction: Direction) -> None:
         """Queue a direction change to be applied on an upcoming step.
@@ -163,13 +192,17 @@ class Game:
             self.game_over = True
             return StepResult(game_over=True)
         grows = GameRules.is_food_collision(new_head_pos, self.food)
-        # Only include the tail in collision check if we grow this turn
-        body_to_check = self.snake if grows else self.snake[:-1]
+        # The tail's cell is only free to enter if the tail moves off it.
+        body_to_check = self.snake if grows or self.tail_stays else self.snake[:-1]
         if GameRules.is_self_collision(new_head_pos, body_to_check):
             self.game_over = True
             return StepResult(game_over=True)
 
         self.snake.insert(0, new_head_pos)
+        if not grows and self.tail_stays:
+            # Growing in: the tail stays, as when eating, but nothing was eaten.
+            self.pending_growth -= 1
+            return StepResult(moved=True, head=new_head_pos, heading=self.direction)
         if not grows:
             vacated = self.snake.pop()
             # A lone head is also the tail, so it moved the same way.
@@ -260,6 +293,4 @@ class Game:
         if not self._is_valid_position(position):
             raise ValueError(f"Food position {position} is out of bounds")
         self.food = position
-        self.food_symbol = symbol or self.world_path.get_food_character(
-            self.current_world
-        )
+        self.food_symbol = symbol or self._next_food_symbol()

@@ -113,7 +113,7 @@ def compute_layout(
     # "cap": fixed grid (clamped to the cap), cells grow up to `scale_setting`.
     # With sprites the cap is exact: a smaller terminal is too small, not a
     # reason for a smaller grid.
-    if config.food_sprites:
+    if config.uses_sprites:
         width, height = config.max_grid_width, config.max_grid_height
     else:
         width = max(

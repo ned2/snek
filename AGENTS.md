@@ -88,21 +88,25 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   the splash on startup; owns the current immutable configuration, live `Game`, and selected
   demo strategy name. `settings` / `apply_settings()` read and replace the config and strategy
   together for the settings screen.
-- **`cli.py`**: `main()`, the console entry point (`uv run snek`). Applies `--mode`, then
-  any sizing, grid-cap, scale, sprites and walls flags given, plus speed, smoothing and
-  demo-strategy options, into a validated `GameConfig`. An invalid combination is an
-  argparse usage error (exit 2) before the TUI starts.
+- **`cli.py`**: `main()`, the console entry point (`uv run snek`). Applies `--mode` (every
+  value, demo strategy included), then any sizing, grid-cap, scale, `--food`, `--start-length`,
+  walls, speed, smoothing and demo-strategy flags given, into a validated `GameConfig`. An
+  invalid combination is an argparse usage error (exit 2) before the TUI starts.
 - **`screens.py`**: the screens-as-states UI — `SplashScreen`, `SettingsModal`, `GameScreen`
   (the game loop + side panel), `PauseModal`, the scrollable `DiagnosticsModal`, and
   `GameOverModal`, plus the `SnakeView` board and the `SidePanel` / `StatDisplay` panel widgets.
-- **`settings.py`**: framework-free settings rows for `SettingsModal`. `Settings` pairs the
-  `GameConfig` with the demo strategy; each `SettingRow` offers fixed choices and steps through
-  them, writing back through `dataclasses.replace` so `GameConfig` validates every change.
-  `MODE_ROW` (first, and also on the splash) applies a whole mode per step.
-- **`modes.py`**: the game modes (Classic, Arcade, Arena, Pixel Arena): named sets of the
-  board settings (walls, sizing, grid cap, scale, sprites). The mode in force is derived by
-  `mode_of()` — the first whose values all match, else "Custom" — never stored, so tweaking
-  settings onto a mode's values shows that mode. `GameConfig`'s defaults are Classic's.
+- **`settings.py`**: framework-free settings rows for `SettingsModal`. Each `SettingRow`
+  offers fixed choices and steps a `Settings` draft through them without validating, so a
+  row can step into an invalid combination (e.g. sprites at cell scale 1). `MODE_ROW` (first,
+  and also on the splash) applies a whole mode per step.
+- **`modes.py`**: `Settings` — the demo strategy plus raw config values over a base
+  `GameConfig`; `to_config()` validates and `error()` says why they are invalid — and the game
+  modes (Classic, Arcade, Arena, Pixel Arena). Modes are exhaustive: each gives every
+  settings-screen field (`MODE_FIELDS`) and the demo strategy, so applying one resets them all.
+  The mode in force is derived by `mode_of()` — the first whose values all match, else
+  "Custom" (as are invalid settings) — never stored, so tweaking settings onto a mode's values
+  shows that mode. `GameConfig`'s defaults are Classic's: Nokia Snake's walled 20x11 board,
+  diamond food and an 8-cell start.
 - **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
   model→view contract returned by `Game.step()`.
 - **`game_rules.py`**: pure game mechanics — movement (`next_position` wraps, or returns None
@@ -110,7 +114,7 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 - **`rendering.py`**: framework-free board sizing and Rich `Segment` rendering. Separates
   logical game dimensions from visual cell scale and frames capped boards.
 - **`sprites.py`**: cached Pillow/Rich Pixels food-sprite construction. World sprite IDs map
-  to coloured tiles. Sprites are off by default and need a cell scale of at least 2.
+  to coloured tiles. Used when `food_type` is "sprites", which needs a cell scale of 2+.
 - **`clipboard.py`**: non-blocking diagnostics-copy support. Tries a platform clipboard
   subprocess with timeout/cancellation cleanup, then falls back to Textual's OSC 52 copy.
 - **`demo/`**: pluggable demo drivers. `__init__.py` owns the strategy registry, default, and
@@ -125,7 +129,7 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 - **`figlet.py`**: `FigletText`, the in-repo ASCII-art title widget (recolors on theme change
   by overriding `notify_style_update`).
 - **`config.py`**: immutable, validated `GameConfig` values for timing, layout, progression,
-  input buffering, and render glyphs.
+  start length, food type, input buffering, and render glyphs.
 - **`styles.css`**: Textual layout, compact-terminal breakpoints, modal sizing, and theme-token
   styling.
 
@@ -140,6 +144,16 @@ Every move goes through `GameRules.next_position`, and the demo strategies reach
 Hamiltonian strategy validates its cycle against the same rule, so on a walled board it uses a
 cycle without wrap edges (one exists iff the cell count is even).
 
+### Starting length and grow-in
+
+The snake starts as one cell at the centre heading right and unrolls to `start_length`
+(Nokia-style): `Game.pending_growth` counts the remaining steps on which the tail stays put
+(`Game.tail_stays`). A step that eats grows the snake as usual and leaves the count alone.
+Assigning `game.snake` clears it, so tests that place a snake by hand get a fixed-length
+snake. Demo strategies must not treat a staying tail as free: use `demo/_helpers.tail_moves`,
+`blocked_cells`, `body_after` and `growth_after` rather than assuming the tail vacates. Model
+tests that want a one-cell snake with no grow-in pass `start_length=1`.
+
 ### Game Progression System
 
 The game uses a world-based progression system where:
@@ -150,17 +164,18 @@ The game uses a world-based progression system where:
 ### State & data flow
 
 State is the **Textual screen stack**, not a separate state machine — each state is a screen:
-`SplashScreen` → `GameScreen` → (`PauseModal` / `DiagnosticsModal` / `GameOverModal`),
-navigated with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`, and ←/→
-on the splash cycle the mode. Splash,
-game, and pause are registered screens; settings, diagnostics, and game-over are fresh instances
-so their displayed state cannot go stale.
+`SplashScreen` → `GameScreen` → (`PauseModal` / `DiagnosticsModal` / `GameOverModal`), navigated
+with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`, and ←/→ on the splash
+cycle the mode. Splash, game, and pause are registered screens; settings, diagnostics, and
+game-over are fresh instances so their displayed state cannot go stale.
 
 Settings are session-only and reachable only from the splash, so no game is running when they
-change. `apply_settings()` replaces `app.config` and the live `Game`'s config at once; the next
-`start_new_game()` resets the game with it and calls `SnakeView.relayout()`, which
-re-establishes the logical grid only if a layout setting (sizing, scale, grid cap, walls,
-sprites) changed since the grid was last established.
+change. `SettingsModal` edits a draft: every change re-validates it and a reserved red line
+under the help shows the error, if any. ENTER applies the draft only when it is valid (it does
+nothing otherwise); ESC discards it. `apply_settings()` replaces `app.config` and the live
+`Game`'s config at once; the next `start_new_game()` resets the game with it and calls
+`SnakeView.relayout()`, which re-establishes the logical grid only if a layout setting (sizing,
+scale, grid cap, walls, food type) changed since the grid was last established.
 
 Within the game loop:
 1. `GameScreen._on_frame` feeds the elapsed wall time into a `StepClock` and runs one model
@@ -200,15 +215,17 @@ Within the game loop:
   it is heavy and full intensity, and `SnakeView` reserves room for it in both sizing modes.
 - The supported UI floor is 80×24. Below it, model invariants remain valid and scale never drops
   below one, but Textual may clip interface or board content.
-- Food sprites (`--sprites`) fix the food style: it never changes with the terminal size.
-  `GameConfig` rejects sprites with `cell_scale < MIN_SPRITE_SCALE` (the CLI reports it as a usage
-  error; the settings screen refuses the step and says why). With sprites the scale never drops
-  below `config.min_cell_scale` and cap mode uses the whole grid cap. Where that board does not
-  fit, `SnakeView` draws a "terminal too small" message instead and `GameScreen.hold_for_size()`
-  stops the loop (without pausing the model) until there is room; ESC then offers the menu.
+- Food is `food_type` (`--food`): "diamond" (`❖` in the world's colours, Classic's), "glyphs"
+  (each world's Unicode symbols) or "sprites" (pixel art). Sprites fix the food style: it never
+  changes with the terminal size. `GameConfig` rejects sprites with
+  `cell_scale < MIN_SPRITE_SCALE` (the CLI reports it as a usage error; the settings screen shows it and
+  blocks ENTER). With sprites the scale never drops below `config.min_cell_scale` and cap mode
+  uses the whole grid cap. Where that board does not fit, `SnakeView` draws a "terminal too
+  small" message instead and `GameScreen.hold_for_size()` stops the loop (without pausing the
+  model) until there is room; ESC then offers the menu.
 - `SnakeView` uses Textual's Line API: `render_line()` centres and frames the board itself and
   delegates each board row to the pure `render_board_row()` in `rendering.py`. Food is a cached
-  pixel sprite when sprites are on, otherwise the world's Unicode glyph.
+  pixel sprite with sprite food, otherwise the food's symbol (`❖` or the world's glyph).
 - Lines are drawn from a `BoardState` snapshot, not the live game. After each wake,
   `SnakeView.update_board()` takes a new snapshot and refreshes only the changed cells' regions, so
   Textual re-renders those lines and writes only those cells. Call `update_board()` after model

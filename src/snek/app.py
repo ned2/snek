@@ -7,8 +7,8 @@ from textual.app import App
 from .config import GameConfig, default_config
 from .demo import DEFAULT_STRATEGY
 from .game import Game
+from .modes import Settings
 from .screens import GameScreen, PauseModal, SplashScreen
-from .settings import Settings
 from .themes import THEME_MAP
 
 
@@ -43,7 +43,7 @@ class SnakeApp(App[None]):
     @property
     def settings(self) -> Settings:
         """The options the settings screen edits."""
-        return Settings(config=self.config, demo_strategy=self.demo_strategy)
+        return Settings(base=self.config, demo_strategy=self.demo_strategy)
 
     def apply_settings(self, settings: Settings) -> None:
         """Use `settings` from the next game on; they last for the session.
@@ -51,10 +51,11 @@ class SnakeApp(App[None]):
         Only the splash opens the settings screen, so no game is running. The
         live `Game` takes the new config now and uses it when the next game
         resets it; the board re-establishes its grid if the layout changed.
+        Raises ValueError for invalid settings, which callers never pass.
         """
-        self.config = settings.config
+        self.config = settings.to_config()
         self.demo_strategy = settings.demo_strategy
-        self.game.config = settings.config
+        self.game.config = self.config
 
     def on_load(self) -> None:
         """Register all themes when the app loads."""

@@ -25,7 +25,13 @@ from collections import deque
 from typing_extensions import override
 
 from ..game_rules import Direction, Position
-from ._helpers import board_distance, legal_turns, neighbour
+from ._helpers import (
+    blocked_cells,
+    board_distance,
+    body_after,
+    legal_turns,
+    neighbour,
+)
 from .base import DemoStrategy
 
 
@@ -109,14 +115,20 @@ class SafeBfsStrategy(DemoStrategy):
         snake can still reach its own tail.
 
         ``path[0]`` is the head, ``path[-1]`` is the food. Only the final cell
-        grows the snake; every earlier step vacates the tail.
+        grows the snake; every earlier step vacates the tail, once the snake has
+        grown in to its starting length.
         """
         body = list(snake)  # head first, tail last
+        growth = self.game.pending_growth
         for i in range(1, len(path)):
             cell = path[i]
             ate = i == len(path) - 1  # only the final cell is food
             body.insert(0, cell)
-            if not ate:
+            if ate:
+                continue
+            if growth:
+                growth -= 1
+            else:
                 body.pop()
         new_head, new_tail = body[0], body[-1]
         # After eating, next step the tail will vacate, so model it as a
@@ -128,15 +140,15 @@ class SafeBfsStrategy(DemoStrategy):
         g = self.game
         snake = g.snake
         head = snake[0]
-        tail = snake[-1]
         food = g.food
 
         legal = legal_turns(g)
         if not legal:
             return None
 
-        # 1) Shortest food path on the "will-be-free" board (tail modelled free).
-        path = self._bfs(head, food, blocked=set(snake[:-1]))
+        # 1) Shortest food path on the "will-be-free" board (tail modelled free,
+        #    unless it stays put while the snake grows in).
+        path = self._bfs(head, food, blocked=blocked_cells(g, False))
         if len(path) >= 2:
             first_dir = self._dir_between(head, path[1])
             if (
@@ -157,12 +169,11 @@ class SafeBfsStrategy(DemoStrategy):
             if nxt is None:
                 continue  # a wall
             grew = nxt == food
-            blocked = set(snake) if grew else set(snake[:-1])
+            blocked = blocked_cells(g, grew)
             if nxt in blocked:
                 continue  # would collide (tail-vacate aware)
             space = self._flood_fill_size(nxt, blocked)
-            # snake after stepping into nxt
-            new_body = [nxt] + (snake if grew else snake[:-1])
+            new_body = body_after(g, nxt, grew)
             reach_tail = self._can_reach(
                 new_body[0], new_body[-1], blocked=set(new_body[:-1])
             )
@@ -175,9 +186,8 @@ class SafeBfsStrategy(DemoStrategy):
 
         # 3) Last resort: any legal non-colliding neighbour, preferring the
         #    vacating tail cell.
-        body_without_tail = set(snake[:-1])
         for d in legal:
             nxt = self._step(head, d)
-            if nxt is not None and (nxt == tail or nxt not in body_without_tail):
+            if nxt is not None and nxt not in blocked_cells(g, nxt == food):
                 return d
         return legal[0]  # truly trapped; emit a legal move anyway

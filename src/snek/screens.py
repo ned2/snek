@@ -29,7 +29,7 @@ from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game import Game, StepResult
 from .game_rules import Direction, Position
-from .modes import describe
+from .modes import Settings, describe
 from .rendering import (
     CELL_BASE_WIDTH,
     FRAME_MARGIN,
@@ -47,7 +47,7 @@ from .rendering import (
     motion_units,
     render_board_row,
 )
-from .settings import MODE_ROW, ROWS, Settings, widest_help
+from .settings import MODE_ROW, ROWS, widest_help
 from .timing import StepClock, next_wake_delay
 
 if TYPE_CHECKING:
@@ -662,7 +662,7 @@ class DiagnosticsModal(ModalScreen[None]):
                 "grid default",
                 f"{config.default_grid_width} x {config.default_grid_height}",
             ),
-            ("food sprites", str(config.food_sprites)),
+            ("food type", config.food_type),
             ("walls", str(config.walls)),
             None,
             ("interval", f"{game.current_interval:.4f} s"),
@@ -681,6 +681,8 @@ class DiagnosticsModal(ModalScreen[None]):
             ("total foods", str(game.symbols_consumed)),
             None,
             ("snake length", str(len(game.snake))),
+            ("start length", str(config.start_length)),
+            ("growing in", str(game.pending_growth)),
             ("direction", game.direction.name),
             ("max buffered turns", str(config.max_buffered_turns)),
             ("demo strategy", app.demo_strategy),
@@ -729,9 +731,12 @@ class DiagnosticsModal(ModalScreen[None]):
 class SettingsModal(ModalScreen[None]):
     """Session settings, opened with S from the splash.
 
-    Up and down pick a setting; left and right change it. Each change applies
-    at once to the app's settings (see `settings.ROWS`), which the next game
-    uses. A fresh instance is pushed each time so it shows the current values.
+    Up and down pick a setting; left and right change it (see `settings.ROWS`).
+    Changes build a draft, which may be invalid (e.g. food sprites at cell scale
+    one) so that every row can step through all its choices; the reason shows in
+    red below the help. ENTER applies a valid draft for the next game and does
+    nothing while it is invalid; ESC discards it. A fresh instance is pushed
+    each time so it starts from the current settings.
     """
 
     BINDINGS = [
@@ -743,15 +748,15 @@ class SettingsModal(ModalScreen[None]):
         ("right", "change(1)", "Change"),
         ("a", "change(-1)", None),
         ("d", "change(1)", None),
-        ("escape", "close", "Done"),
-        ("enter", "close", "Done"),
-        ("space", "close", "Done"),
+        ("enter", "apply", "Apply"),
+        ("escape", "back", "Back"),
         ("q", "quit", "Quit"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self.selected = 0
+        self.draft: Settings | None = None
 
     @override
     def compose(self) -> ComposeResult:
@@ -767,25 +772,35 @@ class SettingsModal(ModalScreen[None]):
                     colors=["$primary"],
                     classes="title-text",
                 )
-            yield Static("↑/↓ choose · ←/→ change · ENTER done", id="settings-prompt")
+            yield Static(
+                "↑/↓ choose · ←/→ change · ENTER apply · ESC back",
+                id="settings-prompt",
+            )
             with Center(id="settings-rows-center"), Vertical(id="settings-rows"):
                 for index in range(len(ROWS)):
                     yield Static(id=f"setting-{index}", classes="setting-row")
             with Center():
                 yield Static(id="settings-help")
+            with Center():
+                yield Static(id="settings-error")
 
     def on_mount(self) -> None:
-        """Size the help line to the longest help, then show the current values."""
-        help_line = self.query_one("#settings-help", Static)
-        help_line.styles.width = widest_help() + _HELP_MARGIN
+        """Start a draft from the current settings and size the help lines."""
+        self.draft = _snake_app(self).settings
+        width = widest_help(self.draft) + _HELP_MARGIN
+        for line in ("#settings-help", "#settings-error"):
+            self.query_one(line, Static).styles.width = width
         self._show()
 
-    def _show(self, refusal: str | None = None) -> None:
-        """Redraw every row, marking the selected one, and its help line.
+    @property
+    def _draft(self) -> Settings:
+        """The settings being edited (set on mount)."""
+        assert self.draft is not None
+        return self.draft
 
-        A `refusal` explaining why a change was refused replaces the help line.
-        """
-        settings = _snake_app(self).settings
+    def _show(self) -> None:
+        """Redraw every row, marking the selected one, its help and any error."""
+        settings = self._draft
         label_width = max(len(row.label) for row in ROWS)
         # Pad every value to the widest the settings can show, so the block
         # keeps one width (and stays centred) as values change.
@@ -802,9 +817,13 @@ class SettingsModal(ModalScreen[None]):
             shown = f"◂ {value} ▸" if selected else f"  {value}  "
             line.update(f"{marker} {row.label:<{label_width}}   {shown}")
             line.set_class(selected, "-selected")
-        help_line = self.query_one("#settings-help", Static)
-        help_line.update(refusal or ROWS[self.selected].help_text(settings))
-        help_line.set_class(refusal is not None, "-refused")
+        self.query_one("#settings-help", Static).update(
+            ROWS[self.selected].help_text(settings)
+        )
+        error = settings.error()
+        self.query_one("#settings-error", Static).update(
+            "" if error is None else error[0].upper() + error[1:] + "."
+        )
 
     def action_move(self, delta: int) -> None:
         """Select the previous or next setting, wrapping round."""
@@ -812,24 +831,19 @@ class SettingsModal(ModalScreen[None]):
         self._show()
 
     def action_change(self, delta: int) -> None:
-        """Step the selected setting and apply it to the session.
-
-        A step that would make the settings invalid (e.g. food sprites at scale
-        one) is refused, and the reason shown, rather than adjusting another
-        setting to suit.
-        """
-        app = _snake_app(self)
-        try:
-            settings: Settings = ROWS[self.selected].step(app.settings, delta)
-        except ValueError as error:
-            message = str(error)
-            self._show(refusal=message[0].upper() + message[1:] + ".")
-            return
-        app.apply_settings(settings)
+        """Step the selected setting in the draft, even into an invalid one."""
+        self.draft = ROWS[self.selected].step(self._draft, delta)
         self._show()
 
-    def action_close(self) -> None:
-        """Return to the splash."""
+    def action_apply(self) -> None:
+        """Apply a valid draft and return to the splash; ignore an invalid one."""
+        if self._draft.error() is not None:
+            return
+        _snake_app(self).apply_settings(self._draft)
+        self.app.pop_screen()
+
+    def action_back(self) -> None:
+        """Discard the draft and return to the splash."""
         self.app.pop_screen()
 
     def action_quit(self) -> None:
@@ -963,7 +977,7 @@ def _layout_key(config: GameConfig) -> tuple[object, ...]:
         config.max_grid_width,
         config.max_grid_height,
         config.walls,
-        config.food_sprites,
+        config.food_type,
     )
 
 
@@ -1059,7 +1073,7 @@ class SnakeView(Widget):
         """
         app = _snake_app(self)
         config, game = app.config, app.game
-        if not config.food_sprites or board_fits(
+        if not config.uses_sprites or board_fits(
             avail_cols, avail_rows, game.width, game.height, config.min_cell_scale
         ):
             return None
@@ -1290,7 +1304,7 @@ class SnakeView(Widget):
         the food style never depends on the terminal size.
         """
         config = _snake_app(self).config
-        if config.food_sprites:
+        if config.uses_sprites:
             return sprites.food_tile(sprites.get_food_sprite(state.world), self._scale)
         return glyph_food_tile(state.food_symbol, config.empty_cell, self._scale)
 

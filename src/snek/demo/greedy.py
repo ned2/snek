@@ -31,8 +31,8 @@ class GreedyStrategy(DemoStrategy):
         best_dist: int | None = None
         for d in legal:
             nxt = neighbour(g, head, d)
-            # Tail-vacate aware (contract #2): the tail's cell is enterable on a
-            # non-growing step (the engine checks against snake[:-1]).
+            # Tail-vacate aware (contract #2): the tail's cell is enterable when
+            # the tail moves (the engine checks against snake[:-1]).
             if nxt is None or nxt in blocked_cells(g, nxt == g.food):
                 continue
             dist = board_distance(g, nxt, g.food)

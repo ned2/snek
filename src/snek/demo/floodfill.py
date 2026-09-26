@@ -20,7 +20,14 @@ from collections import deque
 from typing_extensions import override
 
 from ..game_rules import Direction, Position
-from ._helpers import blocked_cells, board_distance, legal_turns, neighbour
+from ._helpers import (
+    blocked_cells,
+    board_distance,
+    body_after,
+    growth_after,
+    legal_turns,
+    neighbour,
+)
 from .base import DemoStrategy
 
 
@@ -31,7 +38,6 @@ class FloodFillStrategy(DemoStrategy):
     def get_next_direction(self) -> Direction | None:
         g = self.game
         head = g.snake[0]
-        body = g.snake  # list, head..tail
 
         legal = legal_turns(g)
 
@@ -43,13 +49,13 @@ class FloodFillStrategy(DemoStrategy):
                 continue
             grows = nxt == g.food
             future_solid = blocked_cells(g, grows)
-            new_body = [nxt] + (body if grows else body[:-1])
+            new_body = body_after(g, nxt, grows)
 
             # Immediate-fatal check mirrors Game.step's collision rule exactly.
             if nxt in future_solid:
                 continue
 
-            area = self._reachable_area(nxt, new_body)
+            area = self._reachable_area(nxt, new_body, growth_after(g, grows))
             snake_len = len(new_body)
             safe_roomy = area >= snake_len
             fdist = board_distance(g, nxt, g.food)
@@ -70,14 +76,17 @@ class FloodFillStrategy(DemoStrategy):
             best = max(scored, key=lambda s: (s[1], -s[2]))
         return best[3]
 
-    def _reachable_area(self, start: Position, new_body: list[Position]) -> int:
+    def _reachable_area(
+        self, start: Position, new_body: list[Position], growth: int
+    ) -> int:
         """Tail-aware flood-fill: count free cells reachable from ``start``.
 
         ``new_body`` is the snake AFTER the candidate move (head first, tail last),
         so ``start == new_body[0]``. Body cells are obstacles, but the tail recedes
         as we move: a cell occupied by ``new_body[i]`` becomes free after
-        ``len(new_body) - i`` more ticks (the tail, the last index, frees first). A
-        body cell is enterable at BFS depth ``dist`` iff
+        ``len(new_body) - i`` more ticks (the tail, the last index, frees first),
+        plus ``growth`` ticks while the snake is still growing in and its tail
+        stays put. A body cell is enterable at BFS depth ``dist`` iff
         ``dist >= ticks_until_free``. The fill is capped at ``len(new_body) + 1``
         cells -- enough to decide ``safe_roomy`` and bound the cost.
         """
@@ -97,7 +106,8 @@ class FloodFillStrategy(DemoStrategy):
                     continue
                 idx = body_index.get(nb)
                 if idx is not None:
-                    ticks_until_free = length - idx  # tail (last idx) frees soonest
+                    # The tail (last idx) frees soonest, once growing in is done.
+                    ticks_until_free = length - idx + growth
                     if depth + 1 < ticks_until_free:
                         # Still solid by the time the fill would arrive.
                         continue
