@@ -1,32 +1,21 @@
 """Console entry point for the Snek game."""
 
 import argparse
-import math
 from dataclasses import replace
 
 from .app import SnakeApp
-from .config import FOOD_TYPES, MIN_SPRITE_SCALE, default_config, validate_dimensions
+from .config import (
+    FOOD_TYPES,
+    MIN_SPRITE_SCALE,
+    PALETTES,
+    WORLD_CHANGES,
+    default_config,
+    validate_dimensions,
+)
 from .demo import STRATEGIES
 from .modes import DEFAULT_MODE, MODES, apply_mode, default_settings
-from .settings import START_LENGTHS
-
-
-def _positive_speed(value: str) -> float:
-    """Parse `--speed` as a positive moves-per-second float (argparse type)."""
-    try:
-        speed = float(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
-    if not math.isfinite(speed) or speed <= 0:
-        raise argparse.ArgumentTypeError("speed must be finite and greater than 0")
-    max_speed = 1.0 / default_config.min_speed_interval
-    if speed > max_speed:
-        raise argparse.ArgumentTypeError(
-            f"speed must not exceed {max_speed:g} moves per second"
-        )
-    if not math.isfinite(1.0 / speed):
-        raise argparse.ArgumentTypeError("speed is too small to represent safely")
-    return speed
+from .settings import FOODS_PER_WORLD, START_LENGTHS, START_WORLDS
+from .worlds import WORLD_SPEEDS
 
 
 def _positive_int(value: str) -> int:
@@ -68,16 +57,6 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Snek — a terminal Snake game with progressive Unicode worlds.",
     )
     parser.add_argument(
-        "--speed",
-        type=_positive_speed,
-        default=None,
-        metavar="MOVES_PER_SEC",
-        help=(
-            "starting snake speed in moves per second; higher is faster. The "
-            "snake still accelerates as it eats (default: from --mode)"
-        ),
-    )
-    parser.add_argument(
         "--mode",
         choices=[mode.key for mode in MODES],
         default=DEFAULT_MODE.key,
@@ -85,6 +64,48 @@ def _build_parser() -> argparse.ArgumentParser:
             "a designed mix of every option below, which override it. "
             + " ".join(f"{mode.key}: {mode.description}" for mode in MODES)
             + " (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
+        "--world",
+        type=int,
+        choices=START_WORLDS,
+        default=None,
+        metavar="N",
+        help=(
+            f"the world, {START_WORLDS[0]} to {START_WORLDS[-1]}, to start in: "
+            f"it sets the speed ({WORLD_SPEEDS[0]} to {WORLD_SPEEDS[-1]} moves "
+            "per second) and the points per food (default: from --mode)"
+        ),
+    )
+    parser.add_argument(
+        "--world-change",
+        choices=WORLD_CHANGES,
+        default=None,
+        help=(
+            "'fixed' stays in the starting world; 'progress' moves on to the next "
+            "world after each --foods-per-world foods (default: from --mode)"
+        ),
+    )
+    parser.add_argument(
+        "--foods-per-world",
+        type=int,
+        choices=FOODS_PER_WORLD,
+        default=None,
+        metavar="N",
+        help=(
+            "foods eaten before moving to the next world, one of "
+            f"{', '.join(map(str, FOODS_PER_WORLD))}; ignored when the world is "
+            "fixed (default: from --mode)"
+        ),
+    )
+    parser.add_argument(
+        "--palette",
+        choices=PALETTES,
+        default=None,
+        help=(
+            "'worlds' gives each world its own colours; 'lcd' is the Nokia "
+            "green-grey screen (default: from --mode)"
         ),
     )
     parser.add_argument(
@@ -176,6 +197,10 @@ def main(argv: list[str] | None = None) -> None:
     # Flags override the mode only where given.
     overrides: dict[str, object] = {}
     for field, value in (
+        ("start_world", args.world),
+        ("world_change", args.world_change),
+        ("foods_per_world", args.foods_per_world),
+        ("palette", args.palette),
         ("sizing_mode", args.sizing),
         ("cell_scale", args.scale),
         ("food_type", args.food),
@@ -185,9 +210,6 @@ def main(argv: list[str] | None = None) -> None:
     ):
         if value is not None:
             overrides[field] = value
-    if args.speed is not None:
-        # `--speed` is moves per second; the model works in seconds per move.
-        overrides["initial_speed_interval"] = 1.0 / args.speed
     if args.grid is not None:
         overrides["max_grid_width"], overrides["max_grid_height"] = args.grid
     settings = settings.with_values(**overrides)

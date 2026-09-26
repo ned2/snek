@@ -296,7 +296,7 @@ def test_hamiltonian_survives_odd_boards(w, h):
             steps += 1
         assert not (game.game_over and not game.won), (
             f"{w}x{h} seed={seed}: self-collision death "
-            f"(foods={game.symbols_consumed}, step={steps})"
+            f"(foods={game.foods_eaten}, step={steps})"
         )
 
 
@@ -339,13 +339,11 @@ def test_hamiltonian_solves_small_board(w, h, walls):
     """End-to-end: the solver fills an even board to a clean win."""
     cells = w * h
     game = _play("hamiltonian", w, h, seed=3, cap=20_000, walls=walls)
-    assert game.won, (
-        f"hamiltonian did not solve {w}x{h} (foods={game.symbols_consumed})"
-    )
+    assert game.won, f"hamiltonian did not solve {w}x{h} (foods={game.foods_eaten})"
     assert game.game_over
     assert len(game.snake) == cells
     # Every cell but the ones the snake grew in to came from food.
-    assert game.symbols_consumed == cells - game.config.start_length
+    assert game.foods_eaten == cells - game.config.start_length
 
 
 # ----------------------------------------------------------------- skill floor
@@ -360,7 +358,7 @@ def test_skill_floor_strong_beats_greedy():
         name: [_play(name, w, h, seed, cap) for seed in seeds] for name in STRATEGIES
     }
     mean_foods = {
-        name: sum(game.symbols_consumed for game in games) / len(games)
+        name: sum(game.foods_eaten for game in games) / len(games)
         for name, games in results.items()
     }
 

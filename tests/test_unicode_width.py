@@ -29,13 +29,14 @@ def test_all_food_characters_single_width():
 
 
 def test_food_character_per_level():
-    """Test that we can get a valid single-width food character for each level."""
+    """Every world hands out single-width food characters, each time round."""
     world_path = WorldPath()
 
-    # Test first 50 levels (should cover multiple worlds)
-    for level in range(1, 51):
-        food_char = world_path.get_food_character(level)
-        width = cell_len(food_char)
-        assert width == 1, (
-            f"Level {level} food character '{food_char}' has width {width}, expected 1"
-        )
+    for world in range(len(world_path.worlds)):
+        for _ in range(12):  # past a full pool, so it refills
+            food_char = world_path.get_food_character(world)
+            width = cell_len(food_char)
+            assert width == 1, (
+                f"World {world} food character '{food_char}' has width {width}, "
+                "expected 1"
+            )

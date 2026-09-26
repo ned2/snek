@@ -1,11 +1,21 @@
-"""World path management for food symbols in Snek."""
+"""World path management for food symbols in Snek.
+
+A world is a Nokia Snake level: its number sets the speed (`WORLD_SPEEDS`) and
+the points each food scores, and it also has a theme and a set of food glyphs.
+"""
 
 import random
 from dataclasses import dataclass
+from typing import Final
 
 from textual.theme import Theme
 
 from .themes import THEME_MAP
+
+# Moves per second in each world, from world 1 to world 9: about 1.25x per world.
+# Our own calibration (Nokia's timings are unknown), kept under the ~30/s at
+# which smooth motion stops interpolating.
+WORLD_SPEEDS: Final = (4, 5, 6, 8, 10, 12, 15, 20, 25)
 
 
 @dataclass
@@ -83,19 +93,23 @@ class WorldPath:
                 characters=["◉", "◈", "◊", "◌", "◍", "◎", "◐", "◑", "◒", "◓"],
                 theme_name="snek-sunset",
             ),
+            World(
+                name="Celestial",
+                description="The sun, the moon and the planets",
+                characters=["☉", "☽", "☿", "♀", "♂", "♃", "♄", "♅", "♆", "♇"],
+                theme_name="snek-royal",
+            ),
         ]
 
     def get_world(self, world_index: int) -> World:
-        """Get the world by index, wrapping to start if all completed."""
-        return self.worlds[world_index % len(self.worlds)]
+        """Get the world by index (from 0); there is no world after the last."""
+        return self.worlds[world_index]
 
     def get_food_character(self, world_index: int) -> str:
         """Get a random food character for the current world.
 
         Ensures we don't repeat characters within a world until all are used.
         """
-        world_index = world_index % len(self.worlds)
-
         # Initialize character pool for this world if needed
         if world_index not in self._world_character_pool:
             self._world_character_pool[world_index] = []

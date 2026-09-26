@@ -5,7 +5,7 @@ time into a `StepClock`, which says how many model steps are due. This is the
 accumulator loop from "Fix Your Timestep"
 (https://gafferongames.com/post/fix_your_timestep/):
 
-- The step interval is re-read on every step, so a speed-up after eating takes
+- The step interval is re-read on every step, so a new world's speed takes
   effect immediately with no timer restart and no phase reset.
 - Paused time is never accumulated: the screen stops feeding frames while paused.
 - A stalled frame cannot trigger a burst of catch-up steps. Elapsed time is

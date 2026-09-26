@@ -53,7 +53,7 @@ downloads the pinned hook environments, so those operations require network acce
 
     snek
 
-Run `snek --help` for speed and board-layout options. Demo strategy choices are `floodfill` (the
+Run `snek --help` for world and board-layout options. Demo strategy choices are `floodfill` (the
 default), `greedy`, `safe-bfs`, and `hamiltonian`. Select one before pressing D with, for example:
 
     snek --demo-strategy hamiltonian
@@ -71,8 +71,9 @@ the terminal is made smaller, but interface elements may be clipped.
 - **Arrow keys** or **WASD**: Move the snake
 - **Space**: Start game / Pause/unpause the game / Restart after game over
 - **D** (on the splash screen): Watch the snek play itself in demo mode
-- **S** (on the splash screen): Settings — walls, speed, board sizing, grid cap, cell scale,
-  smooth motion, food sprites and demo strategy, for the rest of the session
+- **S** (on the splash screen): Settings — walls, starting world, world change, foods per
+  world, starting length, board sizing, grid cap, cell scale, smooth motion, food type,
+  palette and demo strategy, for the rest of the session
 - **Enter**: Toggle sidebar visibility
 - **?**: Open scrollable live diagnostics; press **C** there to copy them
 - **Q**: Quit the game

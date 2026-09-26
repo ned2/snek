@@ -40,7 +40,11 @@ def test_game_screen_snapshot(snap_compare):
 
 
 def test_game_screen_sprite_snapshot(snap_compare):
-    """With sprites on, a large terminal renders food as a pixel-art sprite."""
+    """With sprites on, a large terminal renders food as a pixel-art sprite.
+
+    Also the worlds palette's look, beside the LCD screen of the snapshot above:
+    world 1's own colours, and a progress line.
+    """
     # The pre-mode sprite layout: the 36x20 cap up to scale 3, wrapping.
     config = GameConfig(
         food_type="sprites",
@@ -48,6 +52,10 @@ def test_game_screen_sprite_snapshot(snap_compare):
         walls=False,
         max_grid_width=36,
         max_grid_height=20,
+        start_world=1,
+        world_change="progress",
+        foods_per_world=10,
+        palette="worlds",
     )
     app = SnakeApp(config=config)
 

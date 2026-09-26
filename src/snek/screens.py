@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from rich.cells import cell_len
 from rich.segment import Segment
+from rich.style import Style
 from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import Center, Horizontal, Vertical, VerticalScroll
@@ -63,7 +64,8 @@ _MIN_SMOOTH_FRAMES = 2
 
 
 # Spare cells beside the longest help line, so it never touches the box's edges.
-_HELP_MARGIN = 4
+# Two keep the longest (77 cells) inside the supported 80 columns.
+_HELP_MARGIN = 2
 
 
 def _snake_app(node: DOMNode) -> SnakeApp:
@@ -158,8 +160,14 @@ class SplashScreen(Screen[None]):
         self.query_one("#splash-start-prompt", Static).update(text)
 
     def _show_mode(self) -> None:
-        """Show the current mode (or Custom) and what it is."""
-        name = MODE_ROW.value_text(_snake_app(self).settings)
+        """Show the current mode (or Custom), what it is, and its colours.
+
+        The splash takes the theme the next game starts in, so the palette and
+        starting world show before play.
+        """
+        app = _snake_app(self)
+        app.show_world(app.config.start_world - 1)
+        name = MODE_ROW.value_text(app.settings)
         self.query_one("#splash-mode", Static).update(f"◂ {name} ▸")
         self.query_one("#splash-mode-help", Static).update(describe(name))
 
@@ -227,6 +235,7 @@ class GameScreen(Screen[None]):
     # `data_bind` projects each onto a `StatDisplay` (parent → child, read-only).
     world_name: reactive[str] = reactive("")
     progress: reactive[str] = reactive("")
+    score_label: reactive[str] = reactive("")
     foods_label: reactive[str] = reactive("")
     speed_label: reactive[str] = reactive("")
 
@@ -264,7 +273,10 @@ class GameScreen(Screen[None]):
             SnakeView(),
             SidePanel(
                 StatDisplay("World").data_bind(value=GameScreen.world_name),
-                StatDisplay("Progress").data_bind(value=GameScreen.progress),
+                StatDisplay("Progress", id="stat-progress").data_bind(
+                    value=GameScreen.progress
+                ),
+                StatDisplay("Score").data_bind(value=GameScreen.score_label),
                 StatDisplay("Total foods").data_bind(value=GameScreen.foods_label),
                 StatDisplay("Speed").data_bind(value=GameScreen.speed_label),
             ),
@@ -275,7 +287,7 @@ class GameScreen(Screen[None]):
         """Start the game timer and set initial theme when the screen mounts."""
         app = _snake_app(self)
         self._restart_loop()
-        app.theme = app.game.world_path.get_world(0).theme_name
+        app.show_world(app.game.current_world)
         self._sync_reactives()
 
     def on_unmount(self) -> None:
@@ -333,14 +345,26 @@ class GameScreen(Screen[None]):
         These reactives are the single UI source of truth; `data_bind`
         propagates them to the panel's `StatDisplay`s. Formatting that needs the
         world *name* or units lives here, on the screen, not in the widget.
+
+        A fixed world shows just its number and no progress line; a progressing
+        one shows its name and the foods eaten towards the next world.
         """
         app = _snake_app(self)
         game = app.game
-        self.world_name = game.world_path.get_world_name(game.current_world)
-        self.progress = (
-            f"{game.symbols_in_current_world}/{app.config.symbols_per_world}"
-        )
-        self.foods_label = str(game.symbols_consumed)
+        progressing = app.config.world_change == "progress"
+        if progressing:
+            self.world_name = game.world_path.get_world_name(game.current_world)
+            self.progress = (
+                "Final world"
+                if game.is_last_world
+                else f"{game.foods_in_world}/{app.config.foods_per_world}"
+            )
+        else:
+            self.world_name = str(game.world_number)
+            self.progress = ""
+        self.query_one("#stat-progress", StatDisplay).display = progressing
+        self.score_label = str(game.score)
+        self.foods_label = str(game.foods_eaten)
         self.speed_label = f"{game.get_moves_per_second():.1f}/sec"
 
     def _on_wake(self, generation: int) -> None:
@@ -355,8 +379,8 @@ class GameScreen(Screen[None]):
     def _on_frame(self) -> None:
         """Run every model step that has come due, draw, then schedule the next wake.
 
-        The step interval is re-read before each step, so eating food speeds up
-        the very next step. A stale timer firing while paused or after the game
+        The step interval is re-read before each step, so a new world's speed
+        applies from the very next step. A stale timer firing while paused or after the game
         ends does nothing and schedules nothing.
         """
         game = _snake_app(self).game
@@ -409,8 +433,8 @@ class GameScreen(Screen[None]):
         result = app.game.step()
 
         if result.world_changed and result.new_world is not None:
-            # Chrome follows the world: swap the app theme (kept intentionally).
-            app.theme = app.game.world_path.get_world(result.new_world).theme_name
+            # Chrome follows the world (unless the palette is LCD).
+            app.show_world(result.new_world)
 
         if result.game_over:
             # Stop the loop to prevent multiple game over modals, and settle
@@ -523,8 +547,8 @@ class GameScreen(Screen[None]):
             self.demo_ai = make_demo_ai(app.game, app.demo_strategy)
         self._restart_loop()
         self._sync_reactives()
-        # Update theme to initial world before refreshing view
-        app.theme = app.game.world_path.get_world(0).theme_name
+        # Update theme to the starting world before refreshing view
+        app.show_world(app.game.current_world)
         self.query_one(SnakeView).refresh()
 
     def establish_grid(self, width: int, height: int) -> None:
@@ -561,7 +585,7 @@ class GameScreen(Screen[None]):
             # Settings may have changed the layout since the last game.
             self.query_one(SnakeView).relayout()
             self._restart_loop()
-            app.theme = app.game.world_path.get_world(0).theme_name
+            app.show_world(app.game.current_world)
             self._sync_reactives()
             self.query_one(SnakeView).refresh()
 
@@ -663,22 +687,23 @@ class DiagnosticsModal(ModalScreen[None]):
                 f"{config.default_grid_width} x {config.default_grid_height}",
             ),
             ("food type", config.food_type),
+            ("palette", config.palette),
             ("walls", str(config.walls)),
             None,
             ("interval", f"{game.current_interval:.4f} s"),
             ("speed", f"{game.get_moves_per_second():.1f} /sec"),
-            ("initial interval", f"{config.initial_speed_interval} s"),
-            ("speed factor", str(config.speed_increase_factor)),
-            ("min interval", f"{config.min_speed_interval} s"),
             None,
             (
                 "world",
-                f"{game.current_world}  "
+                f"{game.world_number}  "
                 f"{game.world_path.get_world_name(game.current_world)}",
             ),
-            ("symbols / world", str(config.symbols_per_world)),
-            ("in world", str(game.symbols_in_current_world)),
-            ("total foods", str(game.symbols_consumed)),
+            ("starting world", str(config.start_world)),
+            ("world change", config.world_change),
+            ("foods / world", str(config.foods_per_world)),
+            ("in world", str(game.foods_in_world)),
+            ("total foods", str(game.foods_eaten)),
+            ("score", str(game.score)),
             None,
             ("snake length", str(len(game.snake))),
             ("start length", str(config.start_length)),
@@ -737,7 +762,17 @@ class SettingsModal(ModalScreen[None]):
     red below the help. ENTER applies a valid draft for the next game and does
     nothing while it is invalid; ESC discards it. A fresh instance is pushed
     each time so it starts from the current settings.
+
+    The rows scroll when the terminal is too short for them all, keeping the
+    selected one in view. As on the splash, the large title shows only where
+    it has room (the `-tall` breakpoint), and a compact one otherwise.
     """
+
+    # The large (8-row) title, its spacing, the prompt and the help and error
+    # lines take 14 rows; the title is large only where every row fits too. The
+    # title is 50 columns wide, so any supported width fits it.
+    _TALL_HEIGHT = 14 + len(ROWS)
+    VERTICAL_BREAKPOINTS = [(0, "-short"), (_TALL_HEIGHT, "-tall")]
 
     BINDINGS = [
         ("up", "move(-1)", "Previous"),
@@ -772,11 +807,24 @@ class SettingsModal(ModalScreen[None]):
                     colors=["$primary"],
                     classes="title-text",
                 )
+            with Center():
+                yield FigletText(
+                    "SETTINGS",
+                    font="small",
+                    id="settings-title-compact",
+                    colors=["$primary"],
+                    classes="title-text",
+                )
             yield Static(
                 "↑/↓ choose · ←/→ change · ENTER apply · ESC back",
                 id="settings-prompt",
             )
-            with Center(id="settings-rows-center"), Vertical(id="settings-rows"):
+            # The rows take what height is left, up to all of them. Keys move
+            # the selection, so the list never takes focus.
+            with (
+                Center(id="settings-rows-center"),
+                VerticalScroll(id="settings-rows", can_focus=False),
+            ):
                 for index in range(len(ROWS)):
                     yield Static(id=f"setting-{index}", classes="setting-row")
             with Center():
@@ -790,6 +838,7 @@ class SettingsModal(ModalScreen[None]):
         width = widest_help(self.draft) + _HELP_MARGIN
         for line in ("#settings-help", "#settings-error"):
             self.query_one(line, Static).styles.width = width
+        self.query_one("#settings-rows-center").styles.max_height = len(ROWS)
         self._show()
 
     @property
@@ -817,6 +866,8 @@ class SettingsModal(ModalScreen[None]):
             shown = f"◂ {value} ▸" if selected else f"  {value}  "
             line.update(f"{marker} {row.label:<{label_width}}   {shown}")
             line.set_class(selected, "-selected")
+            if selected:
+                line.scroll_visible(animate=False)
         self.query_one("#settings-help", Static).update(
             ROWS[self.selected].help_text(settings)
         )
@@ -885,7 +936,12 @@ class GameOverModal(ModalScreen[None]):
                 classes="death-message",
             )
             yield Static(
-                f"Foods collected: {app.game.symbols_consumed}",
+                f"Score: {app.game.score}",
+                id="death-score",
+                classes="death-prompt",
+            )
+            yield Static(
+                f"Foods collected: {app.game.foods_eaten}",
                 classes="death-prompt",
             )
             yield Static(
@@ -1301,12 +1357,19 @@ class SnakeView(Widget):
         """Pick the food rendering: the pixel sprite if enabled, else the glyph.
 
         With sprites on the scale never drops below `config.MIN_SPRITE_SCALE`, so
-        the food style never depends on the terminal size.
+        the food style never depends on the terminal size. Glyph food is drawn in
+        its world's colour, which the LCD palette would otherwise make dark like
+        the snake and the diamond.
         """
-        config = _snake_app(self).config
+        app = _snake_app(self)
+        config = app.config
         if config.uses_sprites:
             return sprites.food_tile(sprites.get_food_sprite(state.world), self._scale)
-        return glyph_food_tile(state.food_symbol, config.empty_cell, self._scale)
+        style = None
+        if config.palette == "lcd" and config.food_type == "glyphs":
+            world = app.game.world_path.get_world(state.world)
+            style = Style(color=world.theme.primary)
+        return glyph_food_tile(state.food_symbol, config.empty_cell, self._scale, style)
 
 
 class StatDisplay(Horizontal):
@@ -1318,8 +1381,8 @@ class StatDisplay(Horizontal):
 
     value: reactive[str] = reactive("")
 
-    def __init__(self, label: str) -> None:
-        super().__init__()
+    def __init__(self, label: str, id: str | None = None) -> None:
+        super().__init__(id=id)
         self._label = label
 
     @override

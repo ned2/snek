@@ -72,7 +72,9 @@ class Mode:
 MODE_FIELDS: Final = frozenset(
     {
         "walls",
-        "initial_speed_interval",
+        "start_world",
+        "world_change",
+        "foods_per_world",
         "start_length",
         "sizing_mode",
         "max_grid_width",
@@ -80,25 +82,40 @@ MODE_FIELDS: Final = frozenset(
         "cell_scale",
         "smooth_motion",
         "food_type",
+        "palette",
     }
 )
 
-# Shared by every mode: 10 moves a second, smooth motion, and a 36x20 grid cap
-# (which fill sizing ignores).
+# Shared by every mode: smooth motion and a 36x20 grid cap (which fill sizing
+# ignores).
 _COMMON: Final = {
-    "initial_speed_interval": 0.1,
     "smooth_motion": True,
     "max_grid_width": 36,
     "max_grid_height": 20,
+}
+
+# Every mode but Classic starts in world 1 (4 moves a second), moves on through
+# the worlds, and shows each world's colours. Foods per world suits the board:
+# 8 sets take world 1 to world 9.
+_PROGRESSING: Final = {
+    "start_world": 1,
+    "world_change": "progress",
+    "palette": "worlds",
 }
 
 # In display (and cycling) order. The first matches `GameConfig`'s defaults.
 MODES: Final[tuple[Mode, ...]] = (
     Mode(
         "Classic",
-        "Nokia-style: diamond food on a fixed 20x11 walled board.",
+        "Nokia-style LCD screen: diamond food on a fixed 20x11 walled board.",
         {
             **_COMMON,
+            # World 5 is 10 moves a second. A fixed world doesn't use foods per
+            # world, but every mode gives it.
+            "start_world": 5,
+            "world_change": "fixed",
+            "foods_per_world": 50,
+            "palette": "lcd",
             "walls": True,
             "start_length": 8,
             "sizing_mode": "cap",
@@ -113,6 +130,8 @@ MODES: Final[tuple[Mode, ...]] = (
         "Big pixel-art food on a walled board that fills the terminal.",
         {
             **_COMMON,
+            **_PROGRESSING,
+            "foods_per_world": 25,
             "walls": True,
             "start_length": 3,
             "sizing_mode": "fill",
@@ -125,6 +144,8 @@ MODES: Final[tuple[Mode, ...]] = (
         "Glyph food on a wrapping board that fills the terminal.",
         {
             **_COMMON,
+            **_PROGRESSING,
+            "foods_per_world": 200,
             "walls": False,
             "start_length": 3,
             "sizing_mode": "fill",
@@ -137,6 +158,8 @@ MODES: Final[tuple[Mode, ...]] = (
         "Pixel-art food on a wrapping board that fills the terminal.",
         {
             **_COMMON,
+            **_PROGRESSING,
+            "foods_per_world": 100,
             "walls": False,
             "start_length": 3,
             "sizing_mode": "fill",

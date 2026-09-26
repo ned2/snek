@@ -17,9 +17,10 @@ from typing import Any, cast
 
 from rich.cells import cell_len
 
-from .config import FOOD_TYPES
+from .config import FOOD_TYPES, PALETTES, WORLD_CHANGES
 from .demo import STRATEGIES
 from .modes import CUSTOM, MODES, Settings, apply_mode, describe, mode_of
+from .worlds import WORLD_SPEEDS
 
 
 @dataclass(frozen=True)
@@ -27,8 +28,8 @@ class SettingRow:
     """One option on the settings screen.
 
     `choices` are in display order. Stepping past either end wraps round when
-    `wrap` is set (for named options); ordered values such as speed stop at the
-    ends instead. `show` formats a value for display. `help` is fixed text, or
+    `wrap` is set (for named options); ordered values such as the starting world
+    stop at the ends instead. `show` formats a value for display. `help` is fixed text, or
     text worked out from the current settings.
     """
 
@@ -51,8 +52,8 @@ class SettingRow:
     def step(self, settings: Settings, delta: int) -> Settings:
         """Move `delta` choices along from the current value.
 
-        A current value that is not one of the choices (e.g. an arbitrary
-        `--speed`) steps to the nearest choice in that direction, and stays put
+        A current value that is not one of the choices (e.g. a config's foods
+        per world) steps to the nearest choice in that direction, and stays put
         if there is none. Named choices have no order, so from such a value (e.g.
         a "Custom" mode) they are entered at the first or last.
         """
@@ -87,13 +88,9 @@ def _on_off(value: bool) -> str:
     return "On" if value else "Off"
 
 
-def _speed(settings: Settings) -> float:
-    """The starting speed in moves per second, rounded so presets compare equal."""
-    return round(1.0 / cast(float, settings.get("initial_speed_interval")), 6)
-
-
-def _put_speed(settings: Settings, speed: float) -> Settings:
-    return _config("initial_speed_interval")(settings, 1.0 / speed)
+def _world(world: int) -> str:
+    """A world and its speed, e.g. "5 · 10/s"."""
+    return f"{world} · {WORLD_SPEEDS[world - 1]}/s"
 
 
 def _grid(settings: Settings) -> tuple[int, int]:
@@ -106,7 +103,8 @@ def _put_grid(settings: Settings, grid: tuple[int, int]) -> Settings:
     return settings.with_values(max_grid_width=width, max_grid_height=height)
 
 
-SPEEDS = (2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50)
+START_WORLDS = tuple(range(1, len(WORLD_SPEEDS) + 1))
+FOODS_PER_WORLD = (10, 25, 50, 100, 200)
 START_LENGTHS = tuple(range(1, 11))
 GRIDS = ((20, 11), (24, 14), (36, 20), (48, 26), (60, 34))
 SCALES = (1, 2, 3, 4, 5)
@@ -140,12 +138,35 @@ ROWS: tuple[SettingRow, ...] = (
         wrap=True,
     ),
     SettingRow(
-        label="Starting speed",
-        help="Moves per second at the start; the snake speeds up as it eats.",
-        choices=SPEEDS,
-        get=_speed,
-        put=_put_speed,
-        show=lambda v: f"{v:g} /sec",
+        label="Starting world",
+        help=(
+            "The world you start in: sets the speed "
+            f"({WORLD_SPEEDS[0]}\N{EN DASH}{WORLD_SPEEDS[-1]} /sec) "
+            "and points per food."
+        ),
+        choices=START_WORLDS,
+        get=lambda s: s.get("start_world"),
+        put=_config("start_world"),
+        show=_world,
+    ),
+    SettingRow(
+        label="World change",
+        help=(
+            "Fixed: stay in the starting world. "
+            "Progress: move on after each set of foods."
+        ),
+        choices=WORLD_CHANGES,
+        get=lambda s: s.get("world_change"),
+        put=_config("world_change"),
+        show=str.capitalize,
+        wrap=True,
+    ),
+    SettingRow(
+        label="Foods per world",
+        help="Foods eaten before moving to the next world. Ignored when fixed.",
+        choices=FOODS_PER_WORLD,
+        get=lambda s: s.get("foods_per_world"),
+        put=_config("foods_per_world"),
     ),
     SettingRow(
         label="Starting length",
@@ -194,6 +215,15 @@ ROWS: tuple[SettingRow, ...] = (
         get=lambda s: s.get("food_type"),
         put=_config("food_type"),
         show=str.capitalize,
+        wrap=True,
+    ),
+    SettingRow(
+        label="Palette",
+        help="Worlds: each world's colours. LCD: the Nokia green-grey screen.",
+        choices=PALETTES,
+        get=lambda s: s.get("palette"),
+        put=_config("palette"),
+        show=lambda v: "LCD" if v == "lcd" else "Worlds",
         wrap=True,
     ),
     SettingRow(

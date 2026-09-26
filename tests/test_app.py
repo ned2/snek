@@ -12,6 +12,7 @@ from snek import clipboard
 from snek.app import SnakeApp
 from snek.config import GameConfig
 from snek.figlet import FigletText
+from snek.game import Game
 from snek.game_rules import Direction
 from snek.screens import (
     DiagnosticsModal,
@@ -24,11 +25,16 @@ from snek.screens import (
     StatDisplay,
 )
 from snek.settings import ROWS, widest_help
+from snek.themes import LCD_THEME, THEME_MAP
 
 # A roomy 36x20 wrapping cap: the snake can run for a while without a wall.
 ROOMY = GameConfig(max_grid_width=36, max_grid_height=20, walls=False)
 # Sprites on the 36x20 cap, up to scale 3, wrapping: needs 174x40 at scale 2.
 SPRITES = replace(ROOMY, food_type="sprites", cell_scale=3)
+# Worlds that move on every 10 foods from world 1, in their own colours.
+PROGRESSING = GameConfig(
+    start_world=1, world_change="progress", foods_per_world=10, palette="worlds"
+)
 
 
 def _arm_self_collision(game) -> None:
@@ -99,6 +105,11 @@ def _foods_line(app) -> str:
         if "Foods collected" in text:
             return text
     return ""
+
+
+def _score_line(app) -> str:
+    """The rendered 'Score: N' line on the game-over modal."""
+    return str(app.screen.query_one("#death-score", Static).render())
 
 
 @pytest.mark.asyncio
@@ -323,11 +334,19 @@ def _record_loop_timers(monkeypatch, game_screen) -> list[_RecordedTimer]:
 @pytest.mark.asyncio
 async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
     """The loop sleeps until each step is due, keeps waited time across a pause,
-    re-reads the interval after eating, and stops for good at game over."""
+    re-reads the interval after a new world, and stops for good at game over."""
     now = [0.0]
-    # A binary-exact interval keeps the fake-clock arithmetic exact. Without
-    # interpolation the loop wakes only at step deadlines.
-    app = SnakeApp(GameConfig(initial_speed_interval=0.125, smooth_motion=False))
+    # World 4's binary-exact interval (8 moves a second) keeps the fake-clock
+    # arithmetic exact, and every food moves on a world. Without interpolation
+    # the loop wakes only at step deadlines.
+    app = SnakeApp(
+        GameConfig(
+            start_world=4,
+            world_change="progress",
+            foods_per_world=10,
+            smooth_motion=False,
+        )
+    )
     async with app.run_test() as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -370,10 +389,12 @@ async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
         wake_at(100.03125)
         assert game.snake[0] == (7, 5)
 
-        # Eating speeds up the very next step.
+        # A new world speeds up the very next step.
+        game.foods_in_world = 9
         game.set_food_position((8, 5))
         wake_at(100.03125 + interval)
-        assert game.symbols_consumed == 1
+        assert game.foods_eaten == 1
+        assert game.world_number == 5
         assert game.current_interval < interval
         assert armed[-1].delay == pytest.approx(game.current_interval)
 
@@ -415,7 +436,7 @@ async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
     """While interpolating, the loop wakes at each substep and the board shows
     the step part done; fast, late or final steps are drawn whole."""
     now = [0.0]
-    app = SnakeApp(GameConfig(initial_speed_interval=0.125))
+    app = SnakeApp(GameConfig(start_world=4))  # 8 moves a second: 0.125 s
     async with app.run_test() as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -459,14 +480,15 @@ async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
         assert game.snake[0] == (8, 5)
         assert view._drawn.partial == {}
 
-        # Steps shorter than two frames are drawn whole, waking at deadlines.
-        game.current_interval = 0.03125
-        wake_at(now[0] + 0.03125)
-        assert view._drawn.partial == {}
-        assert armed[-1].delay == pytest.approx(0.03125)
+        # Steps shorter than two frames are drawn whole, waking at deadlines. No
+        # world is that fast, so this stands in for a faster one.
+        with monkeypatch.context() as patch:
+            patch.setattr(Game, "current_interval", property(lambda _: 0.03125))
+            wake_at(now[0] + 0.03125)
+            assert view._drawn.partial == {}
+            assert armed[-1].delay == pytest.approx(0.03125)
 
         # Game over settles the board whole.
-        game.current_interval = 0.125
         wake_at(now[0] + 0.125)
         assert view._drawn.partial != {}
         _arm_self_collision(game)
@@ -499,12 +521,12 @@ async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> No
         armed = _record_loop_timers(monkeypatch, game_screen)
         game = app.game
         game_screen._restart_loop()
-        eaten = game.symbols_consumed
+        eaten = game.foods_eaten
         partial_wakes = 0
         for _ in range(600):
             # Keep food close so the run covers eating, growth and food moves.
             head_x, head_y = game.snake[0]
-            if game.symbols_consumed == eaten and game.food[1] != head_y:
+            if game.foods_eaten == eaten and game.food[1] != head_y:
                 game.set_food_position(((head_x + 4) % game.width, head_y))
             now[0] += armed[-1].delay
             game_screen._on_frame()
@@ -515,7 +537,7 @@ async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> No
             cached = [strip.text for strip in view.render_lines(view.size.region)]
             fresh = [view.render_line(y).text for y in range(view.size.height)]
             assert cached == fresh
-        assert game.symbols_consumed > eaten
+        assert game.foods_eaten > eaten
         assert partial_wakes > 0
 
 
@@ -593,9 +615,9 @@ async def test_game_over_and_restart():
         assert hasattr(game_screen_in_stack, "restart_game")
 
         # Test restart_game method directly
-        app.game.symbols_consumed = 5  # Change state
+        app.game.foods_eaten = 5  # Change state
         game_screen_in_stack.restart_game()
-        assert app.game.symbols_consumed == 0  # Should be reset
+        assert app.game.foods_eaten == 0  # Should be reset
         assert not app.game.game_over  # Should not be game over
         assert _is_fresh(app.game)  # Should have the initial snake
 
@@ -613,7 +635,7 @@ async def test_restart_returns_to_playable_game():
         await pilot.pause()
 
         # Real death via a self-colliding snake (so tick() pushes the modal).
-        app.game.symbols_consumed = 9
+        app.game.foods_eaten = 9
         _arm_self_collision(app.game)
         app.screen.tick()
         await pilot.pause()
@@ -624,7 +646,7 @@ async def test_restart_returns_to_playable_game():
         await pilot.pause()
         assert isinstance(app.screen, GameScreen)
         assert app.game.game_over is False
-        assert app.game.symbols_consumed == 0
+        assert app.game.foods_eaten == 0
         assert _is_fresh(app.game)
         head = app.game.snake[0]
         app.screen.tick()
@@ -648,7 +670,7 @@ async def test_new_game_from_menu_resets_and_plays():
         # Finish game 1 as a WIN with a stale score, show the modal.
         app.game.won = True
         app.game.game_over = True
-        app.game.symbols_consumed = 42
+        app.game.foods_eaten = 42
         game_screen._disarm()
         app.push_screen(GameOverModal())
         await pilot.pause()
@@ -663,7 +685,7 @@ async def test_new_game_from_menu_resets_and_plays():
         assert isinstance(app.screen, GameScreen)
         assert app.game.game_over is False
         assert app.game.won is False
-        assert app.game.symbols_consumed == 0
+        assert app.game.foods_eaten == 0
         assert _is_fresh(app.game)
         assert app.screen.demo_ai is not None
         head = app.game.snake[0]
@@ -687,19 +709,23 @@ async def test_game_over_banner_reflects_current_game():
         # Game 1: a WIN.
         app.game.won = True
         app.game.game_over = True
-        app.game.symbols_consumed = 99
+        app.game.foods_eaten = 99
+        app.game.score = 595
         game_screen._disarm()
         app.push_screen(GameOverModal())
         await pilot.pause()
         assert "BOARD FILLED" in _death_message(app)
         assert "99" in _foods_line(app)
+        assert _score_line(app) == "Score: 595"
 
         # Restart, then die a normal death.
         await pilot.press("space")
         await pilot.pause()
         assert isinstance(app.screen, GameScreen)
         assert app.game.won is False
-        app.game.symbols_consumed = 4
+        assert app.game.score == 0
+        app.game.foods_eaten = 4
+        app.game.score = 20
         _arm_self_collision(app.game)
         app.screen.tick()
         await pilot.pause()
@@ -707,7 +733,8 @@ async def test_game_over_banner_reflects_current_game():
         assert isinstance(app.screen, GameOverModal)
         assert "SNEK DED" in _death_message(app)
         assert "BOARD FILLED" not in _death_message(app)
-        assert "4" in _foods_line(app)  # current score, not the stale 99
+        assert "4" in _foods_line(app)  # current count, not the stale 99
+        assert _score_line(app) == "Score: 20"
 
 
 @pytest.mark.asyncio
@@ -732,7 +759,7 @@ async def test_quit_from_game():
 @pytest.mark.asyncio
 async def test_stats_panel_updates():
     """Stats panel labels update from game state through the data binding."""
-    app = SnakeApp()
+    app = SnakeApp(PROGRESSING)
     async with app.run_test() as pilot:
         # Start game
         await pilot.press("space")
@@ -751,8 +778,11 @@ async def test_stats_panel_updates():
         # Initial state is pushed to the panel by on_mount -> _sync_reactives.
         assert displays["Total foods"].value == "0"
         assert value_label("Total foods") == "0"
+        assert value_label("Score") == "0"
         assert value_label("Progress") == "0/10"
+        assert displays["Progress"].display
         assert value_label("World") == "Basic Symbols"
+        assert value_label("Speed") == "4.0/sec"
 
         # Eat one food: tick() advances the model and calls _sync_reactives(),
         # whose GameScreen reactives propagate to the StatDisplays via data_bind.
@@ -762,9 +792,10 @@ async def test_stats_panel_updates():
         game_screen.tick()
         await pilot.pause()
 
-        assert game.symbols_consumed == 1
+        assert game.foods_eaten == 1
         assert displays["Total foods"].value == "1"
         assert value_label("Total foods") == "1"
+        assert value_label("Score") == "1"
         assert value_label("Progress") == "1/10"
 
         # A world jump re-formats the World label through the same binding.
@@ -772,12 +803,40 @@ async def test_stats_panel_updates():
         game_screen._sync_reactives()
         await pilot.pause()
         assert value_label("World") == "Ancient Egypt"
+        assert value_label("Speed") == "5.0/sec"
+
+        # The last world is the last: there is no next one to count towards.
+        game.current_world = 8
+        game_screen._sync_reactives()
+        await pilot.pause()
+        assert value_label("World") == "Celestial"
+        assert value_label("Progress") == "Final world"
+
+
+@pytest.mark.asyncio
+async def test_a_fixed_world_shows_its_number_and_no_progress():
+    """Classic stays in world 5: the panel shows the number, and no progress."""
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        displays = {d._label: d for d in game_screen.query(StatDisplay)}
+        world = displays["World"].query_one(".stat-value", Label)
+        assert str(world.content) == "5"
+        assert not displays["Progress"].display
+        assert displays["Score"].display
+        assert str(displays["Speed"].query_one(".stat-value", Label).content) == (
+            "10.0/sec"
+        )
 
 
 @pytest.mark.asyncio
 async def test_theme_changes_with_world():
     """Test theme changes when world changes."""
-    config = GameConfig()
+    config = PROGRESSING
     app = SnakeApp(config=config)
 
     async with app.run_test() as pilot:
@@ -797,8 +856,8 @@ async def test_theme_changes_with_world():
         head_x, head_y = game.snake[0]
         game.direction = Direction.RIGHT
         game.set_food_position(((head_x + 1) % game.width, head_y))
-        game.symbols_consumed = config.symbols_per_world - 1
-        game.symbols_in_current_world = config.symbols_per_world - 1
+        game.foods_eaten = config.foods_per_world - 1
+        game.foods_in_world = config.foods_per_world - 1
         game_screen.tick()
         await pilot.pause()
 
@@ -808,6 +867,66 @@ async def test_theme_changes_with_world():
         # Theme should have changed (world 1 has 'snek-ocean' theme)
         assert app.theme != initial_theme
         assert app.theme == "snek-ocean"
+
+
+@pytest.mark.asyncio
+async def test_the_lcd_palette_keeps_one_theme_in_every_world():
+    """LCD is one theme whatever the world, from the splash on."""
+    app = SnakeApp(replace(PROGRESSING, palette="lcd"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.theme == LCD_THEME
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        game = app.game
+        head_x, head_y = game.snake[0]
+        game.set_food_position(((head_x + 1) % game.width, head_y))
+        game.foods_in_world = PROGRESSING.foods_per_world - 1
+        game_screen.tick()
+        await pilot.pause()
+        assert game.world_number == 2
+        assert app.theme == LCD_THEME
+
+
+@pytest.mark.asyncio
+async def test_the_splash_shows_the_next_games_colours():
+    """The splash takes the theme of the mode's starting world and palette."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.theme == LCD_THEME  # Classic
+        await pilot.press("right")  # Arcade: world 1 in its own colours
+        await pilot.pause()
+        assert app.theme == "snek-classic"
+        app.apply_settings(app.settings.with_values(start_world=2))
+        await pilot.press("s", "escape")
+        await pilot.pause()
+        assert app.theme == "snek-ocean"
+
+
+@pytest.mark.asyncio
+async def test_lcd_glyph_food_keeps_its_world_colour() -> None:
+    """On the LCD screen the snake and the diamond are dark pixels, but glyph
+    food keeps its world's colour."""
+    config = replace(ROOMY, food_type="glyphs", palette="lcd", start_world=2)
+    app = SnakeApp(config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        view = app.screen.query_one(SnakeView)
+        tile = view._food_tile(view._state())
+        glyph = next(segment for row in tile for segment in row if segment.text.strip())
+        assert glyph.style is not None and glyph.style.color is not None
+        ocean = THEME_MAP["snek-ocean"].primary
+        assert glyph.style.color.triplet is not None
+        assert glyph.style.color.triplet.hex == ocean
+
+        app.config = replace(config, food_type="diamond")
+        tile = view._food_tile(view._state())
+        assert all(segment.style is None for row in tile for segment in row)
 
 
 @pytest.mark.asyncio
@@ -827,14 +946,14 @@ async def test_resize_handling():
         game.set_food_position(cycle[-1])  # exactly one free cell remains
         game.direction = Direction.RIGHT
         game.turn(Direction.UP)
-        game.symbols_consumed = 37
+        game.foods_eaten = 37
         before = (
             game.width,
             game.height,
             list(game.snake),
             game.food,
             list(game._pending_turns),
-            game.symbols_consumed,
+            game.foods_eaten,
         )
         _assert_game_invariants(game)
 
@@ -849,7 +968,7 @@ async def test_resize_handling():
                 game.snake,
                 game.food,
                 game._pending_turns,
-                game.symbols_consumed,
+                game.foods_eaten,
             ) == before
             _assert_game_invariants(game)
 
@@ -989,17 +1108,17 @@ async def test_partial_board_updates_match_a_full_render(size) -> None:
         game_screen._disarm()
         view = game_screen.query_one(SnakeView)
         game = app.game
-        eaten = game.symbols_consumed
+        eaten = game.foods_eaten
         for _ in range(60):
             # Keep food close so the run covers eating, growth and food moves.
             head_x, head_y = game.snake[0]
-            if game.symbols_consumed == eaten and game.food[1] != head_y:
+            if game.foods_eaten == eaten and game.food[1] != head_y:
                 game.set_food_position(((head_x + 4) % game.width, head_y))
             game_screen.tick()
             await pilot.pause()
             if game.game_over:
                 break
-        assert game.symbols_consumed > eaten
+        assert game.foods_eaten > eaten
 
         cached = [strip.text for strip in view.render_lines(view.size.region)]
         view.refresh()
@@ -1164,9 +1283,9 @@ async def test_settings_step_into_invalid_settings_but_enter_waits_for_a_fix() -
         await pilot.pause()
         modal = app.screen
         assert _settings_error(app) == ""
-        await pilot.press(*["down"] * 6, "left")  # cell scale 2 -> 1
+        await pilot.press(*["down"] * 8, "left")  # cell scale 2 -> 1
         await pilot.pause()
-        row = str(modal.query_one("#setting-6", Static).render()).split()
+        row = str(modal.query_one("#setting-8", Static).render()).split()
         assert row[1:3] == ["Cell", "scale"] and "1" in row
         error = "Food sprites need a cell scale of at least 2, got 1."
         assert _settings_error(app) == error
@@ -1347,6 +1466,18 @@ async def test_diagnostics_shows_live_config_and_state():
         assert f"{app.game.width} x {app.game.height}" in text  # logical grid value
         assert "demo strategy" in text
         assert "walls : True" in text
+        lines = {
+            line.split(" : ")[0].strip(): line.split(" : ")[1]
+            for line in text.splitlines()
+            if " : " in line
+        }
+        assert lines["world"] == "5  Alchemical Mysteries"  # counted from 1
+        assert lines["starting world"] == "5"
+        assert lines["world change"] == "fixed"
+        assert lines["foods / world"] == "50"
+        assert lines["palette"] == "lcd"
+        assert lines["score"] == "0"
+        assert lines["speed"] == "10.0 /sec"
 
 
 @pytest.mark.asyncio
@@ -1537,14 +1668,14 @@ class TestWorldProgression:
         """Test world transition when enough symbols consumed in current world."""
         from snek.game import Game
 
-        game = Game()
-        game.symbols_in_current_world = 10  # Assuming default symbols_per_world is 10
+        game = Game(config=PROGRESSING)
+        game.foods_in_world = 10
         game.check_world_transition()
         assert game.current_world == 1
-        assert game.symbols_in_current_world == 0  # Resets for new world
+        assert game.foods_in_world == 0  # Resets for new world
 
         # Test multiple world transitions
-        game.symbols_in_current_world = 10
+        game.foods_in_world = 10
         game.check_world_transition()
         assert game.current_world == 2
 
@@ -1553,11 +1684,10 @@ class TestWorldProgression:
         from snek.game import Game
 
         game = Game()
-        game.current_interval = 0.1
-        assert game.get_moves_per_second() == pytest.approx(10.0)
+        assert game.get_moves_per_second() == pytest.approx(10.0)  # world 5
 
-        game.current_interval = 0.5
-        assert game.get_moves_per_second() == pytest.approx(2.0)
+        game.current_world = 0
+        assert game.get_moves_per_second() == pytest.approx(4.0)
 
 
 @pytest.mark.asyncio
@@ -1568,10 +1698,15 @@ async def test_settings_open_from_the_splash_and_fit_80_by_24() -> None:
         await pilot.pause()
         modal = app.screen
         assert isinstance(modal, SettingsModal)
+        # Too short for the large title, but every row still fits.
+        assert not modal.query_one("#settings-title").display
+        assert modal.query_one("#settings-title-compact").display
         for widget in modal.query(Static):
-            _assert_fully_in_view(widget, 80, 24)
+            if widget.id != "settings-title":
+                _assert_fully_in_view(widget, 80, 24)
+        assert modal.query_one("#settings-rows", VerticalScroll).max_scroll_y == 0
         for part in (
-            "#settings-title",
+            "#settings-title-compact",
             "#settings-rows",
             "#settings-help",
             "#settings-error",
@@ -1590,29 +1725,85 @@ async def test_settings_open_from_the_splash_and_fit_80_by_24() -> None:
 
 
 @pytest.mark.asyncio
+async def test_settings_show_the_large_title_where_every_row_fits() -> None:
+    app = SnakeApp()
+    height = SettingsModal._TALL_HEIGHT
+    async with app.run_test(size=(80, height)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, SettingsModal)
+        title = modal.query_one("#settings-title", FigletText)
+        assert title.display
+        assert not modal.query_one("#settings-title-compact").display
+        for widget in modal.query(Static):
+            if widget.id != "settings-title-compact":
+                _assert_fully_in_view(widget, 80, height)
+        assert modal.query_one("#settings-rows", VerticalScroll).max_scroll_y == 0
+        _assert_horizontally_centred(title, 80)
+
+    # One row shorter and the large title would push a row out of the list.
+    shorter = SnakeApp()
+    async with shorter.run_test(size=(80, height - 1)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        assert not shorter.screen.query_one("#settings-title").display
+
+
+@pytest.mark.asyncio
+async def test_settings_rows_scroll_to_keep_the_selection_in_view() -> None:
+    """In a terminal too short for every row, the list scrolls with the
+    selection, and the help and error lines stay put below it."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 18)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, SettingsModal)
+        rows = modal.query_one("#settings-rows", VerticalScroll)
+        assert rows.max_scroll_y > 0
+        assert modal.focused is None  # keys move the selection, not the list
+        for _ in range(2 * len(ROWS)):
+            await pilot.press("down")
+            await pilot.pause()
+            selected = modal.query_one(f"#setting-{modal.selected}", Static)
+            assert rows.region.contains_region(selected.region)
+            for line in ("#settings-help", "#settings-error"):
+                _assert_fully_in_view(modal.query_one(line, Static), 80, 18)
+        await pilot.press("up")  # wraps round to the last row, at the bottom
+        await pilot.pause()
+        assert modal.selected == len(ROWS) - 1
+        assert rows.scroll_y == rows.max_scroll_y
+
+
+@pytest.mark.asyncio
 async def test_settings_apply_to_the_next_game() -> None:
-    """Changing walls and speed on the settings screen changes the next game."""
+    """Changing walls and the starting world on the settings screen changes the
+    next game."""
     app = SnakeApp()
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("s")
         await pilot.pause()
         await pilot.press("down", "right")  # walls off
-        await pilot.press("down", "left")  # speed 10 -> 8 moves/sec
+        await pilot.press("down", "left")  # world 5 -> 4: 8 moves/sec
         await pilot.pause()
         assert app.config.walls is True  # a draft until ENTER
         help_text = str(app.screen.query_one("#settings-help", Static).render())
-        assert "Moves per second" in help_text
+        assert "sets the speed" in help_text
+        row = str(app.screen.query_one("#setting-2", Static).render())
+        assert "Starting world" in row and "4 · 8/s" in row
 
         await pilot.press("enter")
         await pilot.pause()
         assert app.config.walls is False
-        assert app.config.initial_speed_interval == pytest.approx(1 / 8)
+        assert app.config.start_world == 4
         await pilot.press("space")
         await pilot.pause()
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
         game_screen._disarm()
         assert app.game.config is app.config
+        assert app.game.world_number == 4
         assert app.game.current_interval == pytest.approx(1 / 8)
         view = game_screen.query_one(SnakeView)
         assert "┏" not in _board_text(view)  # no heavy wall frame
@@ -1637,8 +1828,9 @@ async def test_layout_settings_re_establish_the_grid_for_the_next_game() -> None
 
         await pilot.press("s")
         await pilot.pause()
-        # Mode, Walls, Starting speed, Starting length, Board sizing, Grid cap.
-        await pilot.press(*["down"] * 5, "right")  # 20x11 -> 24x14
+        # Mode, Walls, Starting world, World change, Foods per world, Starting
+        # length, Board sizing, Grid cap.
+        await pilot.press(*["down"] * 7, "right")  # 20x11 -> 24x14
         await pilot.press("enter", "space")
         await pilot.pause()
         assert (app.game.width, app.game.height) == (24, 14)

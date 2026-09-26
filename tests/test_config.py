@@ -1,11 +1,17 @@
 """Tests for the explicit `GameConfig` validation boundary."""
 
-import math
 from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from snek.config import FOOD_TYPES, MIN_SPRITE_SCALE, GameConfig
+from snek.config import (
+    FOOD_TYPES,
+    MIN_SPRITE_SCALE,
+    PALETTES,
+    WORLD_CHANGES,
+    GameConfig,
+)
+from snek.worlds import WORLD_SPEEDS
 
 
 def test_config_is_an_immutable_value_object() -> None:
@@ -29,7 +35,7 @@ def test_config_is_an_immutable_value_object() -> None:
         "max_grid_width",
         "max_grid_height",
         "cell_scale",
-        "symbols_per_world",
+        "foods_per_world",
         "max_buffered_turns",
         "side_panel_width",
         "min_game_width",
@@ -55,38 +61,28 @@ def test_sizing_mode_has_two_explicit_choices(value: object) -> None:
         GameConfig(sizing_mode=value)
 
 
+def test_start_world_is_one_of_the_worlds() -> None:
+    for world in range(1, len(WORLD_SPEEDS) + 1):
+        assert GameConfig(start_world=world).start_world == world
+    for value in (0, 2.5, True):
+        with pytest.raises(ValueError, match="start_world must be"):
+            GameConfig(start_world=value)
+    with pytest.raises(ValueError, match="start_world must be at most 9, got 10"):
+        GameConfig(start_world=10)
+
+
 @pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("initial_speed_interval", 0),
-        ("initial_speed_interval", -0.1),
-        ("initial_speed_interval", math.inf),
-        ("initial_speed_interval", math.nan),
-        ("min_speed_interval", 0),
-        ("min_speed_interval", math.inf),
-        ("speed_increase_factor", 0),
-        ("speed_increase_factor", math.nan),
-    ],
+    ("field", "choices"),
+    [("world_change", WORLD_CHANGES), ("palette", PALETTES)],
 )
-def test_speed_numbers_must_be_finite_and_positive(field: str, value: float) -> None:
-    with pytest.raises(ValueError, match=rf"{field} must be finite and greater than 0"):
-        GameConfig(**{field: value})
-
-
-def test_initial_speed_cannot_exceed_safety_cap() -> None:
-    """An interval below the floor is rejected instead of silently corrected."""
-    with pytest.raises(
-        ValueError,
-        match="initial_speed_interval must be greater than or equal to min_speed_interval",
-    ):
-        GameConfig(initial_speed_interval=0.001, min_speed_interval=0.002)
-
-
-def test_speed_factor_cannot_slow_the_game_after_food() -> None:
-    with pytest.raises(
-        ValueError, match="speed_increase_factor must be less than or equal to 1"
-    ):
-        GameConfig(speed_increase_factor=1.01)
+def test_named_world_fields_are_one_of_their_choices(
+    field: str, choices: tuple[str, ...]
+) -> None:
+    for choice in choices:
+        assert getattr(GameConfig(**{field: choice}), field) == choice
+    for value in ("sometimes", None, 1):
+        with pytest.raises(ValueError, match=rf"{field} must be one of"):
+            GameConfig(**{field: value})
 
 
 @pytest.mark.parametrize("field", ["max_grid_width", "max_grid_height"])
@@ -126,15 +122,13 @@ def test_start_length_is_a_positive_integer() -> None:
 
 
 def test_valid_boundary_values_are_accepted() -> None:
-    """Minimum counts, a 1x2 model default, and equal speed floor are coherent."""
+    """Minimum counts and a 1x2 model default are coherent."""
     config = GameConfig(
         default_grid_width=1,
         default_grid_height=2,
         cell_scale=1,
-        initial_speed_interval=0.002,
-        min_speed_interval=0.002,
-        speed_increase_factor=1,
-        symbols_per_world=1,
+        start_world=1,
+        foods_per_world=1,
         max_buffered_turns=1,
         side_panel_width=1,
     )
@@ -155,8 +149,12 @@ def test_walls_flag_is_boolean() -> None:
 
 
 def test_defaults_are_nokia_style() -> None:
-    """Classic, the default mode: the diamond, a length of 8, a 20x11 board."""
+    """Classic, the default mode: the diamond, a length of 8, a 20x11 board, and
+    a fixed world 5 on the LCD screen."""
     config = GameConfig()
+    assert (config.start_world, config.world_change) == (5, "fixed")
+    assert config.foods_per_world == 50
+    assert config.palette == "lcd"
     assert config.food_type == "diamond"
     assert config.uses_sprites is False
     assert config.min_cell_scale == 1

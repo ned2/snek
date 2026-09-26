@@ -164,16 +164,19 @@ def board_fits(
     return cols <= avail_cols and rows <= avail_rows
 
 
-def glyph_food_tile(food_symbol: str, empty_cell: str, scale: int) -> FoodTile:
+def glyph_food_tile(
+    food_symbol: str, empty_cell: str, scale: int, style: Style | None = None
+) -> FoodTile:
     """A food tile that centres the single themed glyph in its block.
 
     This is the unscaled look generalised to any scale, and the fallback when no
     sprite applies (notably scale 1, where the cell is too small for pixel art).
+    Without a `style` the glyph takes the board's colour.
     """
     block_width = CELL_BASE_WIDTH * scale
     mid_row = scale // 2
     return [
-        [Segment((food_symbol + " ").center(block_width))]
+        [Segment((food_symbol + " ").center(block_width), style)]
         if r == mid_row
         else [Segment(empty_cell * scale)]
         for r in range(scale)

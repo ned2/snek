@@ -2,17 +2,21 @@
 
 import random
 from dataclasses import dataclass
+from typing import Final
 
 from .config import DIAMOND, GameConfig, default_config, validate_dimensions
 from .game_rules import Direction, GameRules, Position
-from .worlds import WorldPath
+from .worlds import WORLD_SPEEDS, WorldPath
+
+# Points for filling the board, on top of the last food's (Nokia Snake's rule).
+BOARD_CLEAR_BONUS: Final = 100
 
 
 @dataclass(frozen=True)
 class StepResult:
     """The consequences of a single `Game.step()`, for the view to react to.
 
-    The model owns what a tick *means* (movement, world transition, speed-up,
+    The model owns what a tick *means* (movement, world transition, scoring,
     game-over); the view reads these flags instead of sniffing deltas in snake
     length or world index.
 
@@ -87,14 +91,11 @@ class Game:
         # step so that rapid keys can never compound into a reversal.
         self.direction = Direction.RIGHT
         self._pending_turns: list[Direction] = []
-        self.symbols_consumed = 0
-        self.current_world = 0
-        self.symbols_in_current_world = 0
-        # Honour the floor even at the start, so a fast `--speed` can't begin
-        # the game already past the safe tick rate (see `min_speed_interval`).
-        self.current_interval = max(
-            self.config.min_speed_interval, self.config.initial_speed_interval
-        )
+        self.foods_eaten = 0
+        # `current_world` counts from 0; the player sees `world_number`.
+        self.current_world = self.config.start_world - 1
+        self.foods_in_world = 0
+        self.score = 0
         self.game_over = False
         self.won = False
         self.paused = False
@@ -110,6 +111,21 @@ class Game:
         """Replace the snake; a snake placed whole has no growing in left to do."""
         self._snake = positions
         self.pending_growth = 0
+
+    @property
+    def world_number(self) -> int:
+        """The current world as the player counts it, from 1."""
+        return self.current_world + 1
+
+    @property
+    def is_last_world(self) -> bool:
+        """Whether this is the last world, which play never moves on from."""
+        return self.current_world == len(WORLD_SPEEDS) - 1
+
+    @property
+    def current_interval(self) -> float:
+        """Seconds per move: the world sets the speed, and nothing else does."""
+        return 1.0 / WORLD_SPEEDS[self.current_world]
 
     @property
     def tail_stays(self) -> bool:
@@ -173,7 +189,7 @@ class Game:
     def step(self) -> StepResult:
         """Advance the game by one step and report what happened.
 
-        Owns every consequence of a tick — movement, world transition, speed-up,
+        Owns every consequence of a tick — movement, world transition, scoring,
         and game-over — returning a `StepResult` for the view to react to instead
         of leaving it to infer them from changes in snake length or world index.
         The game ends when the head hits the body or, with `config.walls`, the
@@ -221,24 +237,20 @@ class Game:
                 vacated_heading=vacated_heading,
             )
 
-        self.symbols_consumed += 1
-        self.symbols_in_current_world += 1
+        self.foods_eaten += 1
+        self.foods_in_world += 1
+        # A food scores the number of the world it was eaten in.
+        self.score += self.world_number
         previous_world = self.current_world
         self.check_world_transition()
         world_changed = self.current_world != previous_world
-        # Clamp to the floor: the geometric speed-up is otherwise unbounded and
-        # would eventually outrun the event loop and crash the app (see
-        # `config.min_speed_interval`).
-        self.current_interval = max(
-            self.config.min_speed_interval,
-            self.current_interval * self.config.speed_increase_factor,
-        )
         # A board with no empty cell left is a win: the snake covers every cell.
         # End here, before `place_food()` (which has no empty cell to find and
         # would otherwise spin), so a board-solving player terminates cleanly.
         if len(self.snake) == self.width * self.height:
             self.game_over = True
             self.won = True
+            self.score += BOARD_CLEAR_BONUS
             return StepResult(
                 moved=True,
                 ate_food=True,
@@ -260,14 +272,21 @@ class Game:
         )
 
     def check_world_transition(self) -> None:
-        """Check if player should move to next world."""
-        if self.symbols_in_current_world >= self.config.symbols_per_world:
+        """Move on to the next world after each set of foods, if worlds progress.
+
+        A fixed world never changes, and play stays in the last world.
+        """
+        if (
+            self.config.world_change == "progress"
+            and not self.is_last_world
+            and self.foods_in_world >= self.config.foods_per_world
+        ):
             self.current_world += 1
-            self.symbols_in_current_world = 0
+            self.foods_in_world = 0
 
     def get_moves_per_second(self) -> float:
         """Get current speed as moves per second."""
-        return 1.0 / self.current_interval
+        return float(WORLD_SPEEDS[self.current_world])
 
     @property
     def is_running(self) -> bool:

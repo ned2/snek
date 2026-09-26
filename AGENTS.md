@@ -89,9 +89,10 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   demo strategy name. `settings` / `apply_settings()` read and replace the config and strategy
   together for the settings screen.
 - **`cli.py`**: `main()`, the console entry point (`uv run snek`). Applies `--mode` (every
-  value, demo strategy included), then any sizing, grid-cap, scale, `--food`, `--start-length`,
-  walls, speed, smoothing and demo-strategy flags given, into a validated `GameConfig`. An
-  invalid combination is an argparse usage error (exit 2) before the TUI starts.
+  value, demo strategy included), then any `--world`, `--world-change`, `--foods-per-world`,
+  `--palette`, sizing, grid-cap, scale, `--food`, `--start-length`, walls, smoothing and
+  demo-strategy flags given, into a validated `GameConfig`. An invalid combination is an
+  argparse usage error (exit 2) before the TUI starts.
 - **`screens.py`**: the screens-as-states UI — `SplashScreen`, `SettingsModal`, `GameScreen`
   (the game loop + side panel), `PauseModal`, the scrollable `DiagnosticsModal`, and
   `GameOverModal`, plus the `SnakeView` board and the `SidePanel` / `StatDisplay` panel widgets.
@@ -106,7 +107,8 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   The mode in force is derived by `mode_of()` — the first whose values all match, else
   "Custom" (as are invalid settings) — never stored, so tweaking settings onto a mode's values
   shows that mode. `GameConfig`'s defaults are Classic's: Nokia Snake's walled 20x11 board,
-  diamond food and an 8-cell start.
+  diamond food, an 8-cell start, and a fixed world 5 on the LCD palette. Model tests about
+  progression pass `world_change="progress"` (and usually `start_world=1`).
 - **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
   model→view contract returned by `Game.step()`.
 - **`game_rules.py`**: pure game mechanics — movement (`next_position` wraps, or returns None
@@ -123,9 +125,9 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 - **`timing.py`**: `StepClock`, the framework-free fixed-step accumulator that decides how
   many model steps each wake runs (and how far the next step has progressed), and
   `next_wake_delay()`, which says when the loop should wake next.
-- **`worlds.py`**: world/theme progression (`WorldPath`) — tracks the current world and hands
-  out themed food symbols.
-- **`themes.py`**: per-world Textual themes (colors) and Unicode symbol sets.
+- **`worlds.py`**: world/theme progression (`WorldPath`) — the nine worlds, their food
+  symbols, and `WORLD_SPEEDS`, the moves/s ladder.
+- **`themes.py`**: per-world Textual themes (colors) and the two-tone `snek-lcd` theme.
 - **`figlet.py`**: `FigletText`, the in-repo ASCII-art title widget (recolors on theme change
   by overriding `notify_style_update`).
 - **`config.py`**: immutable, validated `GameConfig` values for timing, layout, progression,
@@ -156,10 +158,18 @@ tests that want a one-cell snake with no grow-in pass `start_length=1`.
 
 ### Game Progression System
 
-The game uses a world-based progression system where:
-- Every `symbols_per_world` foods consumed (10 by default, see `config.py`) advances to the
-  next world
-- Each world has its own Textual theme (colors) and Unicode symbol set for food
+A world is a Nokia Snake level. Each of the 9 worlds has a speed (`worlds.WORLD_SPEEDS`,
+4 to 25 moves/s), a theme and a food symbol set, and the world is the **only** source of
+speed: `Game.current_interval` is derived from `current_world` (counted from 0;
+`world_number` from 1), and there is no per-food speed-up.
+- Play starts in `start_world`. With `world_change` "fixed" it stays there; with "progress"
+  every `foods_per_world` foods eaten moves on a world, and play stays in world 9.
+- Scoring is always on: each food scores the world number it was eaten in, and filling the
+  board adds `BOARD_CLEAR_BONUS` (100). `Game.score` shows in the side panel, on the
+  game-over screen and in diagnostics.
+- `palette` "worlds" gives each world its own theme; "lcd" keeps the two-tone `snek-lcd`
+  theme in every world (glyph and sprite food keep their own colours).
+  `SnakeApp.show_world()` picks the theme, and the splash shows the next game's.
 
 ### State & data flow
 
@@ -175,7 +185,9 @@ under the help shows the error, if any. ENTER applies the draft only when it is 
 nothing otherwise); ESC discards it. `apply_settings()` replaces `app.config` and the live
 `Game`'s config at once; the next `start_new_game()` resets the game with it and calls
 `SnakeView.relayout()`, which re-establishes the logical grid only if a layout setting (sizing,
-scale, grid cap, walls, food type) changed since the grid was last established.
+scale, grid cap, walls, food type) changed since the grid was last established. The rows sit in
+a scrolling list that keeps the selected row in view; a compact title replaces the large one
+below the `-tall` breakpoint. The settings screen must still fit 80×24 (`tests/test_app.py`).
 
 Within the game loop:
 1. `GameScreen._on_frame` feeds the elapsed wall time into a `StepClock` and runs one model
@@ -194,13 +206,13 @@ Within the game loop:
    `Game.step()`, which returns a `StepResult` describing the consequences (moved / ate food /
    world changed / game over). The view reacts to those flags rather than inferring model
    deltas.
-3. `Game` owns world progression and speed via `WorldPath` and `current_interval`. A world change
-   updates the Textual theme; game-over stops the frame timer and pushes a fresh modal.
-4. The stats panel has one source of truth: `GameScreen` holds display-ready string
-   reactives (`world_name`, `progress`, `foods_label`, `speed_label`), each `data_bind`'d
+3. `Game` owns world progression, speed (from the world) and score. A world change updates
+   the Textual theme; game-over stops the frame timer and pushes a fresh modal.
+4. The stats panel has one source of truth: `GameScreen` holds display-ready string reactives
+   (`world_name`, `progress`, `score_label`, `foods_label`, `speed_label`), each `data_bind`'d
    (parent → child, read-only) to a `StatDisplay` in the `SidePanel`. After a frame's steps,
    `_sync_reactives()` runs once and the board refreshes once; the bindings propagate to the
-   panel.
+   panel. A fixed world shows its number and hides the progress line.
 
 ### Layout and rendering policy
 

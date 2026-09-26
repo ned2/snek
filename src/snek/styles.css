@@ -189,15 +189,30 @@ SplashScreen.-wide.-tall .version-display {
     text-style: dim;
 }
 
-/* Settings modal styling */
+/* Settings modal styling. The container takes the whole height so the rows
+   list can shrink to what is left and scroll; its content stays centred. */
 #settings-container {
     align: center middle;
     width: auto;
-    height: auto;
+    height: 100%;
 }
 
+/* Compact is the safe default; the large title needs a tall terminal. */
 #settings-title {
+    display: none;
     margin-bottom: 1;
+}
+
+#settings-title-compact {
+    margin-bottom: 1;
+}
+
+SettingsModal.-tall #settings-title {
+    display: block;
+}
+
+SettingsModal.-tall #settings-title-compact {
+    display: none;
 }
 
 #settings-prompt {
@@ -209,12 +224,14 @@ SplashScreen.-wide.-tall .version-display {
 
 #settings-rows {
     width: auto;
-    height: auto;
+    height: 100%;
+    scrollbar-size-vertical: 1;
 }
 
 #settings-rows-center {
+    /* The height left, capped in code at one line per row. */
     width: 100%;
-    height: auto;
+    height: 1fr;
 }
 
 .setting-row {

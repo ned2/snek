@@ -6,13 +6,17 @@ from dataclasses import replace
 import pytest
 
 from snek.config import DIAMOND, GameConfig
-from snek.game import Game, StepResult
+from snek.game import BOARD_CLEAR_BONUS, Game, StepResult
 from snek.game_rules import Direction
 
 # Most model tests were written for a wrapping board; walls are opt-in there.
 WRAPPING = GameConfig(walls=False)
 # A snake that starts whole, at length one, so a first step moves its tail.
 SINGLE = GameConfig(start_length=1)
+# Worlds that move on every 10 foods from world 1, on a wrapping board.
+PROGRESSING = GameConfig(
+    walls=False, start_world=1, world_change="progress", foods_per_world=10
+)
 
 
 class _FixedRankRng:
@@ -40,7 +44,7 @@ class TestGameInitialization:
         assert len(game.snake) == 1
         assert game.snake[0] == (game.width // 2, game.height // 2)
         assert game.direction == Direction.RIGHT
-        assert game.symbols_consumed == 0
+        assert game.foods_eaten == 0
         assert game.game_over is False
         assert game.paused is False
 
@@ -124,7 +128,7 @@ class TestGameInitialization:
         """Test game reset functionality."""
         game = Game()
         # Modify game state
-        game.symbols_consumed = 100
+        game.foods_eaten = 100
         game.game_over = True
         game.snake = [(1, 1), (2, 1), (3, 1)]
 
@@ -132,7 +136,7 @@ class TestGameInitialization:
         game.reset()
 
         # Check reset state
-        assert game.symbols_consumed == 0
+        assert game.foods_eaten == 0
         assert game.game_over is False
         assert len(game.snake) == 1
         assert game.snake[0] == (game.width // 2, game.height // 2)
@@ -310,7 +314,7 @@ class TestMovement:
         # Snake grew
         assert len(game.snake) == initial_length + 1
         # Symbols consumed increased
-        assert game.symbols_consumed == 1
+        assert game.foods_eaten == 1
         # New food was placed
         assert game.food != game.snake[0]
 
@@ -425,9 +429,9 @@ class TestTurnBuffering:
 class TestStepResult:
     """Test the StepResult contract that Game.step() returns to the view."""
 
-    def _game_with_food_ahead(self) -> Game:
+    def _game_with_food_ahead(self, config: GameConfig | None = None) -> Game:
         """A roomy game with food directly in front of the right-moving head."""
-        game = Game(width=40, height=40, rng=random.Random(0))
+        game = Game(width=40, height=40, config=config, rng=random.Random(0))
         head = game.snake[0]
         game.food = (head[0] + 1, head[1])
         return game
@@ -510,8 +514,8 @@ class TestStepResult:
 
     def test_eat_crossing_world_boundary(self):
         """Eating a world's final food reports world_changed and the new index."""
-        game = self._game_with_food_ahead()
-        game.symbols_in_current_world = game.config.symbols_per_world - 1
+        game = self._game_with_food_ahead(PROGRESSING)
+        game.foods_in_world = game.config.foods_per_world - 1
 
         result = game.step()
 
@@ -520,59 +524,86 @@ class TestStepResult:
         assert result.new_world == 1
         assert game.current_world == 1
 
-    def test_eat_scales_speed(self):
-        """Eating speeds the game up by the configured factor (model owns the rule)."""
-        game = self._game_with_food_ahead()
-        before = game.current_interval
 
-        game.step()
+class TestWorlds:
+    """A world is a Nokia level: it sets the speed and the points per food."""
 
-        assert game.current_interval == before * game.config.speed_increase_factor
-
-
-class TestSpeedFloor:
-    """The tick interval is clamped so the speed-up can't outrun the event loop.
-
-    Without a floor the geometric speed-up is unbounded; on a large board the
-    demo eats enough food to drive the interval into the tens of microseconds,
-    far faster than the event loop can service a step + render, and the app
-    crashes mid-game. See `config.min_speed_interval`.
-    """
-
-    def _eat_foods(self, game: Game, n: int) -> None:
-        """Eat `n` foods by always parking the next food in front of the head.
-
-        The board wraps and the snake grows (tail stays put) each food, so a
-        single wide, short board lets us eat far more foods than the geometric
-        speed-up needs to reach the floor — without any self-collision.
-        """
-        for _ in range(n):
+    def _eat(self, game: Game, foods: int) -> None:
+        """Eat `foods` foods by parking each in front of the head (it wraps)."""
+        for _ in range(foods):
             head = game.snake[0]
-            game.food = ((head[0] + 1) % game.width, head[1])
-            game.step()
+            game.set_food_position(((head[0] + 1) % game.width, head[1]))
+            assert game.step().ate_food
 
-    def test_interval_clamps_to_floor_and_no_crash_path(self):
-        """Eating well past the floor pins the interval at the floor, game alive."""
-        game = Game(width=400, height=3, config=WRAPPING)
-        # ~195 foods reaches the 0.002s floor from 0.1s; 300 is comfortably past.
-        self._eat_foods(game, 300)
-        assert game.game_over is False
-        assert game.current_interval == pytest.approx(game.config.min_speed_interval)
+    def test_play_starts_in_the_starting_world(self):
+        game = Game()
+        assert game.current_world == 4
+        assert game.world_number == 5  # Classic
+        game = Game(config=GameConfig(start_world=9))
+        assert (game.current_world, game.world_number) == (8, 9)
 
-    def test_speed_never_exceeds_cap(self):
-        """No matter how many foods are eaten, moves/sec stays under the cap."""
-        game = Game(width=400, height=3, config=WRAPPING)
-        cap = 1.0 / game.config.min_speed_interval
-        for _ in range(300):
-            head = game.snake[0]
-            game.food = ((head[0] + 1) % game.width, head[1])
-            game.step()
-            assert game.get_moves_per_second() <= cap + 1e-9
+    @pytest.mark.parametrize(
+        ("world", "speed"),
+        [(1, 4), (2, 5), (3, 6), (4, 8), (5, 10), (6, 12), (7, 15), (8, 20), (9, 25)],
+    )
+    def test_the_world_sets_the_speed(self, world: int, speed: int):
+        game = Game(config=GameConfig(start_world=world))
+        assert game.get_moves_per_second() == pytest.approx(speed)
+        assert game.current_interval == pytest.approx(1 / speed)
 
-    def test_fast_start_above_cap_is_rejected(self):
-        """An unsafe requested start speed fails instead of being silently changed."""
-        with pytest.raises(ValueError, match="initial_speed_interval"):
-            GameConfig(initial_speed_interval=0.00001)
+    def test_eating_does_not_speed_up_a_fixed_world(self):
+        game = Game(width=400, height=3, config=replace(WRAPPING, start_world=3))
+        self._eat(game, 120)
+        assert game.current_world == 2
+        assert game.get_moves_per_second() == pytest.approx(6)
+        assert game.foods_in_world == game.foods_eaten == 120
+
+    def test_a_new_world_brings_its_speed(self):
+        game = Game(width=400, height=3, config=replace(PROGRESSING, start_world=4))
+        self._eat(game, 9)
+        assert game.get_moves_per_second() == pytest.approx(8)
+        self._eat(game, 1)
+        assert game.world_number == 5
+        assert game.get_moves_per_second() == pytest.approx(10)
+        assert game.foods_in_world == 0
+
+    def test_progress_stays_in_the_last_world(self):
+        game = Game(width=400, height=3, config=PROGRESSING)
+        self._eat(game, 8 * 10)
+        assert game.world_number == 9
+        assert game.is_last_world
+        self._eat(game, 25)
+        assert game.world_number == 9
+        assert game.foods_in_world == 25  # counting on, but never moving on
+        assert game.get_moves_per_second() == pytest.approx(25)
+
+    def test_each_food_scores_the_world_number(self):
+        game = Game(width=400, height=3, config=replace(PROGRESSING, start_world=8))
+        self._eat(game, 10)  # the 10th food, eaten in world 8, moves on to 9
+        assert game.score == 10 * 8
+        assert game.world_number == 9
+        self._eat(game, 2)
+        assert game.score == 10 * 8 + 2 * 9
+
+    def test_a_fixed_world_scores_its_number(self):
+        game = Game(width=400, height=3, config=replace(WRAPPING, start_world=2))
+        self._eat(game, 7)
+        assert game.score == 14
+
+    def test_filling_the_board_scores_a_bonus(self):
+        game = Game(width=3, height=2, rng=random.Random(0))  # world 5
+        game.snake = [(2, 0), (1, 0), (0, 0), (0, 1), (1, 1)]
+        game.direction = Direction.DOWN
+        game.set_food_position((2, 1))
+        assert game.step().won
+        assert game.score == 5 + BOARD_CLEAR_BONUS == 105
+
+    def test_reset_clears_the_score_and_the_world(self):
+        game = Game(width=400, height=3, config=PROGRESSING)
+        self._eat(game, 12)
+        assert (game.score, game.world_number) != (0, 1)
+        game.reset()
+        assert (game.score, game.world_number, game.foods_in_world) == (0, 1, 0)
 
 
 class TestWinState:
@@ -628,7 +659,7 @@ class TestPositionSetup:
     def test_reset_can_establish_a_fresh_grid(self):
         """Initial UI layout may choose dimensions before any play state exists."""
         game = Game(width=10, height=10)
-        game.symbols_consumed = 10
+        game.foods_eaten = 10
         game.game_over = True
 
         game.reset(width=20, height=12)
@@ -636,7 +667,7 @@ class TestPositionSetup:
         assert (game.width, game.height) == (20, 12)
         assert game.snake == [(10, 6)]
         assert game.food not in game.snake
-        assert game.symbols_consumed == 0
+        assert game.foods_eaten == 0
         assert game.game_over is False
 
     def test_reset_dimensions_must_be_supplied_together(self):
@@ -809,8 +840,8 @@ class TestGrowIn:
         game = Game(width=20, height=11)
         game.set_food_position((0, 0))
         game.step()
-        assert game.symbols_consumed == 0
-        assert game.current_interval == game.config.initial_speed_interval
+        assert game.foods_eaten == 0
+        assert game.score == 0
 
     def test_food_eaten_while_growing_in_adds_a_segment(self):
         game = Game(width=20, height=11)

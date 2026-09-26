@@ -82,21 +82,46 @@ def test_the_agreed_modes() -> None:
         assert by_name[name]["food_type"] == "sprites"
 
 
+def test_the_agreed_worlds() -> None:
+    """Classic stays in world 5 (10 moves a second) on the LCD screen; the other
+    modes progress from world 1 in each world's colours, with foods per world
+    suited to the board."""
+    worlds = {
+        mode.name: (
+            mode.values["start_world"],
+            mode.values["world_change"],
+            mode.values["foods_per_world"],
+            mode.values["palette"],
+        )
+        for mode in MODES
+    }
+    assert worlds == {
+        "Classic": (5, "fixed", 50, "lcd"),
+        "Arcade": (1, "progress", 25, "worlds"),
+        "Arena": (1, "progress", 200, "worlds"),
+        "Pixel Arena": (1, "progress", 100, "worlds"),
+    }
+    assert "LCD" in describe("Classic")
+
+
 def test_changing_any_setting_is_custom() -> None:
     settings = default_settings()
     for change in (
         {"walls": False},
         {"max_grid_width": 48},
         {"smooth_motion": False},
-        {"initial_speed_interval": 0.5},
         {"start_length": 3},
+        {"start_world": 1},
+        {"world_change": "progress"},
+        {"foods_per_world": 10},
+        {"palette": "worlds"},
     ):
         assert mode_of(settings.with_values(**change)) == CUSTOM
     assert mode_of(replace(settings, demo_strategy="greedy")) == CUSTOM
 
 
 def test_settings_outside_modes_do_not_change_the_mode() -> None:
-    settings = default_settings().with_values(symbols_per_world=5)
+    settings = default_settings().with_values(max_buffered_turns=5)
     assert mode_of(settings) == "Classic"
 
 

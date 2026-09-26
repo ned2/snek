@@ -1,7 +1,10 @@
 """Tests for world path functionality."""
 
+import pytest
+from rich.cells import cell_len
+
 from snek.themes import THEME_MAP
-from snek.worlds import World, WorldPath
+from snek.worlds import WORLD_SPEEDS, World, WorldPath
 
 
 class TestWorld:
@@ -100,15 +103,26 @@ class TestWorldPath:
             "Mathematical Realm",
             "Global Currencies",
             "Digital Age",
+            "Celestial",
         ]
 
+        assert [world.name for world in journey.worlds] == expected_order
         for i, expected_name in enumerate(expected_order):
             assert journey.get_world_name(i) == expected_name
 
-    def test_world_wrap_around(self):
-        """Test that worlds wrap around after the last one."""
+    def test_there_is_no_world_after_the_last(self):
+        """Play stays in the last world, so the worlds no longer wrap around."""
         journey = WorldPath()
+        with pytest.raises(IndexError):
+            journey.get_world(len(journey.worlds))
 
-        # Test wrap around - world 8 should go back to Basic Symbols
-        assert journey.get_world_name(8) == "Basic Symbols"
-        assert journey.get_world_name(9) == "Ancient Egypt"
+    def test_celestial_glyphs_are_single_cells(self):
+        celestial = WorldPath().worlds[-1]
+        assert celestial.characters == list("☉☽☿♀♂♃♄♅♆♇")
+        assert all(cell_len(glyph) == 1 for glyph in celestial.characters)
+        assert celestial.theme_name in THEME_MAP
+
+
+def test_each_world_has_a_speed_on_the_agreed_ladder():
+    assert len(WORLD_SPEEDS) == len(WorldPath().worlds) == 9
+    assert WORLD_SPEEDS == (4, 5, 6, 8, 10, 12, 15, 20, 25)

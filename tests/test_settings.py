@@ -9,10 +9,11 @@ from snek.demo import STRATEGIES
 from snek.modes import CUSTOM, MODES, Settings, default_settings, describe
 from snek.settings import (
     FOOD_HELP,
+    FOODS_PER_WORLD,
     MODE_ROW,
     ROWS,
-    SPEEDS,
     START_LENGTHS,
+    START_WORLDS,
     SettingRow,
     widest_help,
 )
@@ -55,34 +56,86 @@ def test_named_settings_wrap_round() -> None:
     assert walls.step(_defaults(), -1).get("walls") is False
 
 
+def test_rows_are_in_the_agreed_order() -> None:
+    assert [row.label for row in ROWS] == [
+        "Mode",
+        "Walls",
+        "Starting world",
+        "World change",
+        "Foods per world",
+        "Starting length",
+        "Board sizing",
+        "Grid cap",
+        "Cell scale",
+        "Smooth motion",
+        "Food type",
+        "Palette",
+        "Demo strategy",
+    ]
+
+
 def test_ordered_settings_stop_at_the_ends() -> None:
-    speed = _row("Starting speed")
-    fastest = speed.put(_defaults(), SPEEDS[-1])
-    assert speed.step(fastest, 1) == fastest
-    slowest = speed.put(_defaults(), SPEEDS[0])
-    assert speed.step(slowest, -1) == slowest
+    world = _row("Starting world")
+    last = world.put(_defaults(), START_WORLDS[-1])
+    assert world.step(last, 1) == last
+    first = world.put(_defaults(), START_WORLDS[0])
+    assert world.step(first, -1) == first
 
 
-def test_speed_is_moves_per_second() -> None:
-    speed = _row("Starting speed")
-    assert speed.get(_defaults()) == 10
-    faster = speed.step(_defaults(), 1)
-    assert faster.get("initial_speed_interval") == pytest.approx(1 / 12)
-    assert speed.value_text(faster) == "12 /sec"
+def test_starting_world_shows_its_speed() -> None:
+    world = _row("Starting world")
+    assert world.choices == START_WORLDS == tuple(range(1, 10))
+    assert world.get(_defaults()) == 5
+    assert world.value_text(_defaults()) == "5 · 10/s"
+    faster = world.step(_defaults(), 1)
+    assert faster.get("start_world") == 6
+    assert world.value_text(faster) == "6 · 12/s"
+    assert [world.show(choice) for choice in (1, 9)] == ["1 · 4/s", "9 · 25/s"]
+    assert world.help_text(_defaults()) == (
+        "The world you start in: sets the speed (4\N{EN DASH}25 /sec) and points "
+        "per food."
+    )
+
+
+def test_world_change_and_palette_are_named_and_wrap() -> None:
+    change = _row("World change")
+    assert change.value_text(_defaults()) == "Fixed"
+    progress = change.step(_defaults(), 1)
+    assert change.value_text(progress) == "Progress"
+    assert change.step(progress, 1).get("world_change") == "fixed"
+    assert change.help_text(_defaults()) == (
+        "Fixed: stay in the starting world. Progress: move on after each set of foods."
+    )
+    palette = _row("Palette")
+    assert palette.value_text(_defaults()) == "LCD"
+    assert palette.value_text(palette.step(_defaults(), 1)) == "Worlds"
+    assert palette.help_text(_defaults()) == (
+        "Worlds: each world's colours. LCD: the Nokia green-grey screen."
+    )
+
+
+def test_foods_per_world_choices() -> None:
+    foods = _row("Foods per world")
+    assert foods.choices == FOODS_PER_WORLD == (10, 25, 50, 100, 200)
+    assert foods.get(_defaults()) == 50
+    assert foods.step(_defaults(), -1).get("foods_per_world") == 25
+    assert foods.help_text(_defaults()) == (
+        "Foods eaten before moving to the next world. Ignored when fixed."
+    )
 
 
 @pytest.mark.parametrize(
-    ("moves_per_second", "delta", "expected"),
-    [(7.3, 1, 8), (7.3, -1, 6), (100, 1, 100), (100, -1, 50), (1, -1, 1), (1, 1, 2)],
+    ("foods", "delta", "expected"),
+    [(30, 1, 50), (30, -1, 25), (500, 1, 500), (500, -1, 200), (5, -1, 5), (5, 1, 10)],
 )
 def test_off_list_values_step_to_the_nearest_choice(
-    moves_per_second: float, delta: int, expected: float
+    foods: int, delta: int, expected: int
 ) -> None:
-    """A `--speed` between presets steps to the next one; past the ends it stays."""
-    speed = _row("Starting speed")
-    config = replace(default_config, initial_speed_interval=1 / moves_per_second)
+    """A value between choices steps to the next one; past the ends it stays."""
+    row = _row("Foods per world")
+    config = replace(default_config, foods_per_world=foods)
     settings = Settings(base=config, demo_strategy="floodfill")
-    assert speed.get(speed.step(settings, delta)) == pytest.approx(expected)
+    assert row.get(row.step(settings, delta)) == expected
 
 
 def test_starting_length_is_one_to_ten_in_order() -> None:
@@ -95,11 +148,6 @@ def test_starting_length_is_one_to_ten_in_order() -> None:
     assert (
         length.help_text(_defaults()) == "Segments the snake unrolls to at the start."
     )
-
-
-def test_starting_length_follows_starting_speed() -> None:
-    labels = [row.label for row in ROWS]
-    assert labels.index("Starting length") == labels.index("Starting speed") + 1
 
 
 def test_grid_cap_sets_both_dimensions() -> None:
@@ -174,12 +222,12 @@ def test_stepping_from_custom_enters_at_the_ends(delta: int, expected: str) -> N
 
 
 def test_a_mode_sets_every_setting() -> None:
-    """Modes are exhaustive: speed and the demo strategy reset with the mode."""
-    tweaked = _row("Starting speed").put(_defaults(), SPEEDS[-1])
+    """Modes are exhaustive: the world and the demo strategy reset with the mode."""
+    tweaked = _row("Starting world").put(_defaults(), START_WORLDS[-1])
     tweaked = _row("Demo strategy").put(tweaked, "greedy")
     assert MODE_ROW.get(tweaked) == CUSTOM
     arena = MODE_ROW.put(tweaked, "Arena")
-    assert arena.get("initial_speed_interval") == pytest.approx(0.1)
+    assert arena.get("start_world") == 1
     assert arena.demo_strategy == "floodfill"
     assert MODE_ROW.get(arena) == "Arena"
 

@@ -1,10 +1,11 @@
 """Configuration settings and defaults for the Snek game."""
 
-import math
 from dataclasses import dataclass
 from typing import Final
 
 from rich.cells import cell_len
+
+from .worlds import WORLD_SPEEDS
 
 # The smallest cell scale that can hold a food sprite: at scale 1 a cell is only
 # 2x1 characters, far too small for pixel art.
@@ -17,6 +18,12 @@ FOOD_TYPES: Final = ("diamond", "glyphs", "sprites")
 # The "diamond" food's symbol.
 DIAMOND: Final = "❖"
 
+# How the world changes in a game: stay in the starting world, or move on.
+WORLD_CHANGES: Final = ("fixed", "progress")
+
+# The colour palettes: each world's own theme, or the Nokia LCD screen's.
+PALETTES: Final = ("worlds", "lcd")
+
 
 def _require_positive_int(name: str, value: object) -> int:
     """Return a positive integer or raise an actionable configuration error."""
@@ -25,16 +32,6 @@ def _require_positive_int(name: str, value: object) -> int:
     if value < 1:
         raise ValueError(f"{name} must be at least 1, got {value}")
     return value
-
-
-def _require_positive_finite(name: str, value: object) -> float:
-    """Return a finite positive number or raise an actionable error."""
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ValueError(f"{name} must be a number, got {value!r}")
-    number = float(value)
-    if not math.isfinite(number) or number <= 0:
-        raise ValueError(f"{name} must be finite and greater than 0, got {value!r}")
-    return number
 
 
 def validate_dimensions(width: object, height: object) -> None:
@@ -88,30 +85,22 @@ class GameConfig:
     # never draws cells smaller than that (see `min_cell_scale`).
     cell_scale: int = 1
 
-    # Speed settings
-    initial_speed_interval: float = 0.1
-    speed_increase_factor: float = 0.98
+    # The world play starts in, from 1 to `len(WORLD_SPEEDS)`. A world sets the
+    # speed (see `worlds.WORLD_SPEEDS`) and the points each food scores, like
+    # Nokia Snake's level; it is the only source of speed.
+    start_world: int = 5
 
-    # Hard floor on the tick interval — the fastest the snake may ever move.
-    # Without it, `speed_increase_factor` compounds on every food with no bound,
-    # and on a large board the demo AI eats enough food (~376) to drive the
-    # interval down to ~50 us (~19,800 moves/sec). At that point the requested
-    # tick rate is faster than the asyncio event loop can process one
-    # `Game.step()` + board re-render, so the loop saturates (never sleeps, never
-    # yields to input/repaint) and the app falls over mid-game.
-    #
-    # Crashing is the hard limit; watchability is the binding one. A big-board
-    # step+render costs ~0.4 ms here, so 2 ms (500 moves/sec) still leaves the
-    # loop ~5x headroom and stays well clear of the saturation wall on slower
-    # machines. The practical ceiling is lower than the crash point, though:
-    # past ~500 moves/sec the board updates faster than it can redraw cleanly and
-    # the demo turns into hard-to-watch flicker. This is already well beyond what
-    # a human can use — a later change may split this into separate human/demo
-    # caps — but for now a single floor keeps every game both safe and watchable.
-    min_speed_interval: float = 0.002
+    # How the world changes during a game, one of `WORLD_CHANGES`: "fixed" stays
+    # in the starting world; "progress" moves on after every `foods_per_world`
+    # foods, and stays in the last world once it gets there.
+    world_change: str = "fixed"
 
-    # Symbols needed to advance to next world
-    symbols_per_world: int = 10
+    # Foods eaten before moving on to the next world (unused when fixed).
+    foods_per_world: int = 50
+
+    # The colours, one of `PALETTES`: "worlds" gives each world its own theme;
+    # "lcd" is one two-tone green-grey theme, whatever the world.
+    palette: str = "lcd"
 
     # How many queued turns may wait to be applied (one per tick). Buffering keeps
     # several keys pressed within a single tick from compounding into a reversal,
@@ -190,26 +179,23 @@ class GameConfig:
 
         _require_positive_int("cell_scale", self.cell_scale)
         _require_positive_int("start_length", self.start_length)
-        _require_positive_int("symbols_per_world", self.symbols_per_world)
+        _require_positive_int("foods_per_world", self.foods_per_world)
         _require_positive_int("max_buffered_turns", self.max_buffered_turns)
         _require_positive_int("side_panel_width", self.side_panel_width)
 
-        initial_interval = _require_positive_finite(
-            "initial_speed_interval", self.initial_speed_interval
-        )
-        minimum_interval = _require_positive_finite(
-            "min_speed_interval", self.min_speed_interval
-        )
-        if initial_interval < minimum_interval:
+        world = _require_positive_int("start_world", self.start_world)
+        if world > len(WORLD_SPEEDS):
             raise ValueError(
-                "initial_speed_interval must be greater than or equal to "
-                "min_speed_interval"
+                f"start_world must be at most {len(WORLD_SPEEDS)}, got {world}"
             )
-        speed_factor = _require_positive_finite(
-            "speed_increase_factor", self.speed_increase_factor
-        )
-        if speed_factor > 1:
-            raise ValueError("speed_increase_factor must be less than or equal to 1")
+        for name, value, choices in (
+            ("world_change", self.world_change, WORLD_CHANGES),
+            ("palette", self.palette, PALETTES),
+        ):
+            if not isinstance(value, str) or value not in choices:
+                raise ValueError(
+                    f"{name} must be one of {', '.join(choices)}, got {value!r}"
+                )
 
         for name, glyph in (
             ("snake_block", self.snake_block),

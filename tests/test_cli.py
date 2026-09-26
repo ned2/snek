@@ -1,4 +1,4 @@
-"""Tests for the `snek` CLI: the `--speed` and `--demo-strategy` selectors."""
+"""Tests for the `snek` CLI: the mode and the flags that override it."""
 
 import pytest
 
@@ -10,54 +10,67 @@ from snek.modes import CUSTOM, DEFAULT_MODE, MODES, Settings, mode_of
 from snek.screens import GameScreen
 
 
-def test_parser_speed_defaults_to_the_mode():
-    """With no flag, the speed is the mode's: None until `main` applies it."""
-    assert _build_parser().parse_args([]).speed is None
-
-
-def test_parser_accepts_explicit_speed():
-    """A positive `--speed` is parsed as a float."""
-    assert _build_parser().parse_args(["--speed", "20"]).speed == pytest.approx(20.0)
-
-
-@pytest.mark.parametrize("value", ["0", "-5", "abc", "", "nan", "inf", "501", "1e-309"])
-def test_parser_rejects_non_positive_or_invalid_speed(value):
-    """Unsafe, non-finite, and non-numeric speeds are rejected."""
+def test_speed_flag_is_gone():
+    """The world is the only source of speed: `--speed` no longer exists."""
     with pytest.raises(SystemExit):
-        _build_parser().parse_args(["--speed", value])
+        _build_parser().parse_args(["--speed", "20"])
 
 
-def test_parser_accepts_maximum_safe_speed():
-    maximum = 1.0 / default_config.min_speed_interval
-    assert _build_parser().parse_args(["--speed", str(maximum)]).speed == maximum
-
-
-def test_main_translates_speed_into_interval(monkeypatch):
-    """`main` converts moves-per-second into the model's seconds-per-move interval."""
-    captured = {}
-
-    class FakeApp:
-        def __init__(self, config=None, demo_strategy=None):
-            captured["config"] = config
-            captured["demo_strategy"] = demo_strategy
-
-        def run(self):
-            pass
-
-    monkeypatch.setattr("snek.cli.SnakeApp", FakeApp)
-    main(["--speed", "20"])
-    assert captured["config"].initial_speed_interval == pytest.approx(1.0 / 20.0)
-    # Overriding speed must not disturb the other config fields.
-    assert (
-        captured["config"].speed_increase_factor == default_config.speed_increase_factor
+def test_world_flags_default_to_the_mode():
+    args = _build_parser().parse_args([])
+    assert (args.world, args.world_change, args.foods_per_world, args.palette) == (
+        None,
+        None,
+        None,
+        None,
     )
 
 
-def test_app_starts_at_requested_speed():
-    """A custom interval flows through to the game's starting speed."""
-    config = SnakeApp().config
-    fast = type(config)(initial_speed_interval=1.0 / 25.0)
-    assert SnakeApp(config=fast).game.get_moves_per_second() == pytest.approx(25.0)
+@pytest.mark.parametrize(
+    ("argv", "field", "value"),
+    [
+        ([], "start_world", 5),
+        (["--world", "9"], "start_world", 9),
+        (["--mode", "arena"], "start_world", 1),
+        (["--mode", "arena", "--world", "3"], "start_world", 3),
+        ([], "world_change", "fixed"),
+        (["--world-change", "progress"], "world_change", "progress"),
+        (["--mode", "arcade", "--world-change", "fixed"], "world_change", "fixed"),
+        ([], "foods_per_world", 50),
+        (["--mode", "arcade"], "foods_per_world", 25),
+        (["--foods-per-world", "200"], "foods_per_world", 200),
+        ([], "palette", "lcd"),
+        (["--mode", "arena"], "palette", "worlds"),
+        (["--palette", "worlds"], "palette", "worlds"),
+        (["--mode", "arena", "--palette", "lcd"], "palette", "lcd"),
+    ],
+)
+def test_main_applies_world_flags(monkeypatch, argv, field, value):
+    """Each world flag overrides the mode's value only when given."""
+    assert _launch(monkeypatch, argv).get(field) == value
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--world", "0"],
+        ["--world", "10"],
+        ["--world", "two"],
+        ["--world-change", "sometimes"],
+        ["--foods-per-world", "30"],
+        ["--foods-per-world", "0"],
+        ["--palette", "sepia"],
+    ],
+)
+def test_parser_rejects_values_off_the_settings_rows(argv):
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(argv)
+
+
+def test_app_starts_at_the_starting_worlds_speed():
+    """The starting world sets the game's speed."""
+    config = type(SnakeApp().config)(start_world=9)
+    assert SnakeApp(config=config).game.get_moves_per_second() == pytest.approx(25.0)
 
 
 def test_parser_demo_strategy_defaults_to_the_mode():
@@ -316,14 +329,16 @@ def test_flags_override_the_mode(monkeypatch):
     leaves the mode in force."""
     for argv in (
         ["--mode", "arcade", "--scale", "3"],
-        ["--speed", "20"],
+        ["--world", "6"],
+        ["--palette", "worlds"],
         ["--no-smooth"],
         ["--start-length", "3"],
     ):
         assert mode_of(_launch(monkeypatch, argv)) == CUSTOM, argv
     for argv, mode in (
         (["--mode", "arena", "--no-walls"], "Arena"),
-        (["--speed", "10", "--smooth", "--start-length", "8"], "Classic"),
+        (["--world", "5", "--smooth", "--start-length", "8"], "Classic"),
+        (["--mode", "arcade", "--world-change", "progress"], "Arcade"),
     ):
         assert mode_of(_launch(monkeypatch, argv)) == mode, argv
 
