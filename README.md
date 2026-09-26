@@ -75,5 +75,7 @@ the terminal is made smaller, but interface elements may be clipped.
   world, starting length, board sizing, grid cap, cell scale, smooth motion, food type,
   palette and demo strategy, for the rest of the session
 - **Enter**: Toggle sidebar visibility
+- **Esc**: Back to the main menu (from the game, pause, diagnostics or game over; in settings
+  it discards the changes)
 - **?**: Open scrollable live diagnostics; press **C** there to copy them
 - **Q**: Quit the game

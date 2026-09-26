@@ -486,15 +486,18 @@ class GameScreen(Screen[None]):
             self._last_frame = None
             self._arm()
 
-    @override
-    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        """Offer the main menu only while the board is held for size."""
-        if action == "menu":
-            return self._held
-        return True
-
     def action_menu(self) -> None:
-        """Leave a held game for the main menu, e.g. to turn sprites off."""
+        """Leave the game for the main menu (the splash)."""
+        self.leave_to_menu()
+
+    def leave_to_menu(self) -> None:
+        """Stop the loop and return to the splash, abandoning the game.
+
+        ESC does this from the game and the pause, diagnostics and game-over
+        modals (which pop themselves first). The game is left paused so nothing re-arms
+        the loop behind the splash; the next `start_new_game()` resets it.
+        """
+        self._pause_loop()
         self.app.pop_screen()
 
     def action_diagnostics(self) -> None:
@@ -595,6 +598,7 @@ class PauseModal(ModalScreen[None]):
 
     BINDINGS = [
         ("space", "resume", "Resume"),
+        ("escape", "menu", "Main Menu"),
         ("q", "quit", "Quit"),
     ]
 
@@ -615,6 +619,7 @@ class PauseModal(ModalScreen[None]):
                 yield Static("Arrows / WASD: Move the snek")
                 yield Static("        Space: Pause the game")
                 yield Static("        Enter: Toggle sidebar")
+                yield Static("          ESC: Main menu")
                 yield Static("            Q: Quit the game")
 
     def action_resume(self) -> None:
@@ -622,6 +627,11 @@ class PauseModal(ModalScreen[None]):
         game_screen = _game_screen(self)
         game_screen.resume_game()
         self.app.pop_screen()
+
+    def action_menu(self) -> None:
+        """Abandon the paused game for the main menu (splash)."""
+        self.app.pop_screen()
+        _game_screen(self).leave_to_menu()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -631,13 +641,14 @@ class PauseModal(ModalScreen[None]):
 class DiagnosticsModal(ModalScreen[None]):
     """A pause-style overlay that shows live config and game state for debugging.
 
-    Opened with `?` from the game (which also pauses); SPACE resumes, mirroring
-    the pause modal. Parameters are read in `compose`, so each open reflects the
+    Opened with `?` from the game (which also pauses); SPACE resumes and ESC
+    abandons the game for the main menu, mirroring the pause modal. Parameters are read in `compose`, so each open reflects the
     current state.
     """
 
     BINDINGS = [
         ("space", "resume", "Resume"),
+        ("escape", "menu", "Main Menu"),
         ("c", "copy", "Copy"),
         ("q", "quit", "Quit"),
     ]
@@ -653,7 +664,10 @@ class DiagnosticsModal(ModalScreen[None]):
                 colors=["$primary"],
                 classes="title-text",
             )
-            yield Static("C copy · SPACE close · ↑/↓ scroll", id="diagnostics-prompt")
+            yield Static(
+                "C copy · SPACE close · ESC main menu · ↑/↓ scroll",
+                id="diagnostics-prompt",
+            )
             with VerticalScroll(id="diagnostics-scroll", can_focus=True):
                 yield Static(self._params_text(), id="diagnostics-params")
 
@@ -747,6 +761,11 @@ class DiagnosticsModal(ModalScreen[None]):
         game_screen = _game_screen(self)
         game_screen.resume_game()
         self.app.pop_screen()
+
+    def action_menu(self) -> None:
+        """Abandon the paused game for the main menu (mirrors the pause modal)."""
+        self.app.pop_screen()
+        _game_screen(self).leave_to_menu()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -907,7 +926,7 @@ class GameOverModal(ModalScreen[None]):
 
     BINDINGS = [
         ("space", "restart", "Restart"),
-        ("enter", "menu", "Main Menu"),
+        ("escape", "menu", "Main Menu"),
         ("q", "quit", "Quit"),
     ]
 
@@ -945,7 +964,7 @@ class GameOverModal(ModalScreen[None]):
                 classes="death-prompt",
             )
             yield Static(
-                "Press SPACE to restart, ENTER for main menu, or Q to quit",
+                "Press SPACE to restart, ESC for main menu, or Q to quit",
                 classes="death-prompt",
             )
 
@@ -963,7 +982,7 @@ class GameOverModal(ModalScreen[None]):
     def action_menu(self) -> None:
         """Return to the main menu (splash): pop this modal and the GameScreen."""
         self.app.pop_screen()
-        self.app.pop_screen()
+        _game_screen(self).leave_to_menu()
 
     def action_quit(self) -> None:
         """Quit the application."""

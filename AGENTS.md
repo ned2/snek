@@ -177,7 +177,9 @@ State is the **Textual screen stack**, not a separate state machine — each sta
 `SplashScreen` → `GameScreen` → (`PauseModal` / `DiagnosticsModal` / `GameOverModal`), navigated
 with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`, and ←/→ on the splash
 cycle the mode. Splash, game, and pause are registered screens; settings, diagnostics, and
-game-over are fresh instances so their displayed state cannot go stale.
+game-over are fresh instances so their displayed state cannot go stale. ESC is the one way back
+to the splash: from the game, pause, diagnostics and game-over screens it abandons the game via
+`GameScreen.leave_to_menu()`, which leaves it paused so nothing re-arms the loop.
 
 Settings are session-only and reachable only from the splash, so no game is running when they
 change. `SettingsModal` edits a draft: every change re-validates it and a reserved red line
@@ -234,7 +236,7 @@ Within the game loop:
   blocks ENTER). With sprites the scale never drops below `config.min_cell_scale` and cap mode
   uses the whole grid cap. Where that board does not fit, `SnakeView` draws a "terminal too
   small" message instead and `GameScreen.hold_for_size()` stops the loop (without pausing the
-  model) until there is room; ESC then offers the menu.
+  model) until there is room.
 - `SnakeView` uses Textual's Line API: `render_line()` centres and frames the board itself and
   delegates each board row to the pure `render_board_row()` in `rendering.py`. Food is a cached
   pixel sprite with sprite food, otherwise the food's symbol (`❖` or the world's glyph).

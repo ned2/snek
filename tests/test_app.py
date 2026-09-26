@@ -18,6 +18,7 @@ from snek.screens import (
     DiagnosticsModal,
     GameOverModal,
     GameScreen,
+    PauseModal,
     SettingsModal,
     SidePanel,
     SnakeView,
@@ -675,8 +676,11 @@ async def test_new_game_from_menu_resets_and_plays():
         app.push_screen(GameOverModal())
         await pilot.pause()
 
-        # ENTER -> main menu, then D -> a fresh demo game.
+        # ENTER no longer leaves; ESC -> main menu, then D -> a fresh demo game.
         await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, GameOverModal)
+        await pilot.press("escape")
         await pilot.pause()
         assert isinstance(app.screen, SplashScreen)
         await pilot.press("d")
@@ -1243,15 +1247,11 @@ async def test_sprites_hold_a_game_when_the_terminal_shrinks():
 
 @pytest.mark.asyncio
 async def test_escape_leaves_a_held_game_for_the_menu():
-    """ESC reaches the menu (and so the settings) only while the game is held."""
+    """ESC reaches the menu (and so the settings) while the game is held."""
     app = SnakeApp(config=SPRITES)
     async with app.run_test(size=(200, 50)) as pilot:
         await pilot.press("space")
         await pilot.pause()
-        await pilot.press("escape")
-        await pilot.pause()
-        assert isinstance(app.screen, GameScreen)  # not held: ESC does nothing
-
         await pilot.resize_terminal(120, 35)
         await pilot.pause()
         await pilot.press("escape")
@@ -1265,6 +1265,55 @@ async def test_escape_leaves_a_held_game_for_the_menu():
         game_screen = app.screen
         assert isinstance(game_screen, GameScreen)
         assert not game_screen.query_one(SnakeView).too_small
+        assert game_screen.timer is not None
+
+
+@pytest.mark.asyncio
+async def test_escape_leaves_a_running_game_for_the_menu():
+    """ESC mid-game returns to the splash with the loop stopped behind it."""
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        assert game_screen.timer is not None
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+        assert game_screen.timer is None
+        assert app.game.paused  # so nothing re-arms the loop behind the splash
+
+        await pilot.press("space")  # the next game starts fresh and runs
+        await pilot.pause()
+        assert app.screen is game_screen
+        assert not app.game.paused
+        assert _is_fresh(app.game)
+        assert game_screen.timer is not None
+
+
+@pytest.mark.asyncio
+async def test_escape_leaves_a_paused_game_for_the_menu():
+    """ESC on the pause modal abandons the game for the splash."""
+    app = SnakeApp()
+    async with app.run_test() as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        await pilot.press("space")
+        await pilot.pause()
+        assert isinstance(app.screen, PauseModal)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+        assert game_screen.timer is None
+
+        await pilot.press("space")
+        await pilot.pause()
+        assert app.screen is game_screen
+        assert not app.game.paused
         assert game_screen.timer is not None
 
 
@@ -1397,6 +1446,7 @@ async def test_diagnostics_scrolls_and_keeps_actions_reachable_at_80_by_24(
             _assert_fully_in_view(widget, 80, 24)
         assert "C copy" in str(prompt.render())
         assert "SPACE close" in str(prompt.render())
+        assert "ESC main menu" in str(prompt.render())
         assert modal.focused is scroll
         assert scroll.max_scroll_y > 0
 
@@ -1423,6 +1473,32 @@ async def test_diagnostics_scrolls_and_keeps_actions_reachable_at_80_by_24(
         await pilot.pause()
         assert isinstance(app.screen, GameScreen)
         assert app.game.paused is False
+
+
+@pytest.mark.asyncio
+async def test_escape_leaves_diagnostics_for_the_menu():
+    """ESC on diagnostics abandons the game, even with the scroll body focused."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        await pilot.press("question_mark")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, DiagnosticsModal)
+        assert modal.focused is modal.query_one("#diagnostics-scroll")
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+        assert game_screen.timer is None
+
+        await pilot.press("space")
+        await pilot.pause()
+        assert app.screen is game_screen
+        assert not app.game.paused
+        assert game_screen.timer is not None
 
 
 @pytest.mark.asyncio
