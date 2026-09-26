@@ -94,7 +94,7 @@ _COMMON: Final = {
     "max_grid_height": 20,
 }
 
-# Every mode but Classic starts in world 1 (4 moves a second), moves on through
+# Every mode but Classic starts in world 1 (6 moves a second), moves on through
 # the worlds, and shows each world's colours. Foods per world suits the board:
 # 8 sets take world 1 to world 9.
 _PROGRESSING: Final = {

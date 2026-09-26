@@ -159,7 +159,7 @@ tests that want a one-cell snake with no grow-in pass `start_length=1`.
 ### Game Progression System
 
 A world is a Nokia Snake level. Each of the 9 worlds has a speed (`worlds.WORLD_SPEEDS`,
-4 to 25 moves/s), a theme and a food symbol set, and the world is the **only** source of
+6 to 25 moves/s), a theme and a food symbol set, and the world is the **only** source of
 speed: `Game.current_interval` is derived from `current_world` (counted from 0;
 `world_number` from 1), and there is no per-food speed-up.
 - Play starts in `start_world`. With `world_change` "fixed" it stays there; with "progress"

@@ -15,7 +15,7 @@ from .themes import THEME_MAP
 # Moves per second in each world, from world 1 to world 9: about 1.25x per world.
 # Our own calibration (Nokia's timings are unknown), kept under the ~30/s at
 # which smooth motion stops interpolating.
-WORLD_SPEEDS: Final = (4, 5, 6, 8, 10, 12, 15, 20, 25)
+WORLD_SPEEDS: Final = (6, 7, 8, 9, 10, 12, 15, 20, 25)
 
 
 @dataclass

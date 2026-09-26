@@ -90,9 +90,9 @@ def test_starting_world_shows_its_speed() -> None:
     faster = world.step(_defaults(), 1)
     assert faster.get("start_world") == 6
     assert world.value_text(faster) == "6 · 12/s"
-    assert [world.show(choice) for choice in (1, 9)] == ["1 · 4/s", "9 · 25/s"]
+    assert [world.show(choice) for choice in (1, 9)] == ["1 · 6/s", "9 · 25/s"]
     assert world.help_text(_defaults()) == (
-        "The world you start in: sets the speed (4\N{EN DASH}25 /sec) and points "
+        "The world you start in: sets the speed (6\N{EN DASH}25 /sec) and points "
         "per food."
     )
 

@@ -337,12 +337,12 @@ async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
     """The loop sleeps until each step is due, keeps waited time across a pause,
     re-reads the interval after a new world, and stops for good at game over."""
     now = [0.0]
-    # World 4's binary-exact interval (8 moves a second) keeps the fake-clock
+    # World 3's binary-exact interval (8 moves a second) keeps the fake-clock
     # arithmetic exact, and every food moves on a world. Without interpolation
     # the loop wakes only at step deadlines.
     app = SnakeApp(
         GameConfig(
-            start_world=4,
+            start_world=3,
             world_change="progress",
             foods_per_world=10,
             smooth_motion=False,
@@ -395,7 +395,7 @@ async def test_loop_wakes_exactly_at_step_deadlines(monkeypatch) -> None:
         game.set_food_position((8, 5))
         wake_at(100.03125 + interval)
         assert game.foods_eaten == 1
-        assert game.world_number == 5
+        assert game.world_number == 4
         assert game.current_interval < interval
         assert armed[-1].delay == pytest.approx(game.current_interval)
 
@@ -437,7 +437,7 @@ async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
     """While interpolating, the loop wakes at each substep and the board shows
     the step part done; fast, late or final steps are drawn whole."""
     now = [0.0]
-    app = SnakeApp(GameConfig(start_world=4))  # 8 moves a second: 0.125 s
+    app = SnakeApp(GameConfig(start_world=3))  # 8 moves a second: 0.125 s
     async with app.run_test() as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -786,7 +786,7 @@ async def test_stats_panel_updates():
         assert value_label("Progress") == "0/10"
         assert displays["Progress"].display
         assert value_label("World") == "Basic Symbols"
-        assert value_label("Speed") == "4.0/sec"
+        assert value_label("Speed") == "6.0/sec"
 
         # Eat one food: tick() advances the model and calls _sync_reactives(),
         # whose GameScreen reactives propagate to the StatDisplays via data_bind.
@@ -807,7 +807,7 @@ async def test_stats_panel_updates():
         game_screen._sync_reactives()
         await pilot.pause()
         assert value_label("World") == "Ancient Egypt"
-        assert value_label("Speed") == "5.0/sec"
+        assert value_label("Speed") == "7.0/sec"
 
         # The last world is the last: there is no next one to count towards.
         game.current_world = 8
@@ -1763,7 +1763,7 @@ class TestWorldProgression:
         assert game.get_moves_per_second() == pytest.approx(10.0)  # world 5
 
         game.current_world = 0
-        assert game.get_moves_per_second() == pytest.approx(4.0)
+        assert game.get_moves_per_second() == pytest.approx(6.0)
 
 
 @pytest.mark.asyncio
@@ -1861,13 +1861,13 @@ async def test_settings_apply_to_the_next_game() -> None:
         await pilot.press("s")
         await pilot.pause()
         await pilot.press("down", "right")  # walls off
-        await pilot.press("down", "left")  # world 5 -> 4: 8 moves/sec
+        await pilot.press("down", "left")  # world 5 -> 4: 9 moves/sec
         await pilot.pause()
         assert app.config.walls is True  # a draft until ENTER
         help_text = str(app.screen.query_one("#settings-help", Static).render())
         assert "sets the speed" in help_text
         row = str(app.screen.query_one("#setting-2", Static).render())
-        assert "Starting world" in row and "4 · 8/s" in row
+        assert "Starting world" in row and "4 · 9/s" in row
 
         await pilot.press("enter")
         await pilot.pause()
@@ -1880,7 +1880,7 @@ async def test_settings_apply_to_the_next_game() -> None:
         game_screen._disarm()
         assert app.game.config is app.config
         assert app.game.world_number == 4
-        assert app.game.current_interval == pytest.approx(1 / 8)
+        assert app.game.current_interval == pytest.approx(1 / 9)
         view = game_screen.query_one(SnakeView)
         assert "┏" not in _board_text(view)  # no heavy wall frame
 

@@ -544,7 +544,7 @@ class TestWorlds:
 
     @pytest.mark.parametrize(
         ("world", "speed"),
-        [(1, 4), (2, 5), (3, 6), (4, 8), (5, 10), (6, 12), (7, 15), (8, 20), (9, 25)],
+        [(1, 6), (2, 7), (3, 8), (4, 9), (5, 10), (6, 12), (7, 15), (8, 20), (9, 25)],
     )
     def test_the_world_sets_the_speed(self, world: int, speed: int):
         game = Game(config=GameConfig(start_world=world))
@@ -555,13 +555,13 @@ class TestWorlds:
         game = Game(width=400, height=3, config=replace(WRAPPING, start_world=3))
         self._eat(game, 120)
         assert game.current_world == 2
-        assert game.get_moves_per_second() == pytest.approx(6)
+        assert game.get_moves_per_second() == pytest.approx(8)
         assert game.foods_in_world == game.foods_eaten == 120
 
     def test_a_new_world_brings_its_speed(self):
         game = Game(width=400, height=3, config=replace(PROGRESSING, start_world=4))
         self._eat(game, 9)
-        assert game.get_moves_per_second() == pytest.approx(8)
+        assert game.get_moves_per_second() == pytest.approx(9)
         self._eat(game, 1)
         assert game.world_number == 5
         assert game.get_moves_per_second() == pytest.approx(10)

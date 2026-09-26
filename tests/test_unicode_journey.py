@@ -125,4 +125,4 @@ class TestWorldPath:
 
 def test_each_world_has_a_speed_on_the_agreed_ladder():
     assert len(WORLD_SPEEDS) == len(WorldPath().worlds) == 9
-    assert WORLD_SPEEDS == (4, 5, 6, 8, 10, 12, 15, 20, 25)
+    assert WORLD_SPEEDS == (6, 7, 8, 9, 10, 12, 15, 20, 25)
