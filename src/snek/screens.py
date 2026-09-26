@@ -757,18 +757,22 @@ class SettingsModal(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         """Compose the title, one line per setting, and the selected one's help."""
         with Vertical(id="settings-container"):
-            yield FigletText(
-                "SETTINGS",
-                font="doom",
-                id="settings-title",
-                colors=["$primary"],
-                classes="title-text",
-            )
+            # Textual aligns a container's children as one block, so the title
+            # and the (fixed-width) help line each need a Center of their own.
+            with Center():
+                yield FigletText(
+                    "SETTINGS",
+                    font="doom",
+                    id="settings-title",
+                    colors=["$primary"],
+                    classes="title-text",
+                )
             yield Static("↑/↓ choose · ←/→ change · ENTER done", id="settings-prompt")
             with Center(id="settings-rows-center"), Vertical(id="settings-rows"):
                 for index in range(len(ROWS)):
                     yield Static(id=f"setting-{index}", classes="setting-row")
-            yield Static(id="settings-help")
+            with Center():
+                yield Static(id="settings-help")
 
     def on_mount(self) -> None:
         """Size the help line to the longest help, then show the current values."""

@@ -1528,6 +1528,8 @@ async def test_settings_open_from_the_splash_and_fit_80_by_24() -> None:
         assert isinstance(modal, SettingsModal)
         for widget in modal.query(Static):
             _assert_fully_in_view(widget, 80, 24)
+        for part in ("#settings-title", "#settings-rows", "#settings-help"):
+            _assert_horizontally_centred(modal.query_one(part), 80)
         first = modal.query_one("#setting-0", Static)
         assert first.has_class("-selected")
         assert "Mode" in str(first.render())
