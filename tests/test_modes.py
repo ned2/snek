@@ -40,15 +40,17 @@ def test_modes_are_distinct() -> None:
 
 
 def test_the_agreed_modes() -> None:
-    """Walled fixed boards; wrapping boards that fill the terminal."""
+    """Classic is a fixed walled board; the rest fill the terminal, and only the
+    Arenas wrap."""
     by_name = {mode.name: mode.values for mode in MODES}
     assert list(by_name) == ["Classic", "Arcade", "Arena", "Pixel Arena"]
+    assert by_name["Classic"]["sizing_mode"] == "cap"
+    for name in ("Arcade", "Arena", "Pixel Arena"):
+        assert by_name[name]["sizing_mode"] == "fill"
     for name in ("Classic", "Arcade"):
         assert by_name[name]["walls"] is True
-        assert by_name[name]["sizing_mode"] == "cap"
     for name in ("Arena", "Pixel Arena"):
         assert by_name[name]["walls"] is False
-        assert by_name[name]["sizing_mode"] == "fill"
     for name in ("Arcade", "Pixel Arena"):
         assert by_name[name]["food_sprites"] is True
 
@@ -64,9 +66,10 @@ def test_unowned_values_do_not_change_the_mode() -> None:
 
 
 def test_fill_modes_ignore_the_grid_cap() -> None:
-    """Fill sizing never reads the cap, so it cannot make Arena Custom."""
-    arena = apply_mode(default_config, "Arena")
-    assert mode_of(replace(arena, max_grid_width=60, max_grid_height=34)) == "Arena"
+    """Fill sizing never reads the cap, so it cannot make a fill mode Custom."""
+    for name in ("Arcade", "Arena", "Pixel Arena"):
+        config = apply_mode(default_config, name)
+        assert mode_of(replace(config, max_grid_width=60, max_grid_height=34)) == name
 
 
 def test_keys_and_descriptions() -> None:

@@ -47,12 +47,10 @@ MODES: Final[tuple[Mode, ...]] = (
     ),
     Mode(
         "Arcade",
-        "Pixel-art food on a small 20x12 walled board.",
+        "Big pixel-art food on a walled board that fills the terminal.",
         {
             "walls": True,
-            "sizing_mode": "cap",
-            "max_grid_width": 20,
-            "max_grid_height": 12,
+            "sizing_mode": "fill",
             "cell_scale": 4,
             "food_sprites": True,
         },

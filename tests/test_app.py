@@ -10,10 +10,9 @@ from textual.worker import WorkerCancelled
 
 from snek import clipboard
 from snek.app import SnakeApp
-from snek.config import GameConfig, default_config
+from snek.config import GameConfig
 from snek.figlet import FigletText
 from snek.game_rules import Direction
-from snek.modes import apply_mode
 from snek.screens import (
     DiagnosticsModal,
     GameOverModal,
@@ -1647,7 +1646,8 @@ async def test_splash_cycles_the_mode_and_applies_it() -> None:
         await pilot.pause()
         assert _splash_mode(app)[0] == "◂ Arcade ▸"
         assert app.config.food_sprites is True
-        assert (app.config.max_grid_width, app.config.max_grid_height) == (20, 12)
+        assert app.config.sizing_mode == "fill"
+        assert app.config.cell_scale == 4
 
         await pilot.press("left", "left")
         await pilot.pause()
@@ -1704,8 +1704,12 @@ async def test_settings_tweaks_show_as_custom_on_the_splash_and_back() -> None:
 
 @pytest.mark.asyncio
 async def test_too_small_message_fits_the_supported_minimum() -> None:
-    """Arcade at 80x24 is held, and its message fits the narrow view whole."""
-    app = SnakeApp(config=apply_mode(default_config, "Arcade"))
+    """A capped sprite board too big for 80x24 is held, and its message fits the
+    narrow view whole."""
+    config = GameConfig(
+        food_sprites=True, cell_scale=4, max_grid_width=20, max_grid_height=12
+    )
+    app = SnakeApp(config=config)
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.press("space")
         await pilot.pause()
