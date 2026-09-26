@@ -30,12 +30,15 @@ swaps in pixel art. Both are `scale` rows tall and `2*scale` columns wide.
 Between steps the view can interpolate motion. `motion_cells` works out which
 cells are partly drawn at a given progress through a step: the head fills in
 from the side it entered while the vacated tail cell drains towards the tail, so
-the visible length stays constant. `partial_tile` draws such a cell with block
-elements, and `render_board_row` draws those cells in place of whole ones.
+the visible length stays constant. Near the end of a step the drawing leads a
+little way into the next move (`lead_shift`). `partial_tile` draws such a cell
+with block elements, and `render_board_row` draws those cells in place of whole
+ones.
 """
 
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
 
@@ -76,6 +79,26 @@ PartialCell = tuple[Direction, int]
 # interpolation requires.
 SMOOTH_SNAKE_BLOCK = "██"
 SMOOTH_EMPTY_CELL = "  "
+
+# Fraction of an increment within which a step's progress counts as on a
+# substep boundary, matching the wake scheduled for it (`next_wake_delay`).
+_BOUNDARY_TOLERANCE = 1e-6
+
+
+@dataclass(frozen=True)
+class Move:
+    """One step's motion: the cell the head enters and the tail cell it leaves.
+
+    `vacated` is None when the snake grows (the tail stays), and
+    `vacated_heading` is None when a placed tail is not next to its segment.
+    """
+
+    head: Position
+    heading: Direction
+    vacated: Position | None = None
+    vacated_heading: Direction | None = None
+
+
 # No partly drawn cells: the board drawn whole.
 _EMPTY_PARTIAL: dict[Position, PartialCell] = {}
 NO_PARTIAL_CELLS: Final[Mapping[Position, PartialCell]] = MappingProxyType(
@@ -219,32 +242,54 @@ def partial_tile(anchor: Direction, filled: int, scale: int) -> FoodTile:
     return rows
 
 
+def lead_shift(scale: int) -> int:
+    """How many increments the drawing runs ahead of trailing by one step.
+
+    An eighth of a cell's `motion_units`, rounded down: one column at scale 4 and
+    none below it. The drawing trails the model, so after a key the head
+    finishes its cell before the turn shows; leading shortens that run-on by the
+    shift, but a key pressed during the lead swings it, pulling back what was
+    drawn past the corner. A quarter cell (two columns at scale 4) swung visibly
+    in play; see issue 0036.
+    """
+    return motion_units(scale) // 8
+
+
 def motion_cells(
-    head: Position,
-    heading: Direction,
-    vacated: Position | None,
-    vacated_heading: Direction | None,
+    taken: Move,
     progress: float,
     scale: int,
+    upcoming: Move | None = None,
 ) -> dict[Position, PartialCell]:
     """The partly drawn cells `progress` of the way through a step.
 
-    The step has already moved the model: `head` is its new head and `vacated`
-    its old tail cell (None when the snake grew). The drawing trails the model
-    by up to one step. The head shows ``floor(progress * units) + 1`` units
-    filled from the side it entered, so a move shows at once; the vacated cell
-    keeps the rest against the side the tail moved towards. The visible length
-    is constant, and a fully drawn step needs no partial cells.
+    `taken` has already moved the model, and the drawing trails it: its head
+    shows ``floor(progress * units) + 1 + lead_shift(scale)`` units filled from
+    the side it entered, so a move shows at once, and its vacated cell keeps the
+    rest against the side the tail moved towards. Once `taken` is drawn whole,
+    the remaining units lead into `upcoming`, the move the next step will make
+    (`Game.next_move()`; None if it would end the game, which is then not drawn
+    ahead). A turn queued meanwhile swings that lead, at most `lead_shift` units.
+    The visible length is constant, and a whole board needs no partial cells.
 
-    A head moving into the cell its own tail just left stays whole.
+    A head moving into the cell its own tail is leaving stays whole.
     """
     units = motion_units(scale)
-    filled = min(units, int(progress * units) + 1)
-    if filled >= units or head == vacated:
+    filled = int(progress * units + _BOUNDARY_TOLERANCE) + 1 + lead_shift(scale)
+    if filled < units:
+        return _move_cells(taken, filled, units)
+    if upcoming is None or filled == units:
         return {}
-    cells = {head: (GameRules.get_opposite_direction(heading), filled)}
-    if vacated is not None and vacated_heading is not None:
-        cells[vacated] = (vacated_heading, units - filled)
+    return _move_cells(upcoming, min(filled - units, units - 1), units)
+
+
+def _move_cells(move: Move, filled: int, units: int) -> dict[Position, PartialCell]:
+    """`move` drawn with `filled` of its head cell's `units` filled."""
+    if move.head == move.vacated:
+        return {}
+    cells = {move.head: (GameRules.get_opposite_direction(move.heading), filled)}
+    if move.vacated is not None and move.vacated_heading is not None:
+        cells[move.vacated] = (move.vacated_heading, units - filled)
     return cells
 
 

@@ -186,6 +186,48 @@ class Game:
             return
         self._pending_turns.append(new_direction)
 
+    def next_move(self) -> StepResult | None:
+        """The move the next `step()` will make, without making it.
+
+        It follows the first buffered turn, if any. The result carries only the
+        movement fields (`moved`, `ate_food`, `head`, `heading`, `vacated`,
+        `vacated_heading`); it is None when the game is over or paused, or when
+        the move would end the game (a wall or the body). The view draws a little
+        of it ahead of time (see `rendering.motion_cells`).
+        """
+        if self.game_over or self.paused:
+            return None
+        heading = self._pending_turns[0] if self._pending_turns else self.direction
+        head = GameRules.next_position(
+            self.snake[0], heading, self.width, self.height, self.config.walls
+        )
+        if head is None:  # a wall
+            return None
+        grows = GameRules.is_food_collision(head, self.food)
+        tail_stays = grows or self.tail_stays
+        # The tail's cell is only free to enter if the tail moves off it.
+        body_to_check = self.snake if tail_stays else self.snake[:-1]
+        if GameRules.is_self_collision(head, body_to_check):
+            return None
+        if tail_stays:
+            return StepResult(moved=True, ate_food=grows, head=head, heading=heading)
+        vacated = self.snake[-1]
+        # A lone head is also the tail, so it moves the same way.
+        vacated_heading = (
+            heading
+            if len(self.snake) == 1
+            else GameRules.direction_between(
+                vacated, self.snake[-2], self.width, self.height
+            )
+        )
+        return StepResult(
+            moved=True,
+            head=head,
+            heading=heading,
+            vacated=vacated,
+            vacated_heading=vacated_heading,
+        )
+
     def step(self) -> StepResult:
         """Advance the game by one step and report what happened.
 
@@ -197,45 +239,24 @@ class Game:
         """
         if self.game_over or self.paused:
             return StepResult()
+        move = self.next_move()
         # Commit at most one buffered turn per step; this is what guarantees a
         # single tick can never reverse the snake (see `turn`).
         if self._pending_turns:
             self.direction = self._pending_turns.pop(0)
-        new_head_pos = GameRules.next_position(
-            self.snake[0], self.direction, self.width, self.height, self.config.walls
-        )
-        if new_head_pos is None:  # ran into a wall
-            self.game_over = True
-            return StepResult(game_over=True)
-        grows = GameRules.is_food_collision(new_head_pos, self.food)
-        # The tail's cell is only free to enter if the tail moves off it.
-        body_to_check = self.snake if grows or self.tail_stays else self.snake[:-1]
-        if GameRules.is_self_collision(new_head_pos, body_to_check):
+        if move is None or move.head is None:  # a wall or the body
             self.game_over = True
             return StepResult(game_over=True)
 
+        new_head_pos = move.head
         self.snake.insert(0, new_head_pos)
-        if not grows and self.tail_stays:
-            # Growing in: the tail stays, as when eating, but nothing was eaten.
-            self.pending_growth -= 1
-            return StepResult(moved=True, head=new_head_pos, heading=self.direction)
-        if not grows:
-            vacated = self.snake.pop()
-            # A lone head is also the tail, so it moved the same way.
-            vacated_heading = (
-                self.direction
-                if len(self.snake) == 1
-                else GameRules.direction_between(
-                    vacated, self.snake[-1], self.width, self.height
-                )
-            )
-            return StepResult(
-                moved=True,
-                head=new_head_pos,
-                heading=self.direction,
-                vacated=vacated,
-                vacated_heading=vacated_heading,
-            )
+        if not move.ate_food:
+            if move.vacated is None:
+                # Growing in: the tail stays, as when eating, but nothing was eaten.
+                self.pending_growth -= 1
+            else:
+                self.snake.pop()
+            return move
 
         self.foods_eaten += 1
         self.foods_in_world += 1

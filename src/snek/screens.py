@@ -36,6 +36,7 @@ from .rendering import (
     FRAME_MARGIN,
     SMOOTH_EMPTY_CELL,
     SMOOTH_SNAKE_BLOCK,
+    Move,
     PartialCell,
     board_fits,
     board_size,
@@ -247,11 +248,14 @@ class GameScreen(Screen[None]):
         # the first wake after a (re)start or resume, so paused time never counts.
         # `_motion` is the step being interpolated, if any. `_generation` tags
         # each armed wake so a stale one can be ignored (see `_on_wake`).
+        # `_demo_planned` is True once the demo has chosen the next step's turn,
+        # which it does early so the drawing can lead into it (see `_draw`).
         self.timer: Timer | None = None
         self._generation: int = 0
         self._clock = StepClock()
         self._last_frame: float | None = None
         self._motion: StepResult | None = None
+        self._demo_planned: bool = False
         # Injectable so tests can drive frames without patching the global clock.
         self._now: Callable[[], float] = time.monotonic
         self.sidebar_visible: bool = True
@@ -300,6 +304,7 @@ class GameScreen(Screen[None]):
         self._clock.reset()
         self._last_frame = None
         self._motion = None
+        self._demo_planned = False
         self._arm()
 
     def _substeps(self, interval: float) -> int:
@@ -402,10 +407,21 @@ class GameScreen(Screen[None]):
         self._arm()
 
     def _draw(self) -> None:
-        """Update the board, part way through the current step when interpolating."""
-        interval = _snake_app(self).game.current_interval
+        """Update the board, part way through the current step when interpolating.
+
+        Near the end of the step the drawing leads into the next move, so the
+        demo chooses that move's turn now rather than when the step comes due.
+        """
+        game = _snake_app(self).game
+        interval = game.current_interval
         motion = self._motion if self._substeps(interval) > 1 else None
-        self.query_one(SnakeView).update_board(motion, self._clock.progress(interval))
+        upcoming = None
+        if motion is not None:
+            self._plan_demo_turn()
+            upcoming = game.next_move()
+        self.query_one(SnakeView).update_board(
+            motion, self._clock.progress(interval), upcoming
+        )
 
     def _advance_clock(self) -> None:
         """Credit the step clock with the wall time since the previous wake."""
@@ -421,16 +437,21 @@ class GameScreen(Screen[None]):
             self._sync_reactives()
             self.query_one(SnakeView).update_board()
 
+    def _plan_demo_turn(self) -> None:
+        """In demo mode, let the strategy choose the next step's turn, once."""
+        if self.demo_ai is None or self._demo_planned:
+            return
+        ai_direction = self.demo_ai.get_next_direction()
+        if ai_direction:
+            _snake_app(self).game.turn(ai_direction)
+        self._demo_planned = True
+
     def _step(self) -> StepResult | None:
         """Advance the model one step; return None once the game has ended."""
         app = _snake_app(self)
-        if self.demo_ai:
-            # In demo mode, let the demo strategy choose the direction
-            ai_direction = self.demo_ai.get_next_direction()
-            if ai_direction:
-                app.game.turn(ai_direction)
-
+        self._plan_demo_turn()
         result = app.game.step()
+        self._demo_planned = False
 
         if result.world_changed and result.new_world is not None:
             # Chrome follows the world (unless the palette is LCD).
@@ -524,9 +545,11 @@ class GameScreen(Screen[None]):
             # Don't allow manual control in demo mode
             return
 
-        # Turns are buffered until the next tick, so there is nothing new to
-        # draw yet; `tick` refreshes the board once the turn is applied.
+        # Turns are buffered until the next step, but the drawing may already
+        # lead into that step's move: redraw so a queued turn swings it at once.
         _snake_app(self).game.turn(Direction[dir_name])
+        if self.timer is not None:
+            self._draw()
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -566,6 +589,7 @@ class GameScreen(Screen[None]):
         app.game.reset(width=width, height=height)
         if self.demo_ai:
             self.demo_ai = make_demo_ai(app.game, app.demo_strategy)
+        self._demo_planned = False
         self._sync_reactives()
 
     def start_new_game(self, demo: bool) -> None:
@@ -989,6 +1013,13 @@ class GameOverModal(ModalScreen[None]):
         self.app.exit()
 
 
+def _as_move(result: StepResult | None) -> Move | None:
+    """The movement in a step's result, if it moved."""
+    if result is None or result.head is None or result.heading is None:
+        return None
+    return Move(result.head, result.heading, result.vacated, result.vacated_heading)
+
+
 @dataclass(frozen=True)
 class BoardState:
     """The board contents a `SnakeView` last drew.
@@ -1070,7 +1101,8 @@ class SnakeView(Widget):
 
     Given the step just taken and how far the clock is through the next one,
     `update_board()` draws the head and vacated tail cells part filled, so the
-    snake slides between cells (see `rendering.motion_cells`).
+    snake slides between cells; near the end of the step it leads a little into
+    the upcoming move, if given (see `rendering.motion_cells`).
     """
 
     # How many terminal characters draw one logical cell, per axis-unit. Updated
@@ -1195,27 +1227,20 @@ class SnakeView(Widget):
         return 1
 
     def update_board(
-        self, motion: StepResult | None = None, progress: float = 1.0
+        self,
+        motion: StepResult | None = None,
+        progress: float = 1.0,
+        upcoming: StepResult | None = None,
     ) -> None:
         """Snapshot the game and repaint only the cells that changed.
 
-        With `motion`, the step just taken is drawn `progress` of the way done.
+        With `motion`, the step just taken is drawn `progress` of the way done,
+        leading into `upcoming` (`Game.next_move()`) near the end.
         """
         partial: dict[Position, PartialCell] = {}
-        if (
-            motion is not None
-            and motion.head is not None
-            and motion.heading is not None
-            and self.motion_units() > 1
-        ):
-            partial = motion_cells(
-                motion.head,
-                motion.heading,
-                motion.vacated,
-                motion.vacated_heading,
-                progress,
-                self._scale,
-            )
+        taken = _as_move(motion)
+        if taken is not None and self.motion_units() > 1:
+            partial = motion_cells(taken, progress, self._scale, _as_move(upcoming))
         state = BoardState.capture(_snake_app(self).game, partial)
         drawn, self._drawn = self._drawn, state
         if drawn is None or (state.width, state.height) != (drawn.width, drawn.height):

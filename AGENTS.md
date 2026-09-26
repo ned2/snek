@@ -204,8 +204,9 @@ Within the game loop:
    `_generation` it was armed in, `_disarm()` bumps it, and `_on_wake` ignores stale wakes.
    `GameScreen.tick()` runs exactly one step and redraws it whole without touching timers;
    tests call `_disarm()` (not `timer.stop()`) and then advance by hand.
-2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction, then calls
-   `Game.step()`, which returns a `StepResult` describing the consequences (moved / ate food /
+2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction (once, and
+   early while interpolating, so the drawing can lead into it), then calls `Game.step()`,
+   which returns a `StepResult` describing the consequences (moved / ate food /
    world changed / game over). The view reacts to those flags rather than inferring model
    deltas.
 3. `Game` owns world progression, speed (from the world) and score. A world change updates
@@ -249,7 +250,10 @@ Within the game loop:
   the new head, the vacated tail cell and their directions in `StepResult`, and
   `rendering.motion_cells()` turns those plus the clock's progress into part-filled cells (whole
   columns across, `▀`/`▄` half rows vertically, `2*scale` increments either way) that keep the
-  visible length constant. The screen passes the step to `update_board()` only while
+  visible length constant. At scale 4 it trails by one increment less (`lead_shift`), so the
+  step's last increment leads into `Game.next_move()`; a key pressed then redraws at once,
+  swinging that increment round the corner, and a fatal next move is not drawn ahead. The
+  screen passes the step to `update_board()` only while
   interpolating: `smooth_motion` is on (`--no-smooth` turns it off), the glyphs are the default
   blocks, the step spans at least two frames, and exactly one step ran in the wake. Otherwise
   cells are drawn whole, and game over settles the board whole.

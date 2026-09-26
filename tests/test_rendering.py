@@ -5,6 +5,7 @@ import pytest
 from snek.config import GameConfig
 from snek.game_rules import Direction
 from snek.rendering import (
+    Move,
     board_fits,
     board_size,
     board_to_text,
@@ -12,6 +13,7 @@ from snek.rendering import (
     fit_grid_scale,
     frame_board,
     glyph_food_tile,
+    lead_shift,
     motion_cells,
     motion_units,
     partial_tile,
@@ -290,40 +292,66 @@ class TestPartialTile:
 class TestMotionCells:
     """Interpolated steps keep the visible length constant."""
 
-    @pytest.mark.parametrize("scale", [1, 2, 3])
-    def test_head_grows_as_the_tail_drains(self, scale):
+    STRAIGHT = Move((6, 5), Direction.RIGHT, (3, 5), Direction.RIGHT)
+    NEXT = Move((7, 5), Direction.RIGHT, (4, 5), Direction.RIGHT)
+
+    @pytest.mark.parametrize(("scale", "shift"), [(1, 0), (2, 0), (3, 0), (4, 1)])
+    def test_lead_shift_is_an_eighth_cell_in_whole_increments(self, scale, shift):
+        assert lead_shift(scale) == shift
+
+    @pytest.mark.parametrize("scale", [1, 2, 3, 4])
+    def test_head_grows_as_the_tail_drains_then_leads(self, scale):
+        """Across a step the fill runs on unbroken into the upcoming move."""
         units = motion_units(scale)
-        head, vacated = (6, 5), (3, 5)
+        taken, upcoming = self.STRAIGHT, self.NEXT
         for index in range(units):
-            progress = index / units
-            cells = motion_cells(
-                head, Direction.RIGHT, vacated, Direction.RIGHT, progress, scale
-            )
-            filled = index + 1
-            if filled == units:
+            cells = motion_cells(taken, index / units, scale, upcoming)
+            filled = index + 1 + lead_shift(scale)
+            if filled < units:
+                assert cells == {
+                    taken.head: (Direction.LEFT, filled),
+                    taken.vacated: (Direction.RIGHT, units - filled),
+                }
+            elif filled == units:
                 assert cells == {}
             else:
                 assert cells == {
-                    head: (Direction.LEFT, filled),
-                    vacated: (Direction.RIGHT, units - filled),
+                    upcoming.head: (Direction.LEFT, filled - units),
+                    upcoming.vacated: (Direction.RIGHT, 2 * units - filled),
                 }
+
+    def test_a_substep_boundary_counts_despite_rounding(self):
+        """Progress a hair under a boundary (float error) draws that increment."""
+        cells = motion_cells(self.STRAIGHT, 3 / 8 - 1e-12, 4)
+        assert cells[self.STRAIGHT.head] == (Direction.LEFT, 5)
+
+    def test_no_upcoming_move_draws_the_step_whole_early(self):
+        """A move that would end the game is not drawn ahead."""
+        assert motion_cells(self.STRAIGHT, 7 / 8, 4, None) == {}
+
+    def test_a_queued_turn_swings_the_lead(self):
+        """At most `lead_shift` units lead into the turn, from the corner."""
+        turn = Move((6, 4), Direction.UP, (4, 5), Direction.RIGHT)
+        cells = motion_cells(self.STRAIGHT, 7 / 8, 4, turn)
+        assert cells == {(6, 4): (Direction.DOWN, 1), (4, 5): (Direction.RIGHT, 7)}
 
     def test_anchors_follow_each_moves_own_direction(self):
         """A turning head and a tail on another leg anchor independently."""
-        cells = motion_cells((5, 4), Direction.UP, (2, 7), Direction.LEFT, 0.0, 2)
+        move = Move((5, 4), Direction.UP, (2, 7), Direction.LEFT)
+        cells = motion_cells(move, 0.0, 2)
         assert cells == {(5, 4): (Direction.DOWN, 1), (2, 7): (Direction.LEFT, 3)}
 
     def test_growth_has_no_vacated_cell(self):
-        cells = motion_cells((6, 5), Direction.RIGHT, None, None, 0.0, 2)
+        cells = motion_cells(Move((6, 5), Direction.RIGHT), 0.0, 2)
         assert cells == {(6, 5): (Direction.LEFT, 1)}
 
     def test_head_entering_its_own_vacated_tail_cell_stays_whole(self):
-        assert motion_cells((5, 5), Direction.UP, (5, 5), Direction.LEFT, 0.0, 2) == {}
+        move = Move((5, 5), Direction.UP, (5, 5), Direction.LEFT)
+        assert motion_cells(move, 0.0, 2) == {}
+        assert motion_cells(self.STRAIGHT, 7 / 8, 4, move) == {}
 
     def test_progress_at_or_past_the_step_is_drawn_whole(self):
-        assert (
-            motion_cells((6, 5), Direction.RIGHT, (5, 5), Direction.RIGHT, 1.0, 3) == {}
-        )
+        assert motion_cells(self.STRAIGHT, 1.0, 3) == {}
 
 
 def test_render_board_row_draws_partial_cells_over_the_board():

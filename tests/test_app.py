@@ -14,6 +14,7 @@ from snek.config import GameConfig
 from snek.figlet import FigletText
 from snek.game import Game
 from snek.game_rules import Direction
+from snek.modes import apply_mode, default_settings
 from snek.screens import (
     DiagnosticsModal,
     GameOverModal,
@@ -43,6 +44,11 @@ def _arm_self_collision(game) -> None:
     game.set_snake_position([(5, 5), (4, 5), (4, 4), (5, 4), (6, 4)])
     game.direction = Direction.UP
     game.set_food_position((0, 0))
+
+
+def _arcade(**changes) -> GameConfig:
+    """Arcade's config (scale 4 where it fits), with `changes`."""
+    return replace(apply_mode(default_settings(), "Arcade").to_config(), **changes)
 
 
 def _is_fresh(game) -> bool:
@@ -501,16 +507,97 @@ async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("size", [(80, 24), (200, 50)])
-async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> None:
+async def test_the_drawing_leads_into_the_next_move(monkeypatch) -> None:
+    """Near the end of a step the drawing runs on into the next move; a key
+    swings that lead at once, and a fatal next move is not drawn ahead."""
+    now = [0.0]
+    app = SnakeApp(_arcade(start_world=3))  # 8 moves a second: 0.125 s
+    async with app.run_test(size=(200, 50)) as pilot:
+        # Stop the clock from the start: sprite set-up can take long enough for
+        # real wakes to run the snake into a wall.
+        game_screen = app.get_screen("game")
+        assert isinstance(game_screen, GameScreen)
+        game_screen._now = lambda: now[0]
+        await pilot.press("space")
+        await pilot.pause()
+        assert app.screen is game_screen
+        _record_loop_timers(monkeypatch, game_screen)
+        view = game_screen.query_one(SnakeView)
+        assert view._scale == 4
+        units = view.motion_units()
+        game = app.game
+        game.set_snake_position([(5, 5), (4, 5), (3, 5)])
+        game.set_food_position((0, 0))
+        game.direction = Direction.RIGHT
+        game_screen._restart_loop()
+        view.refresh()
+        substep = game.current_interval / units
+
+        def wake_at(t: float) -> None:
+            now[0] = t
+            game_screen._on_frame()
+
+        # The step shows one increment past trailing by a whole step.
+        wake_at(0.125)
+        assert view._drawn is not None
+        assert view._drawn.partial == {
+            (6, 5): (Direction.LEFT, 2),
+            (3, 5): (Direction.RIGHT, units - 2),
+        }
+        wake_at(0.125 + 6 * substep)
+        assert view._drawn.partial == {}
+        # Then the head leads into the next cell as the tail leaves its own.
+        wake_at(0.125 + 7 * substep)
+        assert view._drawn.partial == {
+            (7, 5): (Direction.LEFT, 1),
+            (4, 5): (Direction.RIGHT, units - 1),
+        }
+        # A key swings the lead round the corner straight away.
+        await pilot.press("up")
+        assert view._drawn.partial == {
+            (6, 4): (Direction.DOWN, 1),
+            (4, 5): (Direction.RIGHT, units - 1),
+        }
+        # The step takes the turn and carries on from the lead.
+        wake_at(0.25)
+        assert game.snake[0] == (6, 4)
+        assert view._drawn.partial == {
+            (6, 4): (Direction.DOWN, 2),
+            (4, 5): (Direction.RIGHT, units - 2),
+        }
+
+        # A move into the wall is not drawn ahead: the step settles whole.
+        game.set_snake_position([(6, 1), (6, 2), (6, 3)])
+        game.direction = Direction.UP
+        wake_at(0.375)
+        assert game.snake[0] == (6, 0)
+        assert view._drawn.partial != {}
+        wake_at(0.375 + 7 * substep)
+        assert not game.game_over
+        assert view._drawn.partial == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config", "size"),
+    [
+        (GameConfig(), (80, 24)),
+        (GameConfig(), (200, 50)),
+        (_arcade(start_world=3), (200, 50)),
+    ],
+)
+async def test_interpolated_updates_match_a_full_render(
+    monkeypatch, config, size
+) -> None:
     """Every substep repaints exactly the cells whose drawing changed.
 
-    Demo play covers turns, wraps and eating. After each wake, Textual's cached
-    lines must equal a fresh render of the same snapshot; a missed cell would
-    survive as a stale cached line.
+    Demo play covers turns, wraps and eating (and, in Arcade, the lead into the
+    next move). After each wake, Textual's cached lines must equal a fresh render
+    of the same snapshot; a missed cell would survive as a stale cached line. The
+    demo chooses each step's turn once, some time before the step.
     """
     now = [0.0]
-    app = SnakeApp()
+    app = SnakeApp(config)
     async with app.run_test(size=size) as pilot:
         await pilot.press("d")
         await pilot.pause()
@@ -522,6 +609,23 @@ async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> No
         armed = _record_loop_timers(monkeypatch, game_screen)
         game = app.game
         game_screen._restart_loop()
+        strategy = game_screen.demo_ai
+        assert strategy is not None
+        choices = steps = 0
+        choose, step = strategy.get_next_direction, game.step
+
+        def counted_choose():
+            nonlocal choices
+            choices += 1
+            return choose()
+
+        def counted_step():
+            nonlocal steps
+            steps += 1
+            return step()
+
+        monkeypatch.setattr(strategy, "get_next_direction", counted_choose)
+        monkeypatch.setattr(game, "step", counted_step)
         eaten = game.foods_eaten
         partial_wakes = 0
         for _ in range(600):
@@ -538,6 +642,7 @@ async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> No
             cached = [strip.text for strip in view.render_lines(view.size.region)]
             fresh = [view.render_line(y).text for y in range(view.size.height)]
             assert cached == fresh
+            assert choices - steps in (0, 1)
         assert game.foods_eaten > eaten
         assert partial_wakes > 0
 

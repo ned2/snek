@@ -525,6 +525,57 @@ class TestStepResult:
         assert game.current_world == 1
 
 
+class TestNextMove:
+    """`Game.next_move()` previews the next step without taking it."""
+
+    def test_matches_the_step_and_changes_nothing(self):
+        game = Game(width=20, height=20, config=SINGLE)
+        game.snake = [(5, 5), (5, 6), (4, 6)]
+        game.direction = Direction.UP
+        game.food = (0, 0)
+        move = game.next_move()
+        assert game.snake == [(5, 5), (5, 6), (4, 6)]
+        assert game.direction == Direction.UP
+        assert move == game.step()
+
+    def test_follows_the_first_queued_turn(self):
+        game = Game(width=20, height=20, config=SINGLE)
+        game.snake = [(5, 5), (4, 5), (3, 5)]
+        game.food = (0, 0)
+        game.turn(Direction.UP)
+        game.turn(Direction.LEFT)
+        move = game.next_move()
+        assert move is not None
+        assert (move.head, move.heading) == ((5, 4), Direction.UP)
+        assert game.step() == move
+
+    def test_eating_and_growing_in_leave_no_vacated_cell(self):
+        game = Game(width=40, height=40)  # still growing in
+        head = game.snake[0]
+        move = game.next_move()
+        assert move is not None and move.vacated is None and not move.ate_food
+        game.food = (head[0] + 1, head[1])
+        move = game.next_move()
+        assert move is not None and move.vacated is None and move.ate_food
+
+    def test_a_fatal_move_is_none(self):
+        game = Game(width=20, height=20)
+        game.snake = [(19, 5), (18, 5)]
+        assert game.next_move() is None  # the wall
+        game.snake = [(5, 5), (4, 5), (4, 4), (5, 4), (6, 4)]
+        game.direction = Direction.UP
+        game.food = (0, 0)
+        assert game.next_move() is None  # the body
+        assert not game.game_over
+
+    def test_none_when_paused_or_over(self):
+        game = Game()
+        game.paused = True
+        assert game.next_move() is None
+        game.paused, game.game_over = False, True
+        assert game.next_move() is None
+
+
 class TestWorlds:
     """A world is a Nokia level: it sets the speed and the points per food."""
 
