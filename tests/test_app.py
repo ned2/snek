@@ -1734,3 +1734,19 @@ async def test_settings_help_fits_the_longest_help_on_one_line() -> None:
             )
             await pilot.press("down")
             await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_game_over_prompt_fits_one_line_under_a_centred_title():
+    """The restart prompt is wider than the title yet stays on one line."""
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        app.screen._disarm()
+        app.push_screen(GameOverModal())
+        await pilot.pause()
+        modal = app.screen
+        _assert_horizontally_centred(modal.query_one("#death-title"), 80)
+        for prompt in modal.query(".death-prompt"):
+            assert prompt.region.height == 1

@@ -856,13 +856,16 @@ class GameOverModal(ModalScreen[None]):
         app = _snake_app(self)
         won = app.game.won
         with Vertical(id="death-container"):
-            yield FigletText(
-                "YOU WIN" if won else "GAME OVER",
-                font="doom",
-                id="death-title",
-                colors=["$primary"],
-                classes="title-text",
-            )
+            # A Center of its own centres the title across the screen and widens
+            # the container past it, so the restart prompt fits on one line.
+            with Center():
+                yield FigletText(
+                    "YOU WIN" if won else "GAME OVER",
+                    font="doom",
+                    id="death-title",
+                    colors=["$primary"],
+                    classes="title-text",
+                )
             yield Static(
                 "🎉 BOARD FILLED! 🎉" if won else "💀 SNEK DED! 💀",
                 classes="death-message",
