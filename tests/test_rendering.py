@@ -5,6 +5,8 @@ import pytest
 from snek.config import GameConfig
 from snek.game_rules import Direction
 from snek.rendering import (
+    board_fits,
+    board_size,
     board_to_text,
     compute_layout,
     fit_grid_scale,
@@ -29,6 +31,7 @@ class TestComputeLayoutCapMode:
     """'cap' mode: fixed grid (clamped), scale derived (largest that fits, capped)."""
 
     def _cfg(self, **kw):
+        kw.setdefault("cell_scale", 3)  # room to scale up
         return GameConfig(sizing_mode="cap", **kw)
 
     def test_large_terminal_lands_on_cap_and_scales(self):
@@ -61,6 +64,31 @@ class TestComputeLayoutCapMode:
         )
 
 
+class TestComputeLayoutWithSprites:
+    """With food sprites, cells never drop below scale two and cap is exact."""
+
+    def _cfg(self, **kw):
+        kw.setdefault("cell_scale", 3)
+        return GameConfig(food_sprites=True, **kw)
+
+    def test_cap_uses_the_whole_cap_on_a_small_terminal(self):
+        """No smaller grid: the view reports the terminal too small instead."""
+        cfg = self._cfg()
+        assert compute_layout(80, 24, cfg) == (
+            cfg.max_grid_width,
+            cfg.max_grid_height,
+            2,
+        )
+
+    def test_cap_still_scales_up_to_cell_scale(self):
+        cfg = self._cfg()
+        assert compute_layout(4000, 4000, cfg)[2] == cfg.cell_scale
+
+    def test_fill_keeps_its_exact_scale(self):
+        cfg = self._cfg(sizing_mode="fill", cell_scale=2)
+        assert compute_layout(142, 48, cfg) == (35, 24, 2)
+
+
 class TestComputeLayoutFillMode:
     """'fill' mode: fixed scale, grid grows to fill the space."""
 
@@ -81,12 +109,22 @@ class TestComputeLayoutFillMode:
         assert k == 2
 
     def test_floors_at_minimum_grid(self):
+        """A floored grid shrinks its cells to fit rather than being clipped."""
         cfg = GameConfig(sizing_mode="fill", cell_scale=3)
         assert compute_layout(4, 2, cfg) == (
             cfg.min_game_width,
             cfg.min_game_height,
-            3,
+            1,
         )
+
+    def test_floored_grid_fits_the_largest_scale_that_fits(self):
+        """80x24 leaves a 50x24 view: 10x10 cells fit at scale two, not three."""
+        cfg = GameConfig(sizing_mode="fill", cell_scale=3, food_sprites=True)
+        assert compute_layout(50, 24, cfg) == (10, 10, 2)
+
+    def test_floored_grid_keeps_the_sprite_floor(self):
+        cfg = GameConfig(sizing_mode="fill", cell_scale=3, food_sprites=True)
+        assert compute_layout(4, 2, cfg)[2] == 2
 
 
 class TestFitGridScale:
@@ -103,6 +141,21 @@ class TestFitGridScale:
 
     def test_scale_respects_configured_ceiling(self):
         assert fit_grid_scale(10_000, 10_000, 20, 10, 2) == 2
+
+    def test_scale_respects_a_floor(self):
+        """With sprites the floor is two, even where only scale one fits."""
+        assert fit_grid_scale(72, 20, 36, 20, 3, min_scale=2) == 2
+        assert fit_grid_scale(216, 60, 36, 20, 3, min_scale=2) == 3
+
+
+class TestBoardFits:
+    def test_board_size_is_two_columns_and_one_row_per_scale(self):
+        assert board_size(36, 20, 2) == (144, 40)
+
+    def test_fits_exactly_but_not_one_short(self):
+        assert board_fits(144, 40, 36, 20, 2)
+        assert not board_fits(143, 40, 36, 20, 2)
+        assert not board_fits(144, 39, 36, 20, 2)
 
 
 class TestRenderBoard:

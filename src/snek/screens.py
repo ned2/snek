@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import textwrap
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
+from rich.cells import cell_len
 from rich.segment import Segment
 from textual import events, work
 from textual.app import ComposeResult
@@ -27,12 +29,15 @@ from .demo import DemoStrategy, make_demo_ai
 from .figlet import FigletText
 from .game import Game, StepResult
 from .game_rules import Direction, Position
+from .modes import describe
 from .rendering import (
     CELL_BASE_WIDTH,
     FRAME_MARGIN,
     SMOOTH_EMPTY_CELL,
     SMOOTH_SNAKE_BLOCK,
     PartialCell,
+    board_fits,
+    board_size,
     compute_layout,
     fit_grid_scale,
     frame_rule,
@@ -42,7 +47,7 @@ from .rendering import (
     motion_units,
     render_board_row,
 )
-from .settings import ROWS, Settings
+from .settings import MODE_ROW, ROWS, Settings, widest_help
 from .timing import StepClock, next_wake_delay
 
 if TYPE_CHECKING:
@@ -55,6 +60,10 @@ _FRAME_INTERVAL = 1 / 60
 # Interpolate only when a step spans at least this many frames. Faster steps
 # would show few, unevenly timed increments, and whole cells read better.
 _MIN_SMOOTH_FRAMES = 2
+
+
+# Spare cells beside the longest help line, so it never touches the box's edges.
+_HELP_MARGIN = 4
 
 
 def _snake_app(node: DOMNode) -> SnakeApp:
@@ -78,17 +87,24 @@ class SplashScreen(Screen[None]):
     HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (_ROOMY_WIDTH, "-wide")]
     VERTICAL_BREAKPOINTS = [(0, "-short"), (_ROOMY_HEIGHT, "-tall")]
 
+    # The start prompt, in the two halves it splits into when it can't fit.
+    _START_PROMPT = (
+        "Press SPACE to start, D to run the demo,",
+        "←/→ to change mode, or S for detailed settings.",
+    )
+
     BINDINGS = [
         ("space", "start_game", "Start Game"),
         ("d", "start_demo", "Start Demo"),
         ("s", "settings", "Settings"),
+        ("left", "mode(-1)", "Mode"),
+        ("right", "mode(1)", "Mode"),
         ("q", "quit", "Quit"),
     ]
 
     @override
     def compose(self) -> ComposeResult:
         """Compose the splash screen with the figlet title."""
-        app = _snake_app(self)
         with Vertical(id="splash-container"):
             # Textual aligns a container's children as one block, and the
             # full-width prompts make that block span the screen. Each title
@@ -112,19 +128,46 @@ class SplashScreen(Screen[None]):
                     classes="title-text",
                     colors=["$primary", "$panel"],
                 )
+            yield Static(id="splash-start-prompt", classes="splash-prompt")
             yield Static(
-                self._start_prompt(app.demo_strategy),
-                id="splash-start-prompt",
-                classes="splash-prompt",
-            )
-            yield Static(
-                "Use arrow or WASD keys to move, Space to pause, Q to quit.",
+                "Gameplay: use arrow or WASD keys to move, Space to pause, Q to quit.",
                 id="splash-controls-prompt",
                 classes="splash-prompt",
             )
+            yield Static(id="splash-mode")
+            yield Static(id="splash-mode-help", classes="splash-prompt")
             yield Static(
                 f"v{__version__}", id="splash-version", classes="version-display"
             )
+
+    def on_mount(self) -> None:
+        """Show the mode the settings are in."""
+        self._show_mode()
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Fit the start prompt: one line where it fits, else two balanced ones.
+
+        Left to wrap on its own, the prompt would leave one word on its second
+        line at the 80-column minimum.
+        """
+        first, second = self._START_PROMPT
+        one_line = f"{first} {second}"
+        text = (
+            one_line if cell_len(one_line) <= event.size.width else f"{first}\n{second}"
+        )
+        self.query_one("#splash-start-prompt", Static).update(text)
+
+    def _show_mode(self) -> None:
+        """Show the current mode (or Custom) and what it is."""
+        name = MODE_ROW.value_text(_snake_app(self).settings)
+        self.query_one("#splash-mode", Static).update(f"◂ {name} ▸")
+        self.query_one("#splash-mode-help", Static).update(describe(name))
+
+    def action_mode(self, delta: int) -> None:
+        """Cycle the mode, applying its settings for the next game."""
+        app = _snake_app(self)
+        app.apply_settings(MODE_ROW.step(app.settings, delta))
+        self._show_mode()
 
     def on_screen_suspend(self) -> None:
         """Pause title work while another screen covers the splash."""
@@ -134,19 +177,11 @@ class SplashScreen(Screen[None]):
     def on_screen_resume(self) -> None:
         """Resume eligible visible titles without creating another timer.
 
-        Also refresh the start prompt, which names the demo strategy that the
-        settings screen may have changed.
+        Also refresh the mode, which the settings screen may have changed.
         """
         for title in self.query(FigletText):
             title.resume_animation()
-        prompt = self.query_one("#splash-start-prompt", Static)
-        prompt.update(self._start_prompt(_snake_app(self).demo_strategy))
-
-    @staticmethod
-    def _start_prompt(demo_strategy: str) -> str:
-        return (
-            f"Press SPACE to start, D for the {demo_strategy} demo, or S for settings."
-        )
+        self._show_mode()
 
     def action_start_game(self) -> None:
         """Start a fresh game under user control."""
@@ -184,6 +219,7 @@ class GameScreen(Screen[None]):
         ("space", "pause", "Pause"),
         ("enter", "toggle_sidebar", "Toggle Sidebar"),
         ("question_mark", "diagnostics", "Diagnostics"),
+        ("escape", "menu", "Main Menu"),
         ("q", "quit", "Quit"),
     ]
 
@@ -211,6 +247,9 @@ class GameScreen(Screen[None]):
         self._now: Callable[[], float] = time.monotonic
         self.sidebar_visible: bool = True
         self.demo_ai: DemoStrategy | None = None
+        # True while the terminal is too small to draw the board (see
+        # `hold_for_size`); the loop stays stopped until there is room.
+        self._held: bool = False
 
     @override
     def compose(self) -> ComposeResult:
@@ -266,7 +305,7 @@ class GameScreen(Screen[None]):
         """
         game = _snake_app(self).game
         self._disarm()
-        if game.game_over or game.paused:
+        if game.game_over or game.paused or self._held:
             return
         if self._last_frame is None:
             # Count from now, so the first wake after a (re)start or resume
@@ -404,6 +443,35 @@ class GameScreen(Screen[None]):
             self._advance_clock()
         game.paused = True
         self._disarm()
+
+    def hold_for_size(self, held: bool) -> None:
+        """Stop the loop while the terminal is too small, and restart it after.
+
+        Like pausing, the time already waited is credited and the held time is
+        not; unlike pausing, the model is untouched, so a pause taken while held
+        still needs resuming.
+        """
+        if held == self._held:
+            return
+        self._held = held
+        if held:
+            if self.timer is not None:
+                self._advance_clock()
+            self._disarm()
+        else:
+            self._last_frame = None
+            self._arm()
+
+    @override
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Offer the main menu only while the board is held for size."""
+        if action == "menu":
+            return self._held
+        return True
+
+    def action_menu(self) -> None:
+        """Leave a held game for the main menu, e.g. to turn sprites off."""
+        self.app.pop_screen()
 
     def action_diagnostics(self) -> None:
         """Pause the game and show the live diagnostics overlay.
@@ -578,6 +646,12 @@ class DiagnosticsModal(ModalScreen[None]):
             ("terminal (cells)", f"{app.size.width} x {app.size.height}"),
             ("snake view", f"{view.size.width} x {view.size.height}"),
             ("cell scale (k)", str(view._scale)),
+            (
+                "board fits",
+                "yes"
+                if view._needed is None
+                else f"no, needs {view._needed[0]} x {view._needed[1]}",
+            ),
             None,
             ("sizing mode", config.sizing_mode),
             ("cell scale setting", str(config.cell_scale)),
@@ -695,14 +769,18 @@ class SettingsModal(ModalScreen[None]):
                 for index in range(len(ROWS)):
                     yield Static(id=f"setting-{index}", classes="setting-row")
             yield Static(id="settings-help")
-            yield Static("Settings apply from the next game.", id="settings-note")
 
     def on_mount(self) -> None:
-        """Show the current values."""
+        """Size the help line to the longest help, then show the current values."""
+        help_line = self.query_one("#settings-help", Static)
+        help_line.styles.width = widest_help() + _HELP_MARGIN
         self._show()
 
-    def _show(self) -> None:
-        """Redraw every row, marking the selected one, and its help line."""
+    def _show(self, refusal: str | None = None) -> None:
+        """Redraw every row, marking the selected one, and its help line.
+
+        A `refusal` explaining why a change was refused replaces the help line.
+        """
         settings = _snake_app(self).settings
         label_width = max(len(row.label) for row in ROWS)
         # Pad every value to the widest the settings can show, so the block
@@ -720,7 +798,9 @@ class SettingsModal(ModalScreen[None]):
             shown = f"◂ {value} ▸" if selected else f"  {value}  "
             line.update(f"{marker} {row.label:<{label_width}}   {shown}")
             line.set_class(selected, "-selected")
-        self.query_one("#settings-help", Static).update(ROWS[self.selected].help)
+        help_line = self.query_one("#settings-help", Static)
+        help_line.update(refusal or ROWS[self.selected].help_text(settings))
+        help_line.set_class(refusal is not None, "-refused")
 
     def action_move(self, delta: int) -> None:
         """Select the previous or next setting, wrapping round."""
@@ -728,9 +808,19 @@ class SettingsModal(ModalScreen[None]):
         self._show()
 
     def action_change(self, delta: int) -> None:
-        """Step the selected setting and apply it to the session."""
+        """Step the selected setting and apply it to the session.
+
+        A step that would make the settings invalid (e.g. food sprites at scale
+        one) is refused, and the reason shown, rather than adjusting another
+        setting to suit.
+        """
         app = _snake_app(self)
-        settings: Settings = ROWS[self.selected].step(app.settings, delta)
+        try:
+            settings: Settings = ROWS[self.selected].step(app.settings, delta)
+        except ValueError as error:
+            message = str(error)
+            self._show(refusal=message[0].upper() + message[1:] + ".")
+            return
         app.apply_settings(settings)
         self._show()
 
@@ -866,6 +956,7 @@ def _layout_key(config: GameConfig) -> tuple[object, ...]:
         config.max_grid_width,
         config.max_grid_height,
         config.walls,
+        config.food_sprites,
     )
 
 
@@ -898,6 +989,9 @@ class SnakeView(Widget):
     # cell spans `scale` terminal rows, and each is rendered as its own line.
     _rows_for: tuple[BoardState, int] | None = None
     _rows: dict[int, list[list[Segment]]] | None = None
+    # The terminal size the board needs, while it is too small to draw the board
+    # at the smallest scale the config allows; None while the board fits.
+    _needed: tuple[int, int] | None = None
 
     def on_resize(self, event: events.Resize) -> None:
         """Establish the logical grid once, then make every resize visual-only."""
@@ -925,11 +1019,12 @@ class SnakeView(Widget):
             reserve = FRAME_MARGIN if app.config.walls else 0
             avail_cols = max(1, self.size.width - reserve)
             avail_rows = max(1, self.size.height - reserve)
+            game_screen = cast(GameScreen, self.screen)
             if not self._grid_established:
                 grid_width, grid_height, self._scale = compute_layout(
                     avail_cols, avail_rows, app.config
                 )
-                cast(GameScreen, self.screen).establish_grid(grid_width, grid_height)
+                game_screen.establish_grid(grid_width, grid_height)
                 self._grid_established = True
                 self._established_for = _layout_key(app.config)
             else:
@@ -940,8 +1035,38 @@ class SnakeView(Widget):
                     game.width,
                     game.height,
                     app.config.cell_scale,
+                    app.config.min_cell_scale,
                 )
+            self._needed = self._terminal_needed(avail_cols, avail_rows, reserve)
+            game_screen.hold_for_size(self._needed is not None)
             self.refresh()
+
+    def _terminal_needed(
+        self, avail_cols: int, avail_rows: int, reserve: int
+    ) -> tuple[int, int] | None:
+        """The terminal size the board needs, or None if it fits.
+
+        Only food sprites set a scale floor above one, so only they can make the
+        terminal too small; otherwise the board is drawn at scale one, clipped
+        if need be (below the supported 80x24).
+        """
+        app = _snake_app(self)
+        config, game = app.config, app.game
+        if not config.food_sprites or board_fits(
+            avail_cols, avail_rows, game.width, game.height, config.min_cell_scale
+        ):
+            return None
+        cols, rows = board_size(game.width, game.height, config.min_cell_scale)
+        # Whatever the terminal gives to everything but the board, it still needs.
+        return (
+            app.size.width + cols + reserve - self.size.width,
+            app.size.height + rows + reserve - self.size.height,
+        )
+
+    @property
+    def too_small(self) -> bool:
+        """Whether the terminal is too small to draw the board."""
+        return self._needed is not None
 
     @override
     def refresh(
@@ -1065,6 +1190,8 @@ class SnakeView(Widget):
         """Render one terminal row: margin, frame edge or board row, margin."""
         width = self.size.width
         base_style = self.visual_style.rich_style
+        if self._needed is not None:
+            return self._too_small_line(y, self._needed)
         walls = _snake_app(self).config.walls
         state = self._state()
         geometry = self._geometry(state)
@@ -1083,6 +1210,33 @@ class SnakeView(Widget):
         else:
             return Strip.blank(width, base_style)
         strip = Strip([Segment(" " * geometry.left), *segments])
+        return strip.apply_style(base_style).adjust_cell_length(width, base_style)
+
+    def _too_small_line(self, y: int, needed: tuple[int, int]) -> Strip:
+        """One row of the centred "terminal too small" message.
+
+        Each paragraph is wrapped to the view, which is narrow exactly when the
+        terminal is small.
+        """
+        size = self.app.size
+        paragraphs = [
+            "Terminal too small for food sprites",
+            f"Needs {needed[0]} x {needed[1]}; this is {size.width} x {size.height}.",
+            "Enlarge the window or turn sprites off.",
+            "ESC main menu · Q quit",
+        ]
+        width = self.size.width
+        lines: list[str] = []
+        for paragraph in paragraphs:
+            lines.extend([*textwrap.wrap(paragraph, max(1, width - 2)), ""])
+        lines.pop()
+        base_style = self.visual_style.rich_style
+        index = y - (self.size.height - len(lines)) // 2
+        if not 0 <= index < len(lines):
+            return Strip.blank(width, base_style)
+        text = lines[index]
+        left = max(0, (width - cell_len(text)) // 2)
+        strip = Strip([Segment(" " * left + text)])
         return strip.apply_style(base_style).adjust_cell_length(width, base_style)
 
     def _board_rows(self, state: BoardState, logical_y: int) -> list[list[Segment]]:
@@ -1123,13 +1277,13 @@ class SnakeView(Widget):
         )
 
     def _food_tile(self, state: BoardState) -> list[list[Segment]]:
-        """Pick the food rendering: a pixel sprite when big enough, else the glyph.
+        """Pick the food rendering: the pixel sprite if enabled, else the glyph.
 
-        At scale 1 (and when sprites are disabled) the cell is too small for pixel
-        art, so we keep the themed Unicode glyph.
+        With sprites on the scale never drops below `config.MIN_SPRITE_SCALE`, so
+        the food style never depends on the terminal size.
         """
         config = _snake_app(self).config
-        if config.food_sprites and self._scale >= sprites.MIN_SPRITE_SCALE:
+        if config.food_sprites:
             return sprites.food_tile(sprites.get_food_sprite(state.world), self._scale)
         return glyph_food_tile(state.food_symbol, config.empty_cell, self._scale)
 

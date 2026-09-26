@@ -9,11 +9,17 @@ a fresh game's initial viewport according to the sizing mode:
 - "cap": fix the grid (clamped to `max_grid_*`), then take the largest scale that
   fits up to `cell_scale` — a consistent, bounded board that may be letterboxed.
 - "fill": fix the scale at `cell_scale`, then grow the grid to fill the space —
-  fills the terminal, but the grid (and difficulty) vary with the window.
+  fills the terminal, but the grid (and difficulty) vary with the window. A grid
+  floored at `min_game_*` fits its scale down instead of being clipped.
 
 Once play begins the logical grid is fixed. `fit_grid_scale` changes only the
 visual scale as the viewport changes, so a terminal resize can never rewrite
 snake or food coordinates.
+
+With food sprites on, the scale never drops below `config.min_cell_scale` and cap
+mode uses the grid cap exactly, so the food style and difficulty never depend on
+the terminal. Where that board does not fit (`board_fits`), the view reports the
+terminal too small instead of shrinking anything.
 
 `render_board_row` turns one logical row of a game state into Rich `Segment`s (so individual cells can
 carry their own colour — e.g. a food sprite). The food cell is supplied as a
@@ -93,24 +99,34 @@ def compute_layout(
     scale_setting = max(1, config.cell_scale)
 
     if config.sizing_mode == "fill":
-        # Fixed cell size; the grid grows to fill the space.
+        # Fixed cell size; the grid grows to fill the space. Where the grid is
+        # floored at its minimum, the cells shrink to fit it, as on a resize.
         width = max(
             config.min_game_width, avail_cols // (CELL_BASE_WIDTH * scale_setting)
         )
         height = max(config.min_game_height, avail_rows // scale_setting)
-        return width, height, scale_setting
+        scale = fit_grid_scale(
+            avail_cols, avail_rows, width, height, scale_setting, config.min_cell_scale
+        )
+        return width, height, scale
 
     # "cap": fixed grid (clamped to the cap), cells grow up to `scale_setting`.
-    width = max(
-        config.min_game_width,
-        min(config.max_grid_width, avail_cols // CELL_BASE_WIDTH),
+    # With sprites the cap is exact: a smaller terminal is too small, not a
+    # reason for a smaller grid.
+    if config.food_sprites:
+        width, height = config.max_grid_width, config.max_grid_height
+    else:
+        width = max(
+            config.min_game_width,
+            min(config.max_grid_width, avail_cols // CELL_BASE_WIDTH),
+        )
+        height = max(
+            config.min_game_height,
+            min(config.max_grid_height, avail_rows),
+        )
+    scale = fit_grid_scale(
+        avail_cols, avail_rows, width, height, scale_setting, config.min_cell_scale
     )
-    height = max(
-        config.min_game_height,
-        min(config.max_grid_height, avail_rows),
-    )
-    fit = min(avail_cols // (CELL_BASE_WIDTH * width), avail_rows // height)
-    scale = max(1, min(fit, scale_setting))
     return width, height, scale
 
 
@@ -120,17 +136,32 @@ def fit_grid_scale(
     grid_width: int,
     grid_height: int,
     max_scale: int,
+    min_scale: int = 1,
 ) -> int:
     """Return the largest scale that fits an established logical grid.
 
-    Scale never drops below one. If the viewport is smaller than the scale-one
-    board, Textual may clip the rendering, but the logical game remains intact.
+    Scale never drops below `min_scale` (one, or more with food sprites). If the
+    viewport is smaller than the board at that scale, the rendering may be
+    clipped (see `board_fits`), but the logical game remains intact.
     """
     fit = min(
         avail_cols // (CELL_BASE_WIDTH * grid_width),
         avail_rows // grid_height,
     )
-    return max(1, min(fit, max(1, max_scale)))
+    return max(min_scale, min(fit, max(1, max_scale)))
+
+
+def board_size(grid_width: int, grid_height: int, scale: int) -> tuple[int, int]:
+    """The ``(columns, rows)`` a grid occupies when drawn at `scale`."""
+    return CELL_BASE_WIDTH * grid_width * scale, grid_height * scale
+
+
+def board_fits(
+    avail_cols: int, avail_rows: int, grid_width: int, grid_height: int, scale: int
+) -> bool:
+    """Whether a grid drawn at `scale` fits the available space."""
+    cols, rows = board_size(grid_width, grid_height, scale)
+    return cols <= avail_cols and rows <= avail_rows
 
 
 def glyph_food_tile(food_symbol: str, empty_cell: str, scale: int) -> FoodTile:

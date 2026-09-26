@@ -1,6 +1,7 @@
 """Integration tests for the Snek app."""
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 from textual.containers import Vertical, VerticalScroll
@@ -9,9 +10,10 @@ from textual.worker import WorkerCancelled
 
 from snek import clipboard
 from snek.app import SnakeApp
-from snek.config import GameConfig
+from snek.config import GameConfig, default_config
 from snek.figlet import FigletText
 from snek.game_rules import Direction
+from snek.modes import apply_mode
 from snek.screens import (
     DiagnosticsModal,
     GameOverModal,
@@ -22,6 +24,10 @@ from snek.screens import (
     SplashScreen,
     StatDisplay,
 )
+from snek.settings import ROWS, widest_help
+
+# Sprites on the 36x20 cap, up to scale 3, wrapping: needs 174x40 at scale 2.
+SPRITES = GameConfig(food_sprites=True, cell_scale=3, walls=False)
 
 
 def _arm_self_collision(game) -> None:
@@ -112,19 +118,36 @@ async def test_splash_is_fully_usable_at_80_by_24() -> None:
         start_prompt = screen.query_one("#splash-start-prompt", Static)
         controls_prompt = screen.query_one("#splash-controls-prompt", Static)
         version = screen.query_one("#splash-version", Static)
+        mode = screen.query_one("#splash-mode", Static)
+        mode_help = screen.query_one("#splash-mode-help", Static)
 
         assert not large_title.display
         assert compact_title.display
         assert large_title._timer is None
         assert compact_title._timer is None
-        for widget in (compact_title, start_prompt, controls_prompt, version):
+        for widget in (
+            compact_title,
+            mode,
+            mode_help,
+            start_prompt,
+            controls_prompt,
+            version,
+        ):
             _assert_fully_in_view(widget, 80, 24)
         _assert_horizontally_centred(compact_title, 80)
 
         assert compact_title.region.height == len(compact_title._lines) == 5
-        assert start_prompt.region.height == controls_prompt.region.height == 1
-        assert "SPACE to start" in str(start_prompt.render())
-        assert "Q to quit" in str(controls_prompt.render())
+        # Too wide for 80 columns, the start prompt splits into two balanced lines.
+        assert start_prompt.region.height == 2
+        assert controls_prompt.region.height == 1
+        assert str(start_prompt.render()).splitlines() == [
+            "Press SPACE to start, D to run the demo,",
+            "←/→ to change mode, or S for detailed settings.",
+        ]
+        assert str(controls_prompt.render()) == (
+            "Gameplay: use arrow or WASD keys to move, Space to pause, Q to quit."
+        )
+        assert controls_prompt.styles.text_style.italic
 
 
 @pytest.mark.asyncio
@@ -145,6 +168,7 @@ async def test_splash_retains_large_title_at_120_by_40() -> None:
         _assert_fully_in_view(screen.query_one("#splash-start-prompt"), 120, 40)
         _assert_fully_in_view(screen.query_one("#splash-controls-prompt"), 120, 40)
         _assert_fully_in_view(screen.query_one("#splash-version"), 120, 40)
+        _assert_fully_in_view(screen.query_one("#splash-mode"), 120, 40)
         assert large_title.region.height == len(large_title._lines) == 25
 
 
@@ -879,7 +903,7 @@ async def test_grid_shrinks_below_cap_on_small_terminal():
 @pytest.mark.asyncio
 async def test_board_scales_up_but_grid_stays_capped_on_large_terminal():
     """A large terminal keeps the capped logical grid but scales cells up."""
-    app = SnakeApp()
+    app = SnakeApp(config=GameConfig(cell_scale=3))
     async with app.run_test(size=(220, 70)) as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -897,7 +921,7 @@ async def test_board_scales_up_but_grid_stays_capped_on_large_terminal():
 @pytest.mark.asyncio
 async def test_fill_mode_grows_grid_to_fill_terminal():
     """'fill' mode grows the logical grid past the cap and keeps the fixed scale."""
-    app = SnakeApp(config=GameConfig(sizing_mode="fill", cell_scale=1))
+    app = SnakeApp(config=GameConfig(sizing_mode="fill", cell_scale=1, walls=False))
     async with app.run_test(size=(172, 48)) as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -996,8 +1020,8 @@ async def test_food_uses_glyph_at_scale_one():
 
 @pytest.mark.asyncio
 async def test_food_uses_sprite_at_large_scale():
-    """On a large terminal (scale >= 2) food is drawn as a pixel sprite."""
-    app = SnakeApp()
+    """With sprites on, food is drawn as a pixel sprite."""
+    app = SnakeApp(config=SPRITES)
     async with app.run_test(size=(280, 70)) as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -1031,9 +1055,120 @@ async def test_food_sprites_can_be_disabled():
 
 
 @pytest.mark.asyncio
+async def test_sprites_hold_a_game_the_terminal_is_too_small_for():
+    """Sprites never fall back to the glyph: a small terminal holds the game.
+
+    The 36x20 cap needs 144x40 at scale two, so with the 30-column side panel a
+    120x35 terminal must grow to 174x40.
+    """
+    app = SnakeApp(config=SPRITES)
+    async with app.run_test(size=(120, 35)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        snake_view = game_screen.query_one(SnakeView)
+        assert (app.game.width, app.game.height) == (36, 20)  # the whole cap
+        assert snake_view.too_small
+        assert game_screen.timer is None  # held, not running
+        assert app.game.paused is False  # held is not paused
+        text = _board_text(snake_view)
+        assert "Terminal too small for food sprites" in text
+        assert "Needs 174 x 40; this is 120 x 35." in text
+
+        await pilot.resize_terminal(174, 40)
+        await pilot.pause()
+        assert not snake_view.too_small
+        assert snake_view._scale == 2
+        assert game_screen.timer is not None  # running again
+        game_screen._disarm()
+        game = app.game
+        hx, hy = game.snake[0]
+        game.set_food_position((hx + 3, hy))
+        assert "▄" in _board_text(snake_view)  # the sprite, not the glyph
+
+
+@pytest.mark.asyncio
+async def test_sprites_hold_a_game_when_the_terminal_shrinks():
+    """Shrinking mid-game holds the loop; it resumes without the held time."""
+    app = SnakeApp(config=SPRITES)
+    async with app.run_test(size=(200, 50)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        snake_view = game_screen.query_one(SnakeView)
+
+        await pilot.resize_terminal(120, 35)
+        await pilot.pause()
+        assert snake_view.too_small
+        assert snake_view._scale == 2  # never scale one with sprites
+        assert game_screen.timer is None
+        # Held: the snake stays put for longer than several steps.
+        held = list(app.game.snake)
+        await asyncio.sleep(3 * app.game.current_interval)
+        await pilot.pause()
+        assert app.game.snake == held
+
+        await pilot.resize_terminal(200, 50)
+        await pilot.pause()
+        assert not snake_view.too_small
+        assert game_screen.timer is not None
+
+
+@pytest.mark.asyncio
+async def test_escape_leaves_a_held_game_for_the_menu():
+    """ESC reaches the menu (and so the settings) only while the game is held."""
+    app = SnakeApp(config=SPRITES)
+    async with app.run_test(size=(200, 50)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, GameScreen)  # not held: ESC does nothing
+
+        await pilot.resize_terminal(120, 35)
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, SplashScreen)
+
+        # Turning sprites off lets the next game run in the same terminal.
+        app.apply_settings(
+            replace(app.settings, config=replace(app.config, food_sprites=False))
+        )
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        assert not game_screen.query_one(SnakeView).too_small
+        assert game_screen.timer is not None
+
+
+@pytest.mark.asyncio
+async def test_settings_refuse_sprites_at_scale_one_and_say_why() -> None:
+    app = SnakeApp(config=GameConfig(food_sprites=True, cell_scale=2))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        await pilot.press("down", "down", "down", "down", "down")  # cell scale
+        await pilot.press("left")
+        await pilot.pause()
+        assert app.config.cell_scale == 2  # refused, and sprites left on
+        assert app.config.food_sprites is True
+        help_line = app.screen.query_one("#settings-help", Static)
+        assert "Food sprites need a cell scale of at least 2" in str(help_line.render())
+        assert help_line.has_class("-refused")
+
+        await pilot.press("down")  # moving on restores the help line
+        await pilot.pause()
+        assert not help_line.has_class("-refused")
+
+
+@pytest.mark.asyncio
 async def test_scale_only_resize_does_not_rescale_snake():
     """Growing the terminal changes scale while leaving the fixed grid intact."""
-    app = SnakeApp()
+    app = SnakeApp(config=GameConfig(cell_scale=3))
     async with app.run_test(size=(180, 50)) as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -1169,7 +1304,7 @@ async def test_diagnostics_shows_live_config_and_state():
         assert "cell scale (k)" in text
         assert f"{app.game.width} x {app.game.height}" in text  # logical grid value
         assert "demo strategy" in text
-        assert "walls : False" in text
+        assert "walls : True" in text
 
 
 @pytest.mark.asyncio
@@ -1395,7 +1530,8 @@ async def test_settings_open_from_the_splash_and_fit_80_by_24() -> None:
             _assert_fully_in_view(widget, 80, 24)
         first = modal.query_one("#setting-0", Static)
         assert first.has_class("-selected")
-        assert "Walls" in str(first.render())
+        assert "Mode" in str(first.render())
+        assert "Classic" in str(first.render())
 
         await pilot.press("escape")
         await pilot.pause()
@@ -1409,10 +1545,10 @@ async def test_settings_apply_to_the_next_game() -> None:
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("right")  # walls on
+        await pilot.press("down", "right")  # walls off
         await pilot.press("down", "left")  # speed 10 -> 8 moves/sec
         await pilot.pause()
-        assert app.config.walls is True
+        assert app.config.walls is False
         assert app.config.initial_speed_interval == pytest.approx(1 / 8)
         help_text = str(app.screen.query_one("#settings-help", Static).render())
         assert "Moves per second" in help_text
@@ -1426,7 +1562,7 @@ async def test_settings_apply_to_the_next_game() -> None:
         assert app.game.config is app.config
         assert app.game.current_interval == pytest.approx(1 / 8)
         view = game_screen.query_one(SnakeView)
-        assert "┏" in _board_text(view)
+        assert "┏" not in _board_text(view)  # no heavy wall frame
 
 
 @pytest.mark.asyncio
@@ -1448,7 +1584,7 @@ async def test_layout_settings_re_establish_the_grid_for_the_next_game() -> None
 
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("down", "down", "down", "left")  # grid cap 36x20 -> 24x14
+        await pilot.press("down", "down", "down", "down", "left")  # 36x20 -> 24x14
         await pilot.press("escape", "space")
         await pilot.pause()
         assert (app.game.width, app.game.height) == (24, 14)
@@ -1456,15 +1592,143 @@ async def test_layout_settings_re_establish_the_grid_for_the_next_game() -> None
 
 
 @pytest.mark.asyncio
-async def test_splash_prompt_names_the_chosen_demo_strategy() -> None:
+async def test_splash_prompt_offers_the_demo_and_settings() -> None:
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        prompt = str(app.screen.query_one("#splash-start-prompt", Static).render())
+        assert prompt == (
+            "Press SPACE to start, D to run the demo, ←/→ to change mode, "
+            "or S for detailed settings."
+        )
+
+
+@pytest.mark.asyncio
+async def test_splash_mode_sits_below_the_prompts_and_above_the_version() -> None:
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        order = [
+            screen.query_one(f"#{name}").region.y
+            for name in (
+                "splash-start-prompt",
+                "splash-controls-prompt",
+                "splash-mode",
+                "splash-mode-help",
+                "splash-version",
+            )
+        ]
+        assert order == sorted(order)
+
+
+def _splash_mode(app: SnakeApp) -> tuple[str, str]:
+    """The splash's mode line and its description, as plain text."""
+    screen = app.screen
+    assert isinstance(screen, SplashScreen)
+    return (
+        str(screen.query_one("#splash-mode", Static).render()),
+        str(screen.query_one("#splash-mode-help", Static).render()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_splash_cycles_the_mode_and_applies_it() -> None:
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        line, description = _splash_mode(app)
+        assert line == "◂ Classic ▸"
+        assert "fixed 36x20 walled board" in description
+
+        await pilot.press("right")
+        await pilot.pause()
+        assert _splash_mode(app)[0] == "◂ Arcade ▸"
+        assert app.config.food_sprites is True
+        assert (app.config.max_grid_width, app.config.max_grid_height) == (20, 12)
+
+        await pilot.press("left", "left")
+        await pilot.pause()
+        assert _splash_mode(app)[0] == "◂ Pixel Arena ▸"
+        assert app.config.sizing_mode == "fill"
+        assert app.config.walls is False
+
+        # The next game plays the chosen mode.
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        assert app.game.config is app.config
+
+
+@pytest.mark.asyncio
+async def test_settings_tweaks_show_as_custom_on_the_splash_and_back() -> None:
+    """The mode is derived from the settings: tweak away from a mode and the
+    splash shows Custom; tweak back onto its values and it shows the mode."""
     app = SnakeApp()
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("up", "right")  # the last row: demo strategy
+        await pilot.press("down", "right")  # walls off
+        await pilot.pause()
+        first_row = str(app.screen.query_one("#setting-0", Static).render())
+        assert "Custom" in first_row
+        await pilot.press("up")  # the Mode row describes the current mode
+        await pilot.pause()
+        help_text = str(app.screen.query_one("#settings-help", Static).render())
+        assert "Your own mix" in help_text
         await pilot.press("escape")
         await pilot.pause()
-        assert app.demo_strategy == "greedy"
-        prompt = app.screen.query_one("#splash-start-prompt", Static)
-        assert "D for the greedy demo" in str(prompt.render())
-        assert "S for settings" in str(prompt.render())
+        line, description = _splash_mode(app)
+        assert line == "◂ Custom ▸"
+        assert "Your own mix" in description
+
+        await pilot.press("s")
+        await pilot.pause()
+        await pilot.press("down", "right")  # walls back on
+        await pilot.press("escape")
+        await pilot.pause()
+        assert _splash_mode(app)[0] == "◂ Classic ▸"
+
+        # From Custom, the splash enters the modes at either end.
+        app.apply_settings(
+            replace(app.settings, config=replace(app.config, walls=False))
+        )
+        await pilot.press("right")
+        await pilot.pause()
+        assert _splash_mode(app)[0] == "◂ Classic ▸"
+
+
+@pytest.mark.asyncio
+async def test_too_small_message_fits_the_supported_minimum() -> None:
+    """Arcade at 80x24 is held, and its message fits the narrow view whole."""
+    app = SnakeApp(config=apply_mode(default_config, "Arcade"))
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("space")
+        await pilot.pause()
+        snake_view = app.screen.query_one(SnakeView)
+        assert snake_view.too_small
+        text = _board_text(snake_view)
+        assert "Needs 112 x 26; this is 80 x 24." in text
+        assert "Enlarge the window or turn sprites off." in text
+        assert "ESC main menu" in text
+
+
+@pytest.mark.asyncio
+async def test_settings_help_fits_the_longest_help_on_one_line() -> None:
+    app = SnakeApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        help_line = app.screen.query_one("#settings-help", Static)
+        assert help_line.region.width > widest_help()
+        _assert_fully_in_view(help_line, 80, 24)
+        for _ in ROWS:
+            text = str(help_line.render())
+            assert (
+                help_line.render_lines(help_line.region.reset_offset)[0].text.strip()
+                == text
+            )
+            await pilot.press("down")
+            await pilot.pause()

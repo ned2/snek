@@ -9,6 +9,7 @@ with `uv run pytest --snapshot-update` after an intentional visual change.
 import pytest
 
 from snek.app import SnakeApp
+from snek.config import GameConfig
 from snek.screens import SnakeView
 
 pytestmark = pytest.mark.usefixtures("deterministic_snapshot_render_environment")
@@ -38,8 +39,9 @@ def test_game_screen_snapshot(snap_compare):
 
 
 def test_game_screen_sprite_snapshot(snap_compare):
-    """A large terminal (scale >= 2) renders food as a pixel-art sprite."""
-    app = SnakeApp()
+    """With sprites on, a large terminal renders food as a pixel-art sprite."""
+    # The pre-mode sprite layout: the 36x20 cap up to scale 3, wrapping.
+    app = SnakeApp(config=GameConfig(food_sprites=True, cell_scale=3, walls=False))
 
     async def run_before(pilot) -> None:
         # Splash -> game, then pin a deterministic state on a board big enough to

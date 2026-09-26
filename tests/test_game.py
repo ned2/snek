@@ -9,6 +9,9 @@ from snek.config import GameConfig
 from snek.game import Game, StepResult
 from snek.game_rules import Direction
 
+# Most model tests were written for a wrapping board; walls are opt-in there.
+WRAPPING = GameConfig(walls=False)
+
 
 class _FixedRankRng:
     """Minimal position RNG that records and returns one requested free rank."""
@@ -486,7 +489,7 @@ class TestStepResult:
 
     def test_motion_headings_wrap_across_the_seam(self):
         """Moves across the board edge keep their direction."""
-        game = Game(width=20, height=20)
+        game = Game(width=20, height=20, config=WRAPPING)
         game.snake = [(0, 5), (19, 5), (18, 5)]
         game.direction = Direction.RIGHT
         game.food = (10, 10)
@@ -547,7 +550,7 @@ class TestSpeedFloor:
 
     def test_interval_clamps_to_floor_and_no_crash_path(self):
         """Eating well past the floor pins the interval at the floor, game alive."""
-        game = Game(width=400, height=3)
+        game = Game(width=400, height=3, config=WRAPPING)
         # ~195 foods reaches the 0.002s floor from 0.1s; 300 is comfortably past.
         self._eat_foods(game, 300)
         assert game.game_over is False
@@ -555,7 +558,7 @@ class TestSpeedFloor:
 
     def test_speed_never_exceeds_cap(self):
         """No matter how many foods are eaten, moves/sec stays under the cap."""
-        game = Game(width=400, height=3)
+        game = Game(width=400, height=3, config=WRAPPING)
         cap = 1.0 / game.config.min_speed_interval
         for _ in range(300):
             head = game.snake[0]
@@ -755,8 +758,8 @@ class TestWalls:
         assert not game.won
         assert game.snake == [head]
 
-    def test_the_board_wraps_by_default(self):
-        game = Game(10, 10)
+    def test_the_board_wraps_without_walls(self):
+        game = Game(10, 10, config=WRAPPING)
         game.set_snake_position([(9, 5)])
         game.set_food_position((2, 2))
 

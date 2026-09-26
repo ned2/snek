@@ -6,6 +6,10 @@ from typing import Final
 
 from rich.cells import cell_len
 
+# The smallest cell scale that can hold a food sprite: at scale 1 a cell is only
+# 2x1 characters, far too small for pixel art.
+MIN_SPRITE_SCALE: Final = 2
+
 
 def _require_positive_int(name: str, value: object) -> int:
     """Return a positive integer or raise an actionable configuration error."""
@@ -64,15 +68,17 @@ class GameConfig:
 
     # Logical grid cap for "cap" mode (game cells = difficulty). The board grows
     # with the terminal up to this size, then stops. 36x20 (widescreen 9:5) fills
-    # a ~280-col terminal at scale 3. Unused in "fill" mode.
+    # a ~280-col terminal at scale 3. Unused in "fill" mode. The defaults here and
+    # below are the Classic mode's values (see `modes`).
     max_grid_width: int = 36
     max_grid_height: int = 20
 
     # Cell magnification factor (k): each logical cell is drawn (2*k) x k glyphs.
     #   "cap" mode  — the *ceiling*; cells grow up to this as space allows.
     #   "fill" mode — the *exact* size; the grid fills the terminal at this scale.
-    # k >= 2 is required for food sprites (a k=1 cell is only 2x1 characters).
-    cell_scale: int = 3
+    # With food sprites on it must be at least `MIN_SPRITE_SCALE`, and the board
+    # never draws cells smaller than that (see `min_cell_scale`).
+    cell_scale: int = 1
 
     # Speed settings
     initial_speed_interval: float = 0.1
@@ -111,10 +117,11 @@ class GameConfig:
     snake_block: str = "██"
     empty_cell: str = "  "
 
-    # Draw food as pixel-art sprites when the cell is big enough (scale >=
-    # sprites.MIN_SPRITE_SCALE); otherwise fall back to the themed glyph. Set
-    # False to always use the glyph.
-    food_sprites: bool = True
+    # Draw food as pixel-art sprites instead of the world's themed glyph. Sprites
+    # need cells of at least `MIN_SPRITE_SCALE`, and the food style never changes
+    # with the terminal size: a terminal too small for the board at that scale
+    # holds the game behind a message rather than falling back to the glyph.
+    food_sprites: bool = False
 
     # Interpolate movement between steps: the head slides into its new cell and
     # the tail drains out of the old one, instead of both jumping a whole cell.
@@ -122,9 +129,9 @@ class GameConfig:
     # a step lasts less than two frames.
     smooth_motion: bool = True
 
-    # Solid board edges: moving off the board ends the game. By default the
+    # Solid board edges: moving off the board ends the game. Without them the
     # board wraps around, so the snake leaves one edge and enters the opposite.
-    walls: bool = False
+    walls: bool = True
 
     def __post_init__(self) -> None:
         """Reject invalid configuration at its construction boundary."""
@@ -204,6 +211,17 @@ class GameConfig:
         ):
             if not isinstance(flag, bool):
                 raise ValueError(f"{name} must be a boolean, got {flag!r}")
+
+        if self.cell_scale < self.min_cell_scale:
+            raise ValueError(
+                f"food sprites need a cell scale of at least {MIN_SPRITE_SCALE}, "
+                f"got {self.cell_scale}"
+            )
+
+    @property
+    def min_cell_scale(self) -> int:
+        """The smallest scale the board may be drawn at: sprites need room."""
+        return MIN_SPRITE_SCALE if self.food_sprites else 1
 
 
 default_config: Final = GameConfig()

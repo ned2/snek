@@ -14,8 +14,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
+from rich.cells import cell_len
+
 from .config import GameConfig
 from .demo import STRATEGIES
+from .modes import CUSTOM, MODES, apply_mode, describe, mode_of
 
 
 @dataclass(frozen=True)
@@ -32,11 +35,12 @@ class SettingRow:
 
     `choices` are in display order. Stepping past either end wraps round when
     `wrap` is set (for named options); ordered values such as speed stop at the
-    ends instead. `show` formats a value for display.
+    ends instead. `show` formats a value for display. `help` is fixed text, or
+    text worked out from the current settings.
     """
 
     label: str
-    help: str
+    help: str | Callable[[Settings], str]
     choices: Sequence[Any]
     get: Callable[[Settings], Any]
     put: Callable[[Settings, Any], Settings]
@@ -47,12 +51,17 @@ class SettingRow:
         """The current value, formatted for display."""
         return self.show(self.get(settings))
 
+    def help_text(self, settings: Settings) -> str:
+        """The help line for this row, given the current settings."""
+        return self.help if isinstance(self.help, str) else self.help(settings)
+
     def step(self, settings: Settings, delta: int) -> Settings:
         """Move `delta` choices along from the current value.
 
         A current value that is not one of the choices (e.g. an arbitrary
         `--speed`) steps to the nearest choice in that direction, and stays put
-        if there is none.
+        if there is none. Named choices have no order, so from such a value (e.g.
+        a "Custom" mode) they are entered at the first or last.
         """
         current = self.get(settings)
         choices = list(self.choices)
@@ -63,6 +72,8 @@ class SettingRow:
             else:
                 index = max(0, min(len(choices) - 1, index))
             return self.put(settings, choices[index])
+        if self.wrap:
+            return self.put(settings, choices[0 if delta > 0 else -1])
         if delta > 0:
             beyond = [choice for choice in choices if choice > current]
             return self.put(settings, beyond[0]) if beyond else settings
@@ -106,7 +117,19 @@ SPEEDS = (2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50)
 GRIDS = ((16, 10), (24, 14), (36, 20), (48, 26), (60, 34))
 SCALES = (1, 2, 3, 4, 5)
 
+# The mode: one step applies a whole designed mix of the rows below it. The
+# splash offers this row too.
+MODE_ROW = SettingRow(
+    label="Mode",
+    help=lambda s: describe(mode_of(s.config)),
+    choices=tuple(mode.name for mode in MODES),
+    get=lambda s: mode_of(s.config),
+    put=lambda s, name: replace(s, config=apply_mode(s.config, name)),
+    wrap=True,
+)
+
 ROWS: tuple[SettingRow, ...] = (
+    MODE_ROW,
     SettingRow(
         label="Walls",
         help="Solid edges end the game; off, the board wraps around.",
@@ -159,7 +182,7 @@ ROWS: tuple[SettingRow, ...] = (
     ),
     SettingRow(
         label="Food sprites",
-        help="Draw food as pixel art when cells are big enough.",
+        help="Pixel-art food. Needs cell scale 2+ and a terminal to fit it.",
         choices=(True, False),
         get=lambda s: s.config.food_sprites,
         put=_config("food_sprites"),
@@ -175,3 +198,13 @@ ROWS: tuple[SettingRow, ...] = (
         wrap=True,
     ),
 )
+
+
+def widest_help() -> int:
+    """The width of the longest help line any row can show, in cells.
+
+    Fixed help is counted as is; the Mode row's help is a mode description.
+    """
+    texts = [row.help for row in ROWS if isinstance(row.help, str)]
+    texts += [describe(mode.name) for mode in MODES] + [describe(CUSTOM)]
+    return max(cell_len(text) for text in texts)

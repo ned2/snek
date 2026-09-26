@@ -9,9 +9,9 @@ image, which renders to exactly that tile (`k` rows of `2k` Segments).
 
 Per the Level-A plan a single shared sprite is used for every world (see
 `get_food_sprite`); per-world art slots in here later without touching callers.
-Sprites only apply at scale >= `MIN_SPRITE_SCALE`: at scale 1 a food cell is just
-2x1 characters, far too small for pixel art, so the caller falls back to the
-themed glyph.
+Sprites need a scale of at least `config.MIN_SPRITE_SCALE`: at scale 1 a food cell is
+just 2x1 characters, far too small for pixel art. `GameConfig` rejects sprites
+with a smaller `cell_scale`, and the board never draws them smaller.
 """
 
 from PIL import Image
@@ -19,9 +19,6 @@ from rich.console import Console
 from rich_pixels import Pixels
 
 from .rendering import FoodTile
-
-# Below this scale a food cell can't hold a legible sprite; use the glyph instead.
-MIN_SPRITE_SCALE = 2
 
 _RGBA = tuple[int, int, int, int]
 _TRANSPARENT: _RGBA = (0, 0, 0, 0)

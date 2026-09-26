@@ -5,8 +5,9 @@ import math
 from dataclasses import replace
 
 from .app import SnakeApp
-from .config import default_config, validate_dimensions
+from .config import MIN_SPRITE_SCALE, default_config, validate_dimensions
 from .demo import DEFAULT_STRATEGY, STRATEGIES
+from .modes import DEFAULT_MODE, MODES, apply_mode
 
 # The default starting speed, expressed in the same moves-per-second units the
 # `--speed` flag (and the in-game stats panel) use. Derived from the config's
@@ -81,13 +82,23 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--mode",
+        choices=[mode.key for mode in MODES],
+        default=DEFAULT_MODE.key,
+        help=(
+            "a designed mix of the board options below, which override it. "
+            + " ".join(f"{mode.key}: {mode.description}" for mode in MODES)
+            + " (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
         "--sizing",
         choices=("cap", "fill"),
-        default=default_config.sizing_mode,
+        default=None,
         help=(
             "how the board is sized: 'cap' keeps a fixed, consistent grid scaled "
             "to fill up to --scale; 'fill' grows the grid to fill the terminal at "
-            "exactly --scale (default: %(default)s)"
+            "exactly --scale (default: from --mode)"
         ),
     )
     parser.add_argument(
@@ -95,10 +106,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_grid_dims,
         default=None,
         metavar="WIDTHxHEIGHT",
-        help=(
-            "logical grid cap for --sizing cap, e.g. 36x20 "
-            f"(default: {default_config.max_grid_width}x{default_config.max_grid_height})"
-        ),
+        help="logical grid cap for --sizing cap, e.g. 36x20 (default: from --mode)",
     )
     parser.add_argument(
         "--scale",
@@ -107,7 +115,26 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help=(
             "cell magnification (k): the max in 'cap' mode, the exact size in "
-            f"'fill' mode; k>=2 enables food sprites (default: {default_config.cell_scale})"
+            "'fill' mode; --sprites needs k>=2 (default: from --mode)"
+        ),
+    )
+    parser.add_argument(
+        "--sprites",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "draw food as pixel art instead of glyphs; needs --scale "
+            f">={MIN_SPRITE_SCALE}, and a terminal big enough for the board at that "
+            "scale, with 'cap' sizing using the whole --grid (default: from --mode)"
+        ),
+    )
+    parser.add_argument(
+        "--walls",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "make the board edges solid walls instead of wrapping around "
+            "(default: from --mode)"
         ),
     )
     parser.add_argument(
@@ -115,11 +142,6 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="smooth",
         action="store_false",
         help="move the snake a whole cell at a time instead of sliding between cells",
-    )
-    parser.add_argument(
-        "--walls",
-        action="store_true",
-        help="make the board edges solid walls instead of wrapping around",
     )
     parser.add_argument(
         "--demo-strategy",
@@ -136,17 +158,28 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     """Parse arguments and launch the app."""
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
     # `--speed` is moves per second; the game model works in seconds per move.
-    overrides = {
+    overrides: dict[str, object] = {
         "initial_speed_interval": 1.0 / args.speed,
-        "sizing_mode": args.sizing,
         "smooth_motion": args.smooth,
-        "walls": args.walls,
     }
+    # Board flags override the mode only where given.
+    for field, value in (
+        ("sizing_mode", args.sizing),
+        ("cell_scale", args.scale),
+        ("food_sprites", args.sprites),
+        ("walls", args.walls),
+    ):
+        if value is not None:
+            overrides[field] = value
     if args.grid is not None:
         overrides["max_grid_width"], overrides["max_grid_height"] = args.grid
-    if args.scale is not None:
-        overrides["cell_scale"] = args.scale
-    config = replace(default_config, **overrides)
+    mode = next(mode for mode in MODES if mode.key == args.mode)
+    try:
+        config = replace(apply_mode(default_config, mode.name), **overrides)
+    except ValueError as error:
+        # Each flag parsed on its own, but together they are invalid.
+        parser.error(str(error))
     SnakeApp(config=config, demo_strategy=args.demo_strategy).run()

@@ -7,6 +7,7 @@ from rich.segment import Segment
 from rich.style import Style
 
 from snek import sprites
+from snek.config import MIN_SPRITE_SCALE
 
 
 class TestSpriteRegistry:
@@ -40,7 +41,7 @@ class TestFoodTile:
 
     def test_min_sprite_scale_is_above_one(self):
         """Scale 1 cells are too small for sprites; the floor must exclude them."""
-        assert sprites.MIN_SPRITE_SCALE >= 2
+        assert MIN_SPRITE_SCALE >= 2
 
     def test_tile_uses_the_rich_console_protocol(
         self, monkeypatch: pytest.MonkeyPatch

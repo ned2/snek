@@ -69,16 +69,27 @@ StatDisplay {
 
 SplashScreen.-wide.-tall #splash-title {
     display: block;
+    /* Less than other titles, leaving the mode line room at 40 rows. */
+    margin-bottom: 3;
 }
 
 SplashScreen.-wide.-tall #splash-title-compact {
     display: none;
 }
 
+#splash-mode {
+    text-align: center;
+    text-style: bold;
+}
+
 .splash-prompt {
     text-align: center;
     text-style: bold dim;
     margin-bottom: 1;
+}
+
+#splash-controls-prompt {
+    text-style: bold dim italic;
 }
 
 .version-display {
@@ -189,14 +200,10 @@ SplashScreen.-wide.-tall .version-display {
     margin-bottom: 1;
 }
 
-#settings-prompt,
-#settings-note {
+#settings-prompt {
     width: 100%;
     text-align: center;
     text-style: bold dim;
-}
-
-#settings-prompt {
     margin-bottom: 1;
 }
 
@@ -221,9 +228,13 @@ SplashScreen.-wide.-tall .version-display {
 }
 
 #settings-help {
-    width: 100%;
+    /* Sized in code to the longest help line (SettingsModal.on_mount). */
     height: 2;
     margin-top: 1;
     text-align: center;
     text-style: italic;
+}
+
+#settings-help.-refused {
+    color: $error;
 }

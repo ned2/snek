@@ -34,10 +34,11 @@ TAIL_VACATE = list(STRATEGIES)
 # from a length-1 start, so it is not robust to artificially-constructed snakes.
 PER_TICK_SURVIVAL = ["greedy", "safe-bfs", "floodfill"]
 WALLED = replace(default_config, walls=True)
+WRAPPING = replace(default_config, walls=False)
 
 
 def _game(w: int, h: int, seed: int, walls: bool = False) -> Game:
-    config = WALLED if walls else default_config
+    config = WALLED if walls else WRAPPING
     return Game(width=w, height=h, config=config, rng=random.Random(seed))
 
 
@@ -104,7 +105,7 @@ def test_registry_and_factory():
     for cls in STRATEGIES.values():
         assert issubclass(cls, DemoStrategy)
 
-    game = Game(width=20, height=10, rng=random.Random(0))
+    game = Game(width=20, height=10, config=WRAPPING, rng=random.Random(0))
     assert isinstance(make_demo_ai(game), FloodFillStrategy)  # default
     assert isinstance(make_demo_ai(game, "floodfill"), FloodFillStrategy)
     assert isinstance(make_demo_ai(game, "greedy"), GreedyStrategy)
@@ -149,7 +150,7 @@ def test_deterministic(name):
     move sequence (no RNG, no set-iteration-order dependence)."""
 
     def run() -> list[Direction | None]:
-        game = Game(width=16, height=10, rng=random.Random(123))
+        game = Game(width=16, height=10, config=WRAPPING, rng=random.Random(123))
         ai = STRATEGIES[name](game)
         seq: list[Direction | None] = []
         steps = 0
@@ -204,7 +205,7 @@ def test_b4_vacating_tail_escape(name):
     because the tail recedes on this non-growing step. A tail-vacate-aware
     strategy must escape via RIGHT instead of dying.
     """
-    game = Game(width=10, height=10, rng=random.Random(0))
+    game = Game(width=10, height=10, config=WRAPPING, rng=random.Random(0))
     game.set_snake_position([(2, 2), (2, 1), (2, 3), (3, 2)])
     game.direction = Direction.RIGHT
     game.set_food_position((8, 8))  # well out of the way
@@ -223,7 +224,7 @@ def test_b4_vacating_tail_escape(name):
 @pytest.mark.parametrize("w,h", [(20, 10), (6, 4), (10, 8), (5, 4), (4, 5)])
 def test_hamiltonian_builds_valid_cycle(w, h):
     """An even-sided board admits a true Hamiltonian cycle on the torus."""
-    game = Game(width=w, height=h, rng=random.Random(0))
+    game = Game(width=w, height=h, config=WRAPPING, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     ai.get_next_direction()  # triggers the build
     assert ai._built_for == (w, h, False)
@@ -256,7 +257,7 @@ def test_hamiltonian_odd_odd_walled_board_degrades_to_path():
 @pytest.mark.parametrize("w,h", [(5, 5), (7, 3)])
 def test_hamiltonian_odd_odd_degrades_to_path(w, h):
     """Odd x odd admits no cycle; degrade to a covering path without error."""
-    game = Game(width=w, height=h, rng=random.Random(0))
+    game = Game(width=w, height=h, config=WRAPPING, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     direction = ai.get_next_direction()  # must not raise
     assert ai._built_for == (w, h, False)
@@ -278,7 +279,7 @@ def test_hamiltonian_survives_odd_boards(w, h):
     """
     cap = 3000
     for seed in range(5):
-        game = Game(width=w, height=h, rng=random.Random(seed))
+        game = Game(width=w, height=h, config=WRAPPING, rng=random.Random(seed))
         ai = HamiltonianStrategy(game)
         steps = 0
         while not game.game_over and steps < cap:
@@ -309,7 +310,7 @@ def test_hamiltonian_fallback_uses_vacating_tail():
     regression that ignored the vacating tail would pick RIGHT (into the body), so
     this directly guards the fallback's `snake[:-1]` rule.
     """
-    game = Game(width=10, height=10, rng=random.Random(0))
+    game = Game(width=10, height=10, config=WRAPPING, rng=random.Random(0))
     game.set_snake_position([(5, 5), (5, 6), (6, 5), (5, 4)])  # head (5,5), tail (5,4)
     game.direction = Direction.RIGHT
     game.set_food_position((0, 0))
@@ -318,7 +319,7 @@ def test_hamiltonian_fallback_uses_vacating_tail():
 
 def test_hamiltonian_rebuilds_if_a_fresh_game_uses_a_new_grid():
     """A strategy reused across explicit fresh-grid setup drops stale topology."""
-    game = Game(width=20, height=10, rng=random.Random(0))
+    game = Game(width=20, height=10, config=WRAPPING, rng=random.Random(0))
     ai = HamiltonianStrategy(game)
     ai.get_next_direction()
     assert ai._built_for == (20, 10, False)

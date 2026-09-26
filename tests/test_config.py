@@ -5,7 +5,7 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from snek.config import GameConfig
+from snek.config import MIN_SPRITE_SCALE, GameConfig
 
 
 def test_config_is_an_immutable_value_object() -> None:
@@ -139,7 +139,22 @@ def test_smooth_motion_flag_is_boolean() -> None:
 
 
 def test_walls_flag_is_boolean() -> None:
-    assert GameConfig().walls is False
-    assert GameConfig(walls=True).walls is True
+    assert GameConfig().walls is True  # Classic mode
+    assert GameConfig(walls=False).walls is False
     with pytest.raises(ValueError, match="walls must be a boolean"):
         GameConfig(walls=1)
+
+
+def test_food_sprites_are_off_by_default() -> None:
+    """Sprites need a big enough terminal, so the default is the glyph."""
+    assert GameConfig().food_sprites is False
+    assert GameConfig().min_cell_scale == 1
+
+
+def test_food_sprites_need_a_cell_scale_of_at_least_two() -> None:
+    with pytest.raises(
+        ValueError, match="food sprites need a cell scale of at least 2"
+    ):
+        GameConfig(food_sprites=True, cell_scale=1)
+    config = GameConfig(food_sprites=True, cell_scale=MIN_SPRITE_SCALE)
+    assert config.min_cell_scale == MIN_SPRITE_SCALE
