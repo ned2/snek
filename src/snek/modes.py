@@ -94,9 +94,9 @@ _COMMON: Final = {
     "max_grid_height": 20,
 }
 
-# Every mode but Classic starts in world 1 (6 moves a second), moves on through
-# the worlds, and shows each world's colours. Foods per world suits the board:
-# 8 sets take world 1 to world 9.
+# Every mode starts in world 1, the lowest pace (see `worlds.WORLD_PACES`); every
+# mode but Classic moves on through the worlds and shows each world's colours.
+# Foods per world suits the board: 8 sets take world 1 to world 9.
 _PROGRESSING: Final = {
     "start_world": 1,
     "world_change": "progress",
@@ -110,9 +110,8 @@ MODES: Final[tuple[Mode, ...]] = (
         "Nokia-style LCD screen: diamond food on a fixed 20x11 walled board.",
         {
             **_COMMON,
-            # World 5 is 10 moves a second. A fixed world doesn't use foods per
-            # world, but every mode gives it.
-            "start_world": 5,
+            # A fixed world doesn't use foods per world, but every mode gives it.
+            "start_world": 1,
             "world_change": "fixed",
             "foods_per_world": 50,
             "palette": "lcd",
@@ -135,7 +134,7 @@ MODES: Final[tuple[Mode, ...]] = (
             "walls": True,
             "start_length": 3,
             "sizing_mode": "fill",
-            "cell_scale": 4,
+            "cell_scale": 3,
             "food_type": "sprites",
         },
     ),

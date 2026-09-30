@@ -107,8 +107,8 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   The mode in force is derived by `mode_of()` — the first whose values all match, else
   "Custom" (as are invalid settings) — never stored, so tweaking settings onto a mode's values
   shows that mode. `GameConfig`'s defaults are Classic's: Nokia Snake's walled 20x11 board,
-  diamond food, an 8-cell start, and a fixed world 5 on the LCD palette. Model tests about
-  progression pass `world_change="progress"` (and usually `start_world=1`).
+  diamond food, an 8-cell start, and a fixed world 1 on the LCD palette. Model tests about
+  progression pass `world_change="progress"`.
 - **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
   model→view contract returned by `Game.step()`.
 - **`game_rules.py`**: pure game mechanics — movement (`next_position` wraps, or returns None
@@ -126,7 +126,8 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
   many model steps each wake runs (and how far the next step has progressed), and
   `next_wake_delay()`, which says when the loop should wake next.
 - **`worlds.py`**: world/theme progression (`WorldPath`) — the nine worlds, their food
-  symbols, and `WORLD_SPEEDS`, the moves/s ladder.
+  symbols, `WORLD_PACES` (the pace ladder) and `moves_per_second()`, which converts a pace
+  for a cell scale.
 - **`themes.py`**: per-world Textual themes (colors) and the two-tone `snek-lcd` theme.
 - **`figlet.py`**: `FigletText`, the in-repo ASCII-art title widget (recolors on theme change
   by overriding `notify_style_update`).
@@ -158,10 +159,18 @@ tests that want a one-cell snake with no grow-in pass `start_length=1`.
 
 ### Game Progression System
 
-A world is a Nokia Snake level. Each of the 9 worlds has a speed (`worlds.WORLD_SPEEDS`,
-6 to 25 moves/s), a theme and a food symbol set, and the world is the **only** source of
-speed: `Game.current_interval` is derived from `current_world` (counted from 0;
-`world_number` from 1), and there is no per-food speed-up.
+A world is a Nokia Snake level. Each of the 9 worlds has a pace (`worlds.WORLD_PACES`, 10 to
+25, evenly spaced), a theme and a food symbol set, and the world is the **only** source of
+speed: there is no per-food speed-up. Pace is the snake's screen speed, the same at every cell
+scale (issue 0037): rows per second, a row being a scale-1 cell's height. `moves_per_second()`
+turns it into moves/s as `pace / scale`, but at least a turn-lag floor that rises gently with
+the pace (7.5/s at pace 10, about 10.5/s at 25; `FLOOR_PACE_EXPONENT`). So big cells run on
+the floor, faster on screen than the pace, and still speed up from world to world.
+`Game.current_interval` comes from the pace of `current_world` (counted from 0;
+`world_number` from 1) at `Game.cell_scale`, the scale the grid was established at
+(`reset(cell_scale=...)`, from `GameScreen.establish_grid`) in either sizing mode. A resize
+never changes the speed. The panel shows the pace; diagnostics also show the moves/s. Model
+games that no view established run at scale 1.
 - Play starts in `start_world`. With `world_change` "fixed" it stays there; with "progress"
   every `foods_per_world` foods eaten moves on a world, and play stays in world 9.
 - Scoring is always on: each food scores the world number it was eaten in, and filling the
@@ -204,15 +213,14 @@ Within the game loop:
    `_generation` it was armed in, `_disarm()` bumps it, and `_on_wake` ignores stale wakes.
    `GameScreen.tick()` runs exactly one step and redraws it whole without touching timers;
    tests call `_disarm()` (not `timer.stop()`) and then advance by hand.
-2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction (once, and
-   early while interpolating, so the drawing can lead into it), then calls `Game.step()`,
-   which returns a `StepResult` describing the consequences (moved / ate food /
+2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction, then calls
+   `Game.step()`, which returns a `StepResult` describing the consequences (moved / ate food /
    world changed / game over). The view reacts to those flags rather than inferring model
    deltas.
-3. `Game` owns world progression, speed (from the world) and score. A world change updates
-   the Textual theme; game-over stops the frame timer and pushes a fresh modal.
+3. `Game` owns world progression, speed (from the world's pace) and score. A world change
+   updates the Textual theme; game-over stops the frame timer and pushes a fresh modal.
 4. The stats panel has one source of truth: `GameScreen` holds display-ready string reactives
-   (`world_name`, `progress`, `score_label`, `foods_label`, `speed_label`), each `data_bind`'d
+   (`world_name`, `progress`, `score_label`, `foods_label`, `pace_label`), each `data_bind`'d
    (parent → child, read-only) to a `StatDisplay` in the `SidePanel`. After a frame's steps,
    `_sync_reactives()` runs once and the board refreshes once; the bindings propagate to the
    panel. A fixed world shows its number and hides the progress line.
@@ -250,10 +258,7 @@ Within the game loop:
   the new head, the vacated tail cell and their directions in `StepResult`, and
   `rendering.motion_cells()` turns those plus the clock's progress into part-filled cells (whole
   columns across, `▀`/`▄` half rows vertically, `2*scale` increments either way) that keep the
-  visible length constant. At scale 4 it trails by one increment less (`lead_shift`), so the
-  step's last increment leads into `Game.next_move()`; a key pressed then redraws at once,
-  swinging that increment round the corner, and a fatal next move is not drawn ahead. The
-  screen passes the step to `update_board()` only while
+  visible length constant. The screen passes the step to `update_board()` only while
   interpolating: `smooth_motion` is on (`--no-smooth` turns it off), the glyphs are the default
   blocks, the step spans at least two frames, and exactly one step ran in the wake. Otherwise
   cells are drawn whole, and game over settles the board whole.

@@ -20,7 +20,7 @@ from rich.cells import cell_len
 from .config import FOOD_TYPES, PALETTES, WORLD_CHANGES
 from .demo import STRATEGIES
 from .modes import CUSTOM, MODES, Settings, apply_mode, describe, mode_of
-from .worlds import WORLD_SPEEDS
+from .worlds import WORLD_PACES
 
 
 @dataclass(frozen=True)
@@ -89,8 +89,8 @@ def _on_off(value: bool) -> str:
 
 
 def _world(world: int) -> str:
-    """A world and its speed, e.g. "5 · 10/s"."""
-    return f"{world} · {WORLD_SPEEDS[world - 1]}/s"
+    """A world and its pace, e.g. "3 · pace 12.6"."""
+    return f"{world} · pace {WORLD_PACES[world - 1]:g}"
 
 
 def _grid(settings: Settings) -> tuple[int, int]:
@@ -103,7 +103,7 @@ def _put_grid(settings: Settings, grid: tuple[int, int]) -> Settings:
     return settings.with_values(max_grid_width=width, max_grid_height=height)
 
 
-START_WORLDS = tuple(range(1, len(WORLD_SPEEDS) + 1))
+START_WORLDS = tuple(range(1, len(WORLD_PACES) + 1))
 FOODS_PER_WORLD = (10, 25, 50, 100, 200)
 START_LENGTHS = tuple(range(1, 11))
 GRIDS = ((20, 11), (24, 14), (36, 20), (48, 26), (60, 34))
@@ -140,8 +140,8 @@ ROWS: tuple[SettingRow, ...] = (
     SettingRow(
         label="Starting world",
         help=(
-            "The world you start in: sets the speed "
-            f"({WORLD_SPEEDS[0]}\N{EN DASH}{WORLD_SPEEDS[-1]} /sec) "
+            "The world you start in: sets the pace "
+            f"({WORLD_PACES[0]:g}\N{EN DASH}{WORLD_PACES[-1]:g}) "
             "and points per food."
         ),
         choices=START_WORLDS,

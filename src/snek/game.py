@@ -6,7 +6,7 @@ from typing import Final
 
 from .config import DIAMOND, GameConfig, default_config, validate_dimensions
 from .game_rules import Direction, GameRules, Position
-from .worlds import WORLD_SPEEDS, WorldPath
+from .worlds import WORLD_PACES, WorldPath, moves_per_second
 
 # Points for filling the board, on top of the last food's (Nokia Snake's rule).
 BOARD_CLEAR_BONUS: Final = 100
@@ -61,16 +61,27 @@ class Game:
         validate_dimensions(resolved_width, resolved_height)
         self.width = resolved_width
         self.height = resolved_height
+        # The cell scale the grid was established at, which sets the moves per
+        # second a pace gives (see `worlds.moves_per_second`). 1 until a view
+        # establishes it; later resizes redraw at other scales but keep this.
+        self.cell_scale = 1
         self.rng = random.Random() if rng is None else rng
         self.world_path = WorldPath(rng=self.rng)
         self.reset()
 
-    def reset(self, *, width: int | None = None, height: int | None = None) -> None:
+    def reset(
+        self,
+        *,
+        width: int | None = None,
+        height: int | None = None,
+        cell_scale: int | None = None,
+    ) -> None:
         """Reset the game to its initial state, optionally on a fresh grid.
 
-        Supplying dimensions is reserved for establishing the logical grid from
-        the first valid UI layout. Once play begins, viewport resizes never call
-        into the model or alter its coordinates.
+        Supplying dimensions (and the cell scale they are drawn at) is reserved
+        for establishing the logical grid from the first valid UI layout. Once
+        play begins, viewport resizes never call into the model or alter its
+        coordinates or speed.
         """
         if (width is None) != (height is None):
             raise ValueError("width and height must be provided together")
@@ -78,6 +89,10 @@ class Game:
             validate_dimensions(width, height)
             self.width = width
             self.height = height
+        if cell_scale is not None:
+            if cell_scale < 1:
+                raise ValueError(f"cell_scale must be at least 1, got {cell_scale}")
+            self.cell_scale = cell_scale
         mid = (self.width // 2, self.height // 2)
         self.snake = [mid]
         # The snake starts as one cell and grows in to `config.start_length`: its
@@ -120,12 +135,17 @@ class Game:
     @property
     def is_last_world(self) -> bool:
         """Whether this is the last world, which play never moves on from."""
-        return self.current_world == len(WORLD_SPEEDS) - 1
+        return self.current_world == len(WORLD_PACES) - 1
+
+    @property
+    def pace(self) -> float:
+        """The world's pace: the snake's speed on screen (see `moves_per_second`)."""
+        return WORLD_PACES[self.current_world]
 
     @property
     def current_interval(self) -> float:
-        """Seconds per move: the world sets the speed, and nothing else does."""
-        return 1.0 / WORLD_SPEEDS[self.current_world]
+        """Seconds per move: the world's pace at the established cell scale."""
+        return 1.0 / self.get_moves_per_second()
 
     @property
     def tail_stays(self) -> bool:
@@ -186,48 +206,6 @@ class Game:
             return
         self._pending_turns.append(new_direction)
 
-    def next_move(self) -> StepResult | None:
-        """The move the next `step()` will make, without making it.
-
-        It follows the first buffered turn, if any. The result carries only the
-        movement fields (`moved`, `ate_food`, `head`, `heading`, `vacated`,
-        `vacated_heading`); it is None when the game is over or paused, or when
-        the move would end the game (a wall or the body). The view draws a little
-        of it ahead of time (see `rendering.motion_cells`).
-        """
-        if self.game_over or self.paused:
-            return None
-        heading = self._pending_turns[0] if self._pending_turns else self.direction
-        head = GameRules.next_position(
-            self.snake[0], heading, self.width, self.height, self.config.walls
-        )
-        if head is None:  # a wall
-            return None
-        grows = GameRules.is_food_collision(head, self.food)
-        tail_stays = grows or self.tail_stays
-        # The tail's cell is only free to enter if the tail moves off it.
-        body_to_check = self.snake if tail_stays else self.snake[:-1]
-        if GameRules.is_self_collision(head, body_to_check):
-            return None
-        if tail_stays:
-            return StepResult(moved=True, ate_food=grows, head=head, heading=heading)
-        vacated = self.snake[-1]
-        # A lone head is also the tail, so it moves the same way.
-        vacated_heading = (
-            heading
-            if len(self.snake) == 1
-            else GameRules.direction_between(
-                vacated, self.snake[-2], self.width, self.height
-            )
-        )
-        return StepResult(
-            moved=True,
-            head=head,
-            heading=heading,
-            vacated=vacated,
-            vacated_heading=vacated_heading,
-        )
-
     def step(self) -> StepResult:
         """Advance the game by one step and report what happened.
 
@@ -239,24 +217,45 @@ class Game:
         """
         if self.game_over or self.paused:
             return StepResult()
-        move = self.next_move()
         # Commit at most one buffered turn per step; this is what guarantees a
         # single tick can never reverse the snake (see `turn`).
         if self._pending_turns:
             self.direction = self._pending_turns.pop(0)
-        if move is None or move.head is None:  # a wall or the body
+        new_head_pos = GameRules.next_position(
+            self.snake[0], self.direction, self.width, self.height, self.config.walls
+        )
+        if new_head_pos is None:  # ran into a wall
+            self.game_over = True
+            return StepResult(game_over=True)
+        grows = GameRules.is_food_collision(new_head_pos, self.food)
+        # The tail's cell is only free to enter if the tail moves off it.
+        body_to_check = self.snake if grows or self.tail_stays else self.snake[:-1]
+        if GameRules.is_self_collision(new_head_pos, body_to_check):
             self.game_over = True
             return StepResult(game_over=True)
 
-        new_head_pos = move.head
         self.snake.insert(0, new_head_pos)
-        if not move.ate_food:
-            if move.vacated is None:
-                # Growing in: the tail stays, as when eating, but nothing was eaten.
-                self.pending_growth -= 1
-            else:
-                self.snake.pop()
-            return move
+        if not grows and self.tail_stays:
+            # Growing in: the tail stays, as when eating, but nothing was eaten.
+            self.pending_growth -= 1
+            return StepResult(moved=True, head=new_head_pos, heading=self.direction)
+        if not grows:
+            vacated = self.snake.pop()
+            # A lone head is also the tail, so it moved the same way.
+            vacated_heading = (
+                self.direction
+                if len(self.snake) == 1
+                else GameRules.direction_between(
+                    vacated, self.snake[-1], self.width, self.height
+                )
+            )
+            return StepResult(
+                moved=True,
+                head=new_head_pos,
+                heading=self.direction,
+                vacated=vacated,
+                vacated_heading=vacated_heading,
+            )
 
         self.foods_eaten += 1
         self.foods_in_world += 1
@@ -307,7 +306,7 @@ class Game:
 
     def get_moves_per_second(self) -> float:
         """Get current speed as moves per second."""
-        return float(WORLD_SPEEDS[self.current_world])
+        return moves_per_second(self.pace, self.cell_scale)
 
     @property
     def is_running(self) -> bool:

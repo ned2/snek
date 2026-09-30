@@ -8,6 +8,12 @@ import pytest
 from snek.config import DIAMOND, GameConfig
 from snek.game import BOARD_CLEAR_BONUS, Game, StepResult
 from snek.game_rules import Direction
+from snek.worlds import (
+    FLOOR_PACE_EXPONENT,
+    MIN_MOVES_PER_SECOND,
+    WORLD_PACES,
+    moves_per_second,
+)
 
 # Most model tests were written for a wrapping board; walls are opt-in there.
 WRAPPING = GameConfig(walls=False)
@@ -525,59 +531,8 @@ class TestStepResult:
         assert game.current_world == 1
 
 
-class TestNextMove:
-    """`Game.next_move()` previews the next step without taking it."""
-
-    def test_matches_the_step_and_changes_nothing(self):
-        game = Game(width=20, height=20, config=SINGLE)
-        game.snake = [(5, 5), (5, 6), (4, 6)]
-        game.direction = Direction.UP
-        game.food = (0, 0)
-        move = game.next_move()
-        assert game.snake == [(5, 5), (5, 6), (4, 6)]
-        assert game.direction == Direction.UP
-        assert move == game.step()
-
-    def test_follows_the_first_queued_turn(self):
-        game = Game(width=20, height=20, config=SINGLE)
-        game.snake = [(5, 5), (4, 5), (3, 5)]
-        game.food = (0, 0)
-        game.turn(Direction.UP)
-        game.turn(Direction.LEFT)
-        move = game.next_move()
-        assert move is not None
-        assert (move.head, move.heading) == ((5, 4), Direction.UP)
-        assert game.step() == move
-
-    def test_eating_and_growing_in_leave_no_vacated_cell(self):
-        game = Game(width=40, height=40)  # still growing in
-        head = game.snake[0]
-        move = game.next_move()
-        assert move is not None and move.vacated is None and not move.ate_food
-        game.food = (head[0] + 1, head[1])
-        move = game.next_move()
-        assert move is not None and move.vacated is None and move.ate_food
-
-    def test_a_fatal_move_is_none(self):
-        game = Game(width=20, height=20)
-        game.snake = [(19, 5), (18, 5)]
-        assert game.next_move() is None  # the wall
-        game.snake = [(5, 5), (4, 5), (4, 4), (5, 4), (6, 4)]
-        game.direction = Direction.UP
-        game.food = (0, 0)
-        assert game.next_move() is None  # the body
-        assert not game.game_over
-
-    def test_none_when_paused_or_over(self):
-        game = Game()
-        game.paused = True
-        assert game.next_move() is None
-        game.paused, game.game_over = False, True
-        assert game.next_move() is None
-
-
 class TestWorlds:
-    """A world is a Nokia level: it sets the speed and the points per food."""
+    """A world is a Nokia level: it sets the pace and the points per food."""
 
     def _eat(self, game: Game, foods: int) -> None:
         """Eat `foods` foods by parking each in front of the head (it wraps)."""
@@ -588,34 +543,46 @@ class TestWorlds:
 
     def test_play_starts_in_the_starting_world(self):
         game = Game()
-        assert game.current_world == 4
-        assert game.world_number == 5  # Classic
+        assert game.current_world == 0
+        assert game.world_number == 1  # Classic
         game = Game(config=GameConfig(start_world=9))
         assert (game.current_world, game.world_number) == (8, 9)
 
     @pytest.mark.parametrize(
-        ("world", "speed"),
-        [(1, 6), (2, 7), (3, 8), (4, 9), (5, 10), (6, 12), (7, 15), (8, 20), (9, 25)],
+        ("world", "pace"),
+        [
+            (1, 10.0),
+            (2, 11.2),
+            (3, 12.6),
+            (4, 14.1),
+            (5, 15.8),
+            (6, 17.7),
+            (7, 19.9),
+            (8, 22.3),
+            (9, 25.0),
+        ],
     )
-    def test_the_world_sets_the_speed(self, world: int, speed: int):
+    def test_the_world_sets_the_pace(self, world: int, pace: float):
+        """At scale 1 the pace is the moves per second."""
         game = Game(config=GameConfig(start_world=world))
-        assert game.get_moves_per_second() == pytest.approx(speed)
-        assert game.current_interval == pytest.approx(1 / speed)
+        assert game.pace == pytest.approx(pace)
+        assert game.get_moves_per_second() == pytest.approx(pace)
+        assert game.current_interval == pytest.approx(1 / pace)
 
     def test_eating_does_not_speed_up_a_fixed_world(self):
         game = Game(width=400, height=3, config=replace(WRAPPING, start_world=3))
         self._eat(game, 120)
         assert game.current_world == 2
-        assert game.get_moves_per_second() == pytest.approx(8)
+        assert game.pace == pytest.approx(12.6)
         assert game.foods_in_world == game.foods_eaten == 120
 
-    def test_a_new_world_brings_its_speed(self):
+    def test_a_new_world_brings_its_pace(self):
         game = Game(width=400, height=3, config=replace(PROGRESSING, start_world=4))
         self._eat(game, 9)
-        assert game.get_moves_per_second() == pytest.approx(9)
+        assert game.pace == pytest.approx(14.1)
         self._eat(game, 1)
         assert game.world_number == 5
-        assert game.get_moves_per_second() == pytest.approx(10)
+        assert game.pace == pytest.approx(15.8)
         assert game.foods_in_world == 0
 
     def test_progress_stays_in_the_last_world(self):
@@ -626,7 +593,7 @@ class TestWorlds:
         self._eat(game, 25)
         assert game.world_number == 9
         assert game.foods_in_world == 25  # counting on, but never moving on
-        assert game.get_moves_per_second() == pytest.approx(25)
+        assert game.pace == pytest.approx(25)
 
     def test_each_food_scores_the_world_number(self):
         game = Game(width=400, height=3, config=replace(PROGRESSING, start_world=8))
@@ -642,7 +609,7 @@ class TestWorlds:
         assert game.score == 14
 
     def test_filling_the_board_scores_a_bonus(self):
-        game = Game(width=3, height=2, rng=random.Random(0))  # world 5
+        game = Game(width=3, height=2, config=replace(WRAPPING, start_world=5))
         game.snake = [(2, 0), (1, 0), (0, 0), (0, 1), (1, 1)]
         game.direction = Direction.DOWN
         game.set_food_position((2, 1))
@@ -655,6 +622,48 @@ class TestWorlds:
         assert (game.score, game.world_number) != (0, 1)
         game.reset()
         assert (game.score, game.world_number, game.foods_in_world) == (0, 1, 0)
+
+
+class TestPaceAtScale:
+    """A pace is the same screen speed at every cell scale (issue 0037)."""
+
+    @pytest.mark.parametrize(("scale", "speed"), [(1, 20), (2, 10)])
+    def test_bigger_cells_move_fewer_cells_a_second(self, scale: int, speed: float):
+        assert moves_per_second(20, scale) == pytest.approx(speed)
+
+    def test_big_cells_at_a_low_pace_are_held_at_the_floor(self):
+        """Turn lag wins over equal screen speed."""
+        assert moves_per_second(10, 4) == MIN_MOVES_PER_SECOND
+
+    def test_the_floor_rises_with_the_pace(self):
+        """Big cells on the floor still speed up from world to world."""
+        top = MIN_MOVES_PER_SECOND * 2.5**FLOOR_PACE_EXPONENT
+        assert moves_per_second(25, 3) == pytest.approx(top)
+
+    def test_the_last_world_still_interpolates(self):
+        """Above 30 moves a second a step spans under two 60 Hz frames."""
+        assert moves_per_second(WORLD_PACES[-1], 1) <= 30
+
+    @pytest.mark.parametrize("scale", [1, 2, 3, 4, 5])
+    def test_every_world_is_faster_than_the_last(self, scale: int):
+        speeds = [moves_per_second(pace, scale) for pace in WORLD_PACES]
+        assert speeds == sorted(speeds)
+        assert len(set(speeds)) == len(speeds)
+
+    @pytest.mark.parametrize("sizing_mode", ["fill", "cap"])
+    def test_a_game_runs_at_its_established_scale(self, sizing_mode: str):
+        game = Game(config=GameConfig(sizing_mode=sizing_mode, start_world=9))
+        assert game.cell_scale == 1
+        assert game.get_moves_per_second() == pytest.approx(25)
+        game.reset(width=20, height=10, cell_scale=2)
+        assert game.cell_scale == 2
+        assert game.get_moves_per_second() == pytest.approx(12.5)
+        game.reset()  # a new game on the same grid keeps its scale
+        assert game.cell_scale == 2
+
+    def test_cell_scale_must_be_positive(self):
+        with pytest.raises(ValueError, match="cell_scale"):
+            Game().reset(cell_scale=0)
 
 
 class TestWinState:

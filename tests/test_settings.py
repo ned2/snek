@@ -82,18 +82,17 @@ def test_ordered_settings_stop_at_the_ends() -> None:
     assert world.step(first, -1) == first
 
 
-def test_starting_world_shows_its_speed() -> None:
+def test_starting_world_shows_its_pace() -> None:
     world = _row("Starting world")
     assert world.choices == START_WORLDS == tuple(range(1, 10))
-    assert world.get(_defaults()) == 5
-    assert world.value_text(_defaults()) == "5 · 10/s"
+    assert world.get(_defaults()) == 1
+    assert world.value_text(_defaults()) == "1 · pace 10"
     faster = world.step(_defaults(), 1)
-    assert faster.get("start_world") == 6
-    assert world.value_text(faster) == "6 · 12/s"
-    assert [world.show(choice) for choice in (1, 9)] == ["1 · 6/s", "9 · 25/s"]
+    assert faster.get("start_world") == 2
+    assert world.value_text(faster) == "2 · pace 11.2"
+    assert world.show(9) == "9 · pace 25"
     assert world.help_text(_defaults()) == (
-        "The world you start in: sets the speed (6\N{EN DASH}25 /sec) and points "
-        "per food."
+        "The world you start in: sets the pace (10\N{EN DASH}25) and points per food."
     )
 
 

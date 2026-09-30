@@ -11,7 +11,7 @@ from snek.config import (
     WORLD_CHANGES,
     GameConfig,
 )
-from snek.worlds import WORLD_SPEEDS
+from snek.worlds import WORLD_PACES
 
 
 def test_config_is_an_immutable_value_object() -> None:
@@ -62,7 +62,7 @@ def test_sizing_mode_has_two_explicit_choices(value: object) -> None:
 
 
 def test_start_world_is_one_of_the_worlds() -> None:
-    for world in range(1, len(WORLD_SPEEDS) + 1):
+    for world in range(1, len(WORLD_PACES) + 1):
         assert GameConfig(start_world=world).start_world == world
     for value in (0, 2.5, True):
         with pytest.raises(ValueError, match="start_world must be"):
@@ -150,9 +150,9 @@ def test_walls_flag_is_boolean() -> None:
 
 def test_defaults_are_nokia_style() -> None:
     """Classic, the default mode: the diamond, a length of 8, a 20x11 board, and
-    a fixed world 5 on the LCD screen."""
+    a fixed world 1 on the LCD screen."""
     config = GameConfig()
-    assert (config.start_world, config.world_change) == (5, "fixed")
+    assert (config.start_world, config.world_change) == (1, "fixed")
     assert config.foods_per_world == 50
     assert config.palette == "lcd"
     assert config.food_type == "diamond"

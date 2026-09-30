@@ -15,7 +15,7 @@ from .config import (
 from .demo import STRATEGIES
 from .modes import DEFAULT_MODE, MODES, apply_mode, default_settings
 from .settings import FOODS_PER_WORLD, START_LENGTHS, START_WORLDS
-from .worlds import WORLD_SPEEDS
+from .worlds import WORLD_PACES
 
 
 def _positive_int(value: str) -> int:
@@ -74,8 +74,9 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help=(
             f"the world, {START_WORLDS[0]} to {START_WORLDS[-1]}, to start in: "
-            f"it sets the speed ({WORLD_SPEEDS[0]} to {WORLD_SPEEDS[-1]} moves "
-            "per second) and the points per food (default: from --mode)"
+            f"it sets the pace ({WORLD_PACES[0]:g} to {WORLD_PACES[-1]:g}, the "
+            "snake's speed on screen) and the points per food (default: from "
+            "--mode)"
         ),
     )
     parser.add_argument(

@@ -29,7 +29,7 @@ def test_world_flags_default_to_the_mode():
 @pytest.mark.parametrize(
     ("argv", "field", "value"),
     [
-        ([], "start_world", 5),
+        ([], "start_world", 1),
         (["--world", "9"], "start_world", 9),
         (["--mode", "arena"], "start_world", 1),
         (["--mode", "arena", "--world", "3"], "start_world", 3),
@@ -328,7 +328,7 @@ def test_flags_override_the_mode(monkeypatch):
     """Any flag that changes a mode's value makes it Custom; one that matches it
     leaves the mode in force."""
     for argv in (
-        ["--mode", "arcade", "--scale", "3"],
+        ["--mode", "arcade", "--scale", "4"],
         ["--world", "6"],
         ["--palette", "worlds"],
         ["--no-smooth"],
@@ -337,7 +337,7 @@ def test_flags_override_the_mode(monkeypatch):
         assert mode_of(_launch(monkeypatch, argv)) == CUSTOM, argv
     for argv, mode in (
         (["--mode", "arena", "--no-walls"], "Arena"),
-        (["--world", "5", "--smooth", "--start-length", "8"], "Classic"),
+        (["--world", "1", "--smooth", "--start-length", "8"], "Classic"),
         (["--mode", "arcade", "--world-change", "progress"], "Arcade"),
     ):
         assert mode_of(_launch(monkeypatch, argv)) == mode, argv

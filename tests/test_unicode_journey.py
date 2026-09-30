@@ -4,7 +4,7 @@ import pytest
 from rich.cells import cell_len
 
 from snek.themes import THEME_MAP
-from snek.worlds import WORLD_SPEEDS, World, WorldPath
+from snek.worlds import WORLD_PACES, World, WorldPath
 
 
 class TestWorld:
@@ -124,5 +124,5 @@ class TestWorldPath:
 
 
 def test_each_world_has_a_speed_on_the_agreed_ladder():
-    assert len(WORLD_SPEEDS) == len(WorldPath().worlds) == 9
-    assert WORLD_SPEEDS == (6, 7, 8, 9, 10, 12, 15, 20, 25)
+    assert len(WORLD_PACES) == len(WorldPath().worlds) == 9
+    assert WORLD_PACES == (10.0, 11.2, 12.6, 14.1, 15.8, 17.7, 19.9, 22.3, 25.0)

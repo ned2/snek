@@ -5,7 +5,7 @@ from typing import Final
 
 from rich.cells import cell_len
 
-from .worlds import WORLD_SPEEDS
+from .worlds import WORLD_PACES
 
 # The smallest cell scale that can hold a food sprite: at scale 1 a cell is only
 # 2x1 characters, far too small for pixel art.
@@ -85,10 +85,10 @@ class GameConfig:
     # never draws cells smaller than that (see `min_cell_scale`).
     cell_scale: int = 1
 
-    # The world play starts in, from 1 to `len(WORLD_SPEEDS)`. A world sets the
-    # speed (see `worlds.WORLD_SPEEDS`) and the points each food scores, like
+    # The world play starts in, from 1 to `len(WORLD_PACES)`. A world sets the
+    # pace (see `worlds.WORLD_PACES`) and the points each food scores, like
     # Nokia Snake's level; it is the only source of speed.
-    start_world: int = 5
+    start_world: int = 1
 
     # How the world changes during a game, one of `WORLD_CHANGES`: "fixed" stays
     # in the starting world; "progress" moves on after every `foods_per_world`
@@ -184,9 +184,9 @@ class GameConfig:
         _require_positive_int("side_panel_width", self.side_panel_width)
 
         world = _require_positive_int("start_world", self.start_world)
-        if world > len(WORLD_SPEEDS):
+        if world > len(WORLD_PACES):
             raise ValueError(
-                f"start_world must be at most {len(WORLD_SPEEDS)}, got {world}"
+                f"start_world must be at most {len(WORLD_PACES)}, got {world}"
             )
         for name, value, choices in (
             ("world_change", self.world_change, WORLD_CHANGES),
