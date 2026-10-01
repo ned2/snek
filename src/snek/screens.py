@@ -32,11 +32,14 @@ from .game import Game, StepResult
 from .game_rules import Direction, Position
 from .modes import Settings, describe
 from .rendering import (
+    BEZEL_MARGIN,
     CELL_BASE_WIDTH,
     FRAME_MARGIN,
     SMOOTH_EMPTY_CELL,
     SMOOTH_SNAKE_BLOCK,
     PartialCell,
+    bezel_corner,
+    bezel_rule,
     board_fits,
     board_size,
     compute_layout,
@@ -49,6 +52,7 @@ from .rendering import (
     render_board_row,
 )
 from .settings import MODE_ROW, ROWS, WORLD_ROW, widest_help
+from .themes import LCD_BEZEL_STYLE, LCD_BOARD_STYLE
 from .timing import StepClock, next_wake_delay
 
 if TYPE_CHECKING:
@@ -166,8 +170,8 @@ class SplashScreen(Screen[None]):
         """Show the current mode (or Custom), what it is, the starting world,
         and their colours.
 
-        The splash takes the theme the next game starts in, so the palette and
-        starting world show before play.
+        The splash takes the theme the next game starts in, so the starting
+        world's colours show before play.
         """
         app = _snake_app(self)
         app.show_world(app.config.start_world - 1)
@@ -445,7 +449,7 @@ class GameScreen(Screen[None]):
         result = app.game.step()
 
         if result.world_changed and result.new_world is not None:
-            # Chrome follows the world (unless the palette is LCD).
+            # Chrome follows the world under either palette.
             app.show_world(result.new_world)
 
         if result.game_over:
@@ -1039,23 +1043,25 @@ class BoardState:
 
 @dataclass(frozen=True)
 class BoardGeometry:
-    """Where the (optionally framed) board sits inside the view."""
+    """Where the (optionally framed, optionally bezelled) board sits in the view."""
 
     left: int
     top: int
     board_cols: int
     board_rows: int
     framed: bool
+    # An LCD board's rim of backlight round the frame.
+    bezel: bool = False
 
     @property
     def board_left(self) -> int:
-        """First column of the board proper, inside any frame."""
-        return self.left + self.framed
+        """First column of the board proper, inside any frame and bezel."""
+        return self.left + self.bezel + self.framed
 
     @property
     def board_top(self) -> int:
-        """First row of the board proper, inside any frame."""
-        return self.top + self.framed
+        """First row of the board proper, inside any frame and bezel."""
+        return self.top + self.bezel + self.framed
 
 
 def _layout_key(config: GameConfig) -> tuple[object, ...]:
@@ -1264,6 +1270,9 @@ class SnakeView(Widget):
         margin to frame. The frame makes the capped board's boundary (and the
         wrap-around) visible inside the letterbox margin. With walls the frame
         is the wall, so the layout leaves room for it in either mode.
+
+        A framed LCD board also gets a bezel, a rim of backlight round the frame,
+        where there is room for it: it is decoration, so nothing reserves room.
         """
         width, height = self.size
         config = _snake_app(self).config
@@ -1276,12 +1285,21 @@ class SnakeView(Widget):
         )
         block_cols = board_cols + FRAME_MARGIN * framed
         block_rows = board_rows + FRAME_MARGIN * framed
+        bezel = (
+            framed
+            and config.palette == "lcd"
+            and width >= block_cols + BEZEL_MARGIN
+            and height >= block_rows + BEZEL_MARGIN
+        )
+        block_cols += BEZEL_MARGIN * bezel
+        block_rows += BEZEL_MARGIN * bezel
         return BoardGeometry(
             left=max(0, (width - block_cols) // 2),
             top=max(0, (height - block_rows) // 2),
             board_cols=board_cols,
             board_rows=board_rows,
             framed=framed,
+            bezel=bezel,
         )
 
     def _cell_region(self, geometry: BoardGeometry, cell: Position) -> Region:
@@ -1297,12 +1315,20 @@ class SnakeView(Widget):
 
     @override
     def render_line(self, y: int) -> Strip:
-        """Render one terminal row: margin, frame edge or board row, margin."""
+        """Render one terminal row: margin, bezel, frame edge or board row,
+        bezel, margin.
+
+        With the LCD palette the board and its frame are the Nokia screen, in a
+        bezel of backlight with rounded corners where there is room, while the
+        margin around them keeps the theme's colours.
+        """
         width = self.size.width
         base_style = self.visual_style.rich_style
         if self._needed is not None:
             return self._too_small_line(y, self._needed)
-        walls = _snake_app(self).config.walls
+        config = _snake_app(self).config
+        walls = config.walls
+        lcd = config.palette == "lcd"
         state = self._state()
         geometry = self._geometry(state)
         row = y - geometry.board_top
@@ -1317,8 +1343,25 @@ class SnakeView(Widget):
                 segments = line
         elif geometry.framed and row in (-1, geometry.board_rows):
             segments = [frame_rule(geometry.board_cols, top=row == -1, walls=walls)]
+        elif geometry.bezel and row in (-2, geometry.board_rows + 1):
+            frame_cols = geometry.board_cols + FRAME_MARGIN
+            rule = bezel_rule(frame_cols, top=row == -2, style=LCD_BEZEL_STYLE)
+            strip = Strip([Segment(" " * geometry.left), rule])
+            return strip.apply_style(base_style).adjust_cell_length(width, base_style)
         else:
             return Strip.blank(width, base_style)
+        if lcd:
+            segments = list(Segment.apply_style(segments, LCD_BOARD_STYLE))
+        if geometry.bezel and row in (-1, geometry.board_rows):
+            top = row == -1
+            segments = [
+                bezel_corner(top=top, left=True, style=LCD_BEZEL_STYLE),
+                *segments,
+                bezel_corner(top=top, left=False, style=LCD_BEZEL_STYLE),
+            ]
+        elif geometry.bezel:
+            side = Segment(" ", LCD_BOARD_STYLE)
+            segments = [side, *segments, side]
         strip = Strip([Segment(" " * geometry.left), *segments])
         return strip.apply_style(base_style).adjust_cell_length(width, base_style)
 
@@ -1391,7 +1434,7 @@ class SnakeView(Widget):
 
         With sprites on the scale never drops below `config.MIN_SPRITE_SCALE`, so
         the food style never depends on the terminal size. Glyph food is drawn in
-        its world's colour, which the LCD palette would otherwise make dark like
+        its world's colour, which the LCD board would otherwise make dark like
         the snake and the diamond.
         """
         app = _snake_app(self)

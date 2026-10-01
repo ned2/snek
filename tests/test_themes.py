@@ -1,6 +1,6 @@
 """Tests for theme management."""
 
-from snek.themes import LCD_DARK, LCD_LIGHT, LCD_THEME, THEME_MAP
+from snek.themes import LCD_BOARD_STYLE, LCD_DARK, LCD_LIGHT, THEME_MAP
 from snek.worlds import WorldPath
 
 
@@ -15,7 +15,6 @@ class TestThemes:
             "snek-sunset",
             "snek-royal",
             "snek-cherry",
-            "snek-lcd",
         ]
 
         for theme_name in expected_themes:
@@ -30,8 +29,8 @@ class TestThemes:
             assert theme.secondary is not None
             assert theme.background is not None
             assert theme.foreground is not None
-            # Every world theme is dark; only the LCD screen is light.
-            assert theme.dark is (theme_name != LCD_THEME)
+            # Every theme is a world's, and dark; the LCD board is not a theme.
+            assert theme.dark
 
     def test_world_theme_mapping(self):
         """Test that each world has a valid theme."""
@@ -51,19 +50,10 @@ class TestThemes:
         primary_colors = [theme.primary for theme in THEME_MAP.values()]
         assert len(primary_colors) == len(set(primary_colors))
 
-    def test_lcd_theme_is_two_tone(self):
-        """The LCD screen is dark pixels on a green-grey light, error text too."""
-        lcd = THEME_MAP[LCD_THEME]
-        assert (lcd.background, lcd.surface) == (LCD_LIGHT, LCD_LIGHT)
+    def test_lcd_board_is_two_tone(self):
+        """The LCD board is dark pixels on a green-grey light."""
         assert (LCD_LIGHT, LCD_DARK) == ("#c7f0d8", "#43523d")
-        for colour in (
-            lcd.primary,
-            lcd.secondary,
-            lcd.accent,
-            lcd.foreground,
-            lcd.success,
-            lcd.warning,
-            lcd.error,
-            lcd.panel,
-        ):
-            assert colour == LCD_DARK
+        assert LCD_BOARD_STYLE.color is not None
+        assert LCD_BOARD_STYLE.bgcolor is not None
+        assert LCD_BOARD_STYLE.color.name == LCD_DARK
+        assert LCD_BOARD_STYLE.bgcolor.name == LCD_LIGHT

@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import replace
 
 import pytest
+from rich.cells import cell_len
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Label, Static
 from textual.worker import WorkerCancelled
@@ -26,7 +27,7 @@ from snek.screens import (
     StatDisplay,
 )
 from snek.settings import ROWS, widest_help
-from snek.themes import LCD_THEME, THEME_MAP
+from snek.themes import LCD_DARK, LCD_LIGHT, THEME_MAP
 
 # A roomy 36x20 wrapping cap: the snake can run for a while without a wall.
 ROOMY = GameConfig(max_grid_width=36, max_grid_height=20, walls=False)
@@ -881,13 +882,100 @@ async def test_theme_changes_with_world():
         assert app.theme == "snek-ocean"
 
 
+def _cell_colours(strip, *, background: bool = True) -> list[str | None]:
+    """Each cell's background (or foreground) colour in a rendered line, as hex."""
+    colours: list[str | None] = []
+    for segment in strip:
+        style = segment.style
+        colour = (style.bgcolor if background else style.color) if style else None
+        hex_colour = colour.get_truecolor().hex if colour else None
+        colours += [hex_colour] * cell_len(segment.text)
+    return colours
+
+
 @pytest.mark.asyncio
-async def test_the_lcd_palette_keeps_one_theme_in_every_world():
-    """LCD is one theme whatever the world, from the splash on."""
+async def test_the_lcd_palette_colours_the_board_only():
+    """The LCD board and its frame are dark pixels on the green-grey light, in a
+    bezel of that light with rounded corners; the margin round the bezel and
+    everything else keep the world's theme."""
+    app = SnakeApp()  # Classic: a framed 20x11 LCD board in world 1
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.theme == "snek-classic"
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        assert app.theme == "snek-classic"
+
+        view = game_screen.query_one(SnakeView)
+        view.refresh()
+        geometry = view._geometry(view._state())
+        assert geometry.framed and geometry.bezel
+        # The frame's rows, and its columns (inside the bezel's sides).
+        top, bottom = geometry.board_top - 1, geometry.board_top + geometry.board_rows
+        frame = slice(geometry.left + 1, geometry.left + geometry.board_cols + 3)
+        box = slice(frame.start - 1, frame.stop + 1)
+        for y in range(view.size.height):
+            line = view.render_line(y)
+            colours = _cell_colours(line)
+            inner = frame if y in (top, bottom) else box  # corner blocks: no bg
+            if top <= y <= bottom:
+                assert set(colours[inner]) == {LCD_LIGHT}, y
+                margin = colours[: box.start] + colours[box.stop :]
+            else:
+                margin = colours
+            assert LCD_LIGHT not in margin, y
+
+        # The bezel: half-block edges, stepping in round the frame's corners in
+        # its light colour on the theme's background.
+        foreground = {
+            y: _cell_colours(view.render_line(y), background=False)
+            for y in range(top - 1, bottom + 2)
+        }
+        for y, edge in ((top - 1, " ▄▄ "), (bottom + 1, " ▀▀ ")):
+            text = view.render_line(y).text[box]
+            assert text[:2] + text[-2:] == edge
+            assert foreground[y][frame.start] == LCD_LIGHT
+        for y, corners in ((top, "▟▙"), (bottom, "▜▛")):
+            text = view.render_line(y).text[box]
+            assert text[0] + text[-1] == corners
+            assert foreground[y][box.start] == foreground[y][box.stop - 1] == LCD_LIGHT
+        assert view.render_line(top).text[frame][0] == "┏"  # heavy walls
+
+        # The snake is a dark pixel.
+        head_x, head_y = app.game.snake[0]
+        line = view.render_line(geometry.board_top + head_y)
+        x = geometry.board_left + head_x * 2
+        assert _cell_colours(line, background=False)[x] == LCD_DARK
+
+
+@pytest.mark.asyncio
+async def test_the_lcd_bezel_is_left_out_where_it_does_not_fit():
+    """The bezel is decoration: a board with room for its frame but not the
+    bezel is drawn framed, without one."""
+    config = GameConfig(max_grid_width=36, max_grid_height=20)  # walled LCD
+    app = SnakeApp(config)
+    async with app.run_test(size=(104, 23)) as pilot:  # 74x23 view: 72x22 framed
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        view = game_screen.query_one(SnakeView)
+        geometry = view._geometry(view._state())
+        assert (app.game.width, app.game.height) == (36, 20)
+        assert geometry.framed and not geometry.bezel
+
+
+@pytest.mark.asyncio
+async def test_the_lcd_palette_lets_the_theme_follow_the_world():
+    """Under LCD the chrome still takes each world's colours as play moves on."""
     app = SnakeApp(replace(PROGRESSING, palette="lcd"))
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.theme == LCD_THEME
+        assert app.theme == "snek-classic"
         await pilot.press("space")
         await pilot.pause()
         game_screen = app.screen
@@ -900,17 +988,20 @@ async def test_the_lcd_palette_keeps_one_theme_in_every_world():
         game_screen.tick()
         await pilot.pause()
         assert game.world_number == 2
-        assert app.theme == LCD_THEME
+        assert app.theme == "snek-ocean"
 
 
 @pytest.mark.asyncio
 async def test_the_splash_shows_the_next_games_colours():
-    """The splash takes the theme of the mode's starting world and palette."""
+    """The splash takes the theme of the starting world, whatever the palette."""
     app = SnakeApp()
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
-        assert app.theme == LCD_THEME  # Classic
-        await pilot.press("right")  # Arcade: world 1 in its own colours
+        assert app.theme == "snek-classic"  # Classic: only its board is LCD
+        await pilot.press("up")  # Classic in world 2
+        await pilot.pause()
+        assert app.theme == "snek-ocean"
+        await pilot.press("down", "right")  # Arcade: world 1 in its own colours
         await pilot.pause()
         assert app.theme == "snek-classic"
         app.apply_settings(app.settings.with_values(start_world=2))
@@ -1073,8 +1164,13 @@ async def test_fill_mode_grows_grid_to_fill_terminal():
 @pytest.mark.parametrize("sizing_mode", ["cap", "fill"])
 async def test_walls_are_always_drawn(sizing_mode):
     """With walls the heavy frame is part of the game, so the layout leaves room
-    for it even in 'fill' mode, which otherwise covers the view edge to edge."""
-    config = GameConfig(sizing_mode=sizing_mode, cell_scale=1, walls=True)
+    for it even in 'fill' mode, which otherwise covers the view edge to edge.
+
+    Pinned to the Worlds palette: an LCD board's bezel shares the frame's rows.
+    """
+    config = GameConfig(
+        sizing_mode=sizing_mode, cell_scale=1, walls=True, palette="worlds"
+    )
     app = SnakeApp(config=config)
     async with app.run_test(size=(172, 48)) as pilot:
         await pilot.press("space")
@@ -1140,8 +1236,11 @@ async def test_partial_board_updates_match_a_full_render(size) -> None:
 
 @pytest.mark.asyncio
 async def test_food_uses_glyph_at_scale_one():
-    """On a small terminal (scale 1) food is the themed glyph, not a sprite."""
-    app = SnakeApp()
+    """On a small terminal (scale 1) food is the themed glyph, not a sprite.
+
+    Pinned to the Worlds palette: an LCD board's bezel is drawn in half blocks.
+    """
+    app = SnakeApp(config=GameConfig(palette="worlds"))
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.press("space")
         await pilot.pause()
@@ -1177,7 +1276,7 @@ async def test_food_uses_sprite_at_large_scale():
 @pytest.mark.asyncio
 async def test_food_sprites_can_be_disabled():
     """With food_sprites off, even a large terminal keeps the glyph."""
-    app = SnakeApp(config=GameConfig(food_type="glyphs"))
+    app = SnakeApp(config=GameConfig(food_type="glyphs", palette="worlds"))
     async with app.run_test(size=(280, 70)) as pilot:
         await pilot.press("space")
         await pilot.pause()

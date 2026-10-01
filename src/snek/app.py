@@ -9,7 +9,7 @@ from .demo import DEFAULT_STRATEGY
 from .game import Game
 from .modes import Settings
 from .screens import GameScreen, PauseModal, SplashScreen
-from .themes import LCD_THEME, THEME_MAP
+from .themes import THEME_MAP
 
 
 class SnakeApp(App[None]):
@@ -58,11 +58,12 @@ class SnakeApp(App[None]):
         self.game.config = self.config
 
     def show_world(self, world: int) -> None:
-        """Use the theme for `world` (from 0): its own, or the LCD palette's."""
-        if self.config.palette == "lcd":
-            self.theme = LCD_THEME
-        else:
-            self.theme = self.game.world_path.get_world(world).theme_name
+        """Use the theme for `world` (from 0) everywhere but an LCD board.
+
+        The theme is the world's under either palette; the LCD palette draws
+        only the board in its own colours (see `SnakeView`).
+        """
+        self.theme = self.game.world_path.get_world(world).theme_name
 
     def on_load(self) -> None:
         """Register all themes when the app loads."""

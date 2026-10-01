@@ -21,7 +21,7 @@ DIAMOND: Final = "❖"
 # How the world changes in a game: stay in the starting world, or move on.
 WORLD_CHANGES: Final = ("fixed", "progress")
 
-# The colour palettes: each world's own theme, or the Nokia LCD screen's.
+# The board's colour palettes: each world's own theme, or the Nokia LCD screen's.
 PALETTES: Final = ("worlds", "lcd")
 
 
@@ -98,8 +98,9 @@ class GameConfig:
     # Foods eaten before moving on to the next world (unused when fixed).
     foods_per_world: int = 50
 
-    # The colours, one of `PALETTES`: "worlds" gives each world its own theme;
-    # "lcd" is one two-tone green-grey theme, whatever the world.
+    # The board's colours, one of `PALETTES`: "worlds" draws it in the world's
+    # theme; "lcd" draws it two-tone green-grey, whatever the world. Everything
+    # around the board takes the world's theme either way.
     palette: str = "lcd"
 
     # How many queued turns may wait to be applied (one per tick). Buffering keeps

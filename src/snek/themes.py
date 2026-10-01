@@ -2,14 +2,20 @@
 
 from typing import Final
 
+from rich.style import Style
 from textual.theme import Theme
 
 # The Nokia LCD screen's two tones: dark pixels on a green-grey backlight.
 LCD_LIGHT: Final = "#c7f0d8"
 LCD_DARK: Final = "#43523d"
 
-# The theme for the "lcd" palette, whatever the world.
-LCD_THEME: Final = "snek-lcd"
+# The "lcd" palette's board: the gameplay box alone looks like the Nokia screen,
+# while everything around it keeps the world's theme. Applied beneath the
+# board's own segment styles, so food with its own colours keeps them.
+LCD_BOARD_STYLE: Final = Style(color=LCD_DARK, bgcolor=LCD_LIGHT)
+# The edges of the LCD's bezel, a rim of backlight round the frame: blocks of the
+# light colour on the theme's background, which round off its corners.
+LCD_BEZEL_STYLE: Final = Style(color=LCD_LIGHT)
 
 THEME_MAP = {
     "snek-classic": Theme(
@@ -81,22 +87,5 @@ THEME_MAP = {
         surface="#330000",
         panel="#4d0000",
         dark=True,
-    ),
-    # Two-tone throughout, error text included: every colour is a dark pixel
-    # except the backgrounds. The panel colour is dark too, so titles that
-    # shade from primary to panel stay solid.
-    LCD_THEME: Theme(
-        name=LCD_THEME,
-        primary=LCD_DARK,
-        secondary=LCD_DARK,
-        accent=LCD_DARK,
-        foreground=LCD_DARK,
-        background=LCD_LIGHT,
-        success=LCD_DARK,
-        warning=LCD_DARK,
-        error=LCD_DARK,
-        surface=LCD_LIGHT,
-        panel=LCD_DARK,
-        dark=False,
     ),
 }

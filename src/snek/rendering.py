@@ -56,6 +56,16 @@ _BORDER_GLYPHS = "┌┐└┘─│"
 _WALL_GLYPHS = "┏┓┗┛━┃"
 # Columns and rows a frame adds around the board: one edge on each side.
 FRAME_MARGIN = 2
+# Columns and rows a bezel adds around the frame: one edge on each side.
+BEZEL_MARGIN = 2
+# A bezel's top and bottom edges are half-cell blocks, so the edge is about as
+# thick as the one-column sides. Each corner steps in over two cells: the edge's
+# corner cell is empty and the side cell beside the frame's corner is a
+# three-quadrant block, so the corner curves round as far as the bezel is thick.
+_BEZEL_TOP = " ▄ "
+_BEZEL_BOTTOM = " ▀ "
+# The side cells beside the frame's corners: (top, bottom) by (left, right).
+_BEZEL_CORNERS = {True: "▟▙", False: "▜▛"}
 
 # A logical cell is drawn `CELL_BASE_WIDTH` columns wide by one row tall at
 # scale 1. Terminal character cells are roughly twice as tall as wide, so two
@@ -361,6 +371,27 @@ def _frame_style(style: Style | None, walls: bool) -> Style:
     if style is not None:
         return style
     return _WALL_STYLE if walls else _BORDER_STYLE
+
+
+def bezel_rule(frame_cols: int, *, top: bool, style: Style) -> Segment:
+    """A bezel's top or bottom edge, `frame_cols + 2` wide.
+
+    The blocks are drawn in `style`'s colour (the bezel's) on whatever lies
+    behind them, and the corner cells are left empty (see `bezel_corner`). The
+    bezel's other side cells are plain cells in its background colour.
+    """
+    left, fill, right = _BEZEL_TOP if top else _BEZEL_BOTTOM
+    return Segment(f"{left}{fill * frame_cols}{right}", style)
+
+
+def bezel_corner(*, top: bool, left: bool, style: Style) -> Segment:
+    """The bezel's side cell beside one of the frame's corners.
+
+    A three-quadrant block in `style`'s colour, missing the quadrant at the
+    bezel's outer corner: with the empty corner cell of `bezel_rule` it rounds
+    that corner off.
+    """
+    return Segment(_BEZEL_CORNERS[top][0 if left else 1], style)
 
 
 def board_to_text(lines: list[list[Segment]]) -> str:

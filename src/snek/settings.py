@@ -223,7 +223,7 @@ ROWS: tuple[SettingRow, ...] = (
     ),
     SettingRow(
         label="Palette",
-        help="Worlds: each world's colours. LCD: the Nokia green-grey screen.",
+        help="Worlds: the board in each world's colours. LCD: a Nokia green-grey board.",
         choices=PALETTES,
         get=lambda s: s.get("palette"),
         put=_config("palette"),

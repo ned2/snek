@@ -109,7 +109,7 @@ def test_world_change_and_palette_are_named_and_wrap() -> None:
     assert palette.value_text(_defaults()) == "LCD"
     assert palette.value_text(palette.step(_defaults(), 1)) == "Worlds"
     assert palette.help_text(_defaults()) == (
-        "Worlds: each world's colours. LCD: the Nokia green-grey screen."
+        "Worlds: the board in each world's colours. LCD: a Nokia green-grey board."
     )
 
 

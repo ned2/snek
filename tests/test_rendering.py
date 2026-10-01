@@ -1,10 +1,13 @@
 """Tests for the framework-free board sizing and drawing helpers."""
 
 import pytest
+from rich.style import Style
 
 from snek.config import GameConfig
 from snek.game_rules import Direction
 from snek.rendering import (
+    bezel_corner,
+    bezel_rule,
     board_fits,
     board_size,
     board_to_text,
@@ -247,6 +250,28 @@ class TestFrameBoard:
         # Full intensity, unlike the dim frame of a wrapping board.
         assert not framed[0][0].style.dim
         assert frame_board(lines, 6)[0][0].style.dim
+
+
+class TestBezelRule:
+    """`bezel_rule` draws a bezel's top and bottom edges round a frame."""
+
+    def test_half_blocks_with_empty_corners(self):
+        style = Style(color="#c7f0d8")
+        top = bezel_rule(8, top=True, style=style)
+        bottom = bezel_rule(8, top=False, style=style)
+        assert top.text == " " + "▄" * 8 + " "
+        assert bottom.text == " " + "▀" * 8 + " "
+        assert top.style == bottom.style == style
+
+    def test_corners_step_in_round_the_frame(self):
+        """Each corner block lacks the quadrant at the bezel's outer corner."""
+        style = Style(color="#c7f0d8")
+        corners = [
+            bezel_corner(top=top, left=left, style=style).text
+            for top in (True, False)
+            for left in (True, False)
+        ]
+        assert corners == ["▟", "▙", "▜", "▛"]
 
 
 # Half-cell coverage of each glyph a partial tile may use: (upper, lower).

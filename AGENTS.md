@@ -131,7 +131,8 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 - **`worlds.py`**: world/theme progression (`WorldPath`) — the nine worlds, their food
   symbols, `WORLD_PACES` (the pace ladder) and `moves_per_second()`, which converts a pace
   for a cell scale.
-- **`themes.py`**: per-world Textual themes (colors) and the two-tone `snek-lcd` theme.
+- **`themes.py`**: per-world Textual themes (colors) and `LCD_BOARD_STYLE`, the two-tone
+  Rich style of an LCD board.
 - **`figlet.py`**: `FigletText`, the in-repo ASCII-art title widget (recolors on theme change
   by overriding `notify_style_update`).
 - **`config.py`**: immutable, validated `GameConfig` values for timing, layout, progression,
@@ -179,9 +180,11 @@ games that no view established run at scale 1.
 - Scoring is always on: each food scores the world number it was eaten in, and filling the
   board adds `BOARD_CLEAR_BONUS` (100). `Game.score` shows in the side panel, on the
   game-over screen and in diagnostics.
-- `palette` "worlds" gives each world its own theme; "lcd" keeps the two-tone `snek-lcd`
-  theme in every world (glyph and sprite food keep their own colours).
-  `SnakeApp.show_world()` picks the theme, and the splash shows the next game's.
+- The app theme is always the world's: `SnakeApp.show_world()` picks it, and the splash
+  shows the next game's. `palette` affects only the board: "worlds" draws it in that theme;
+  "lcd" draws the board and its frame (not the margin round them) in `LCD_BOARD_STYLE`, dark
+  pixels on the green-grey backlight, in every world. `SnakeView.render_line()` applies it
+  beneath the segments' own styles, so glyph and sprite food keep their colours (issue 0039).
 
 ### State & data flow
 
@@ -238,7 +241,11 @@ Within the game loop:
   initial logical grid grows to fill the viewport; only where the grid is floored at `min_game_*`
   do its cells shrink to fit, as a resize would.
 - The frame is dim on a wrapping board and drawn only when capped with room to spare. With walls
-  it is heavy and full intensity, and `SnakeView` reserves room for it in both sizing modes.
+  it is heavy and full intensity, and `SnakeView` reserves room for it in both sizing modes. An
+  LCD board's frame is the same, inside a one-cell bezel of backlight: half-block top and
+  bottom edges, with corners that step in over two cells (an empty edge cell, then a
+  three-quadrant block) so they read as rounded. The bezel is decoration: nothing reserves room
+  for it, and it is left out where it doesn't fit.
 - The supported UI floor is 80×24. Below it, model invariants remain valid and scale never drops
   below one, but Textual may clip interface or board content.
 - Food is `food_type` (`--food`): "diamond" (`❖` in the world's colours, Classic's), "glyphs"

@@ -58,8 +58,8 @@ downloads the pinned hook environments, so those operations require network acce
 Snek opens on a splash screen in **Classic** mode, which plays like the original Nokia Snake.
 Press ←/→ there to change mode, or start in one with `--mode`:
 
-- **Classic** (`classic`): solid walls round a fixed 20×11 board, diamond food, an 8-cell snake
-  and the green-grey LCD screen.
+- **Classic** (`classic`): solid walls round a fixed 20×11 board drawn like the green-grey
+  Nokia LCD, diamond food and an 8-cell snake.
 - **Arcade** (`arcade`): big pixel-art food on a walled board that fills the terminal.
 - **Arena** (`arena`): glyph food on a board that fills the terminal and wraps around: leave one
   edge and you come back in at the opposite one.

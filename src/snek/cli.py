@@ -105,8 +105,9 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=PALETTES,
         default=None,
         help=(
-            "'worlds' gives each world its own colours; 'lcd' is the Nokia "
-            "green-grey screen (default: from --mode)"
+            "the board's colours: 'worlds' gives each world its own; 'lcd' is "
+            "the Nokia green-grey screen, while the rest keeps the world's "
+            "colours (default: from --mode)"
         ),
     )
     parser.add_argument(
