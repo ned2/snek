@@ -75,8 +75,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             f"the world, {START_WORLDS[0]} to {START_WORLDS[-1]}, to start in: "
             f"it sets the pace ({WORLD_PACES[0]:g} to {WORLD_PACES[-1]:g}, the "
-            "snake's speed on screen) and the points per food (default: from "
-            "--mode)"
+            "snake's speed on screen) and the points per food, like Nokia Snake's "
+            f"level; any --mode plays in any world (default: {START_WORLDS[0]})"
         ),
     )
     parser.add_argument(

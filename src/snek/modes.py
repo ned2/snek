@@ -1,8 +1,9 @@
 """Game modes: named sets of every setting, designed to play well together.
 
 A mode is nothing more than the values it gives the settings. Every mode gives
-every setting on the settings screen (`MODE_FIELDS` and the demo strategy); a
-setting that doesn't vary between modes simply has the same value in each.
+every setting on the settings screen (`MODE_FIELDS` and the demo strategy) except
+the starting world, which the player picks beside the mode as Nokia Snake's level;
+a setting that doesn't vary between modes simply has the same value in each.
 
 The mode in force is derived from the settings, never stored: it is the first
 mode whose values all match, else `CUSTOM`. Tweaking settings until they happen
@@ -68,11 +69,11 @@ class Mode:
         return self.name.lower().replace(" ", "-")
 
 
-# The config fields every mode gives: those on the settings screen.
+# The config fields every mode gives: those on the settings screen but the
+# starting world, which is chosen beside the mode and kept when the mode changes.
 MODE_FIELDS: Final = frozenset(
     {
         "walls",
-        "start_world",
         "world_change",
         "foods_per_world",
         "start_length",
@@ -94,11 +95,9 @@ _COMMON: Final = {
     "max_grid_height": 20,
 }
 
-# Every mode starts in world 1, the lowest pace (see `worlds.WORLD_PACES`); every
-# mode but Classic moves on through the worlds and shows each world's colours.
-# Foods per world suits the board: 8 sets take world 1 to world 9.
+# Every mode but Classic moves on through the worlds and shows each world's
+# colours. Foods per world suits the board: 8 sets take world 1 to world 9.
 _PROGRESSING: Final = {
-    "start_world": 1,
     "world_change": "progress",
     "palette": "worlds",
 }
@@ -111,7 +110,6 @@ MODES: Final[tuple[Mode, ...]] = (
         {
             **_COMMON,
             # A fixed world doesn't use foods per world, but every mode gives it.
-            "start_world": 1,
             "world_change": "fixed",
             "foods_per_world": 50,
             "palette": "lcd",

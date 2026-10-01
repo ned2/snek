@@ -77,7 +77,7 @@ SplashScreen.-wide.-tall #splash-title-compact {
     display: none;
 }
 
-#splash-mode {
+#splash-mode, #splash-world {
     text-align: center;
     text-style: bold;
 }
@@ -99,8 +99,9 @@ SplashScreen.-wide.-tall #splash-title-compact {
     color: $accent;
 }
 
+/* Three, not more: the large title then fits with the world line at 40 rows. */
 SplashScreen.-wide.-tall .version-display {
-    margin-top: 4;
+    margin-top: 3;
 }
 
 /* Game over modal styling */

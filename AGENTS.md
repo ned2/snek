@@ -99,15 +99,18 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 - **`settings.py`**: framework-free settings rows for `SettingsModal`. Each `SettingRow`
   offers fixed choices and steps a `Settings` draft through them without validating, so a
   row can step into an invalid combination (e.g. sprites at cell scale 1). `MODE_ROW` (first,
-  and also on the splash) applies a whole mode per step.
+  and also on the splash) applies a whole mode per step; `WORLD_ROW` (second, and also on the
+  splash) steps the starting world.
 - **`modes.py`**: `Settings` — the demo strategy plus raw config values over a base
   `GameConfig`; `to_config()` validates and `error()` says why they are invalid — and the game
   modes (Classic, Arcade, Arena, Pixel Arena). Modes are exhaustive: each gives every
-  settings-screen field (`MODE_FIELDS`) and the demo strategy, so applying one resets them all.
+  settings-screen field (`MODE_FIELDS`) and the demo strategy, so applying one resets them all,
+  except the starting world. That is Nokia Snake's level, chosen beside the mode: no mode sets
+  it or matches on it, and it survives mode changes (issue 0038).
   The mode in force is derived by `mode_of()` — the first whose values all match, else
   "Custom" (as are invalid settings) — never stored, so tweaking settings onto a mode's values
   shows that mode. `GameConfig`'s defaults are Classic's: Nokia Snake's walled 20x11 board,
-  diamond food, an 8-cell start, and a fixed world 1 on the LCD palette. Model tests about
+  diamond food, an 8-cell start, and a fixed world on the LCD palette. Model tests about
   progression pass `world_change="progress"`.
 - **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
   model→view contract returned by `Game.step()`.
@@ -184,8 +187,8 @@ games that no view established run at scale 1.
 
 State is the **Textual screen stack**, not a separate state machine — each state is a screen:
 `SplashScreen` → `GameScreen` → (`PauseModal` / `DiagnosticsModal` / `GameOverModal`), navigated
-with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`, and ←/→ on the splash
-cycle the mode. Splash, game, and pause are registered screens; settings, diagnostics, and
+with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`, ←/→ on the splash
+cycle the mode and ↑/↓ step the starting world. Splash, game, and pause are registered screens; settings, diagnostics, and
 game-over are fresh instances so their displayed state cannot go stale. ESC is the one way back
 to the splash: from the game, pause, diagnostics and game-over screens it abandons the game via
 `GameScreen.leave_to_menu()`, which leaves it paused so nothing re-arms the loop.

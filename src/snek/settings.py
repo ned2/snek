@@ -126,8 +126,24 @@ MODE_ROW = SettingRow(
     wrap=True,
 )
 
+# The starting world: Nokia Snake's level, picked beside the mode rather than set
+# by it, so it is kept when the mode changes. The splash offers this row too.
+WORLD_ROW = SettingRow(
+    label="Starting world",
+    help=(
+        "The world you start in: sets the pace "
+        f"({WORLD_PACES[0]:g}\N{EN DASH}{WORLD_PACES[-1]:g}) "
+        "and points per food."
+    ),
+    choices=START_WORLDS,
+    get=lambda s: s.get("start_world"),
+    put=_config("start_world"),
+    show=_world,
+)
+
 ROWS: tuple[SettingRow, ...] = (
     MODE_ROW,
+    WORLD_ROW,
     SettingRow(
         label="Walls",
         help="Solid edges end the game; off, the board wraps around.",
@@ -136,18 +152,6 @@ ROWS: tuple[SettingRow, ...] = (
         put=_config("walls"),
         show=_on_off,
         wrap=True,
-    ),
-    SettingRow(
-        label="Starting world",
-        help=(
-            "The world you start in: sets the pace "
-            f"({WORLD_PACES[0]:g}\N{EN DASH}{WORLD_PACES[-1]:g}) "
-            "and points per food."
-        ),
-        choices=START_WORLDS,
-        get=lambda s: s.get("start_world"),
-        put=_config("start_world"),
-        show=_world,
     ),
     SettingRow(
         label="World change",

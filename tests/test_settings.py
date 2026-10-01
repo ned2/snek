@@ -59,8 +59,8 @@ def test_named_settings_wrap_round() -> None:
 def test_rows_are_in_the_agreed_order() -> None:
     assert [row.label for row in ROWS] == [
         "Mode",
-        "Walls",
         "Starting world",
+        "Walls",
         "World change",
         "Foods per world",
         "Starting length",
@@ -220,13 +220,15 @@ def test_stepping_from_custom_enters_at_the_ends(delta: int, expected: str) -> N
     assert MODE_ROW.get(MODE_ROW.step(custom, delta)) == expected
 
 
-def test_a_mode_sets_every_setting() -> None:
-    """Modes are exhaustive: the world and the demo strategy reset with the mode."""
+def test_a_mode_sets_every_setting_but_the_world() -> None:
+    """Modes are exhaustive: the demo strategy resets with the mode, but the
+    starting world, chosen beside the mode, is kept."""
     tweaked = _row("Starting world").put(_defaults(), START_WORLDS[-1])
+    assert MODE_ROW.get(tweaked) == "Classic"
     tweaked = _row("Demo strategy").put(tweaked, "greedy")
     assert MODE_ROW.get(tweaked) == CUSTOM
     arena = MODE_ROW.put(tweaked, "Arena")
-    assert arena.get("start_world") == 1
+    assert arena.get("start_world") == START_WORLDS[-1]
     assert arena.demo_strategy == "floodfill"
     assert MODE_ROW.get(arena) == "Arena"
 

@@ -326,10 +326,9 @@ def test_mode_flag_applies_the_mode(monkeypatch, mode):
 
 def test_flags_override_the_mode(monkeypatch):
     """Any flag that changes a mode's value makes it Custom; one that matches it
-    leaves the mode in force."""
+    leaves the mode in force, as does the starting world, which no mode sets."""
     for argv in (
         ["--mode", "arcade", "--scale", "4"],
-        ["--world", "6"],
         ["--palette", "worlds"],
         ["--no-smooth"],
         ["--start-length", "3"],
@@ -339,6 +338,8 @@ def test_flags_override_the_mode(monkeypatch):
         (["--mode", "arena", "--no-walls"], "Arena"),
         (["--world", "1", "--smooth", "--start-length", "8"], "Classic"),
         (["--mode", "arcade", "--world-change", "progress"], "Arcade"),
+        (["--world", "6"], "Classic"),
+        (["--mode", "arena", "--world", "9"], "Arena"),
     ):
         assert mode_of(_launch(monkeypatch, argv)) == mode, argv
 

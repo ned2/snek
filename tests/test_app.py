@@ -143,6 +143,7 @@ async def test_splash_is_fully_usable_at_80_by_24() -> None:
         version = screen.query_one("#splash-version", Static)
         mode = screen.query_one("#splash-mode", Static)
         mode_help = screen.query_one("#splash-mode-help", Static)
+        world = screen.query_one("#splash-world", Static)
 
         assert not large_title.display
         assert compact_title.display
@@ -152,6 +153,7 @@ async def test_splash_is_fully_usable_at_80_by_24() -> None:
             compact_title,
             mode,
             mode_help,
+            world,
             start_prompt,
             controls_prompt,
             version,
@@ -165,7 +167,7 @@ async def test_splash_is_fully_usable_at_80_by_24() -> None:
         assert controls_prompt.region.height == 1
         assert str(start_prompt.render()).splitlines() == [
             "Press SPACE to start, D to run the demo,",
-            "←/→ to change mode, or S for detailed settings.",
+            "←/→ to change mode, ↑/↓ the world, or S for detailed settings.",
         ]
         assert str(controls_prompt.render()) == (
             "Gameplay: use arrow or WASD keys to move, Space to pause, Q to quit."
@@ -192,6 +194,7 @@ async def test_splash_retains_large_title_at_120_by_40() -> None:
         _assert_fully_in_view(screen.query_one("#splash-controls-prompt"), 120, 40)
         _assert_fully_in_view(screen.query_one("#splash-version"), 120, 40)
         _assert_fully_in_view(screen.query_one("#splash-mode"), 120, 40)
+        _assert_fully_in_view(screen.query_one("#splash-world"), 120, 40)
         assert large_title.region.height == len(large_title._lines) == 25
 
 
@@ -1370,7 +1373,7 @@ async def test_settings_escape_discards_the_changes() -> None:
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("down", "right")  # walls off
+        await pilot.press("down", "down", "right")  # walls off
         await pilot.pause()
         assert "Custom" in str(app.screen.query_one("#setting-0", Static).render())
         await pilot.press("escape")
@@ -1867,14 +1870,15 @@ async def test_settings_apply_to_the_next_game() -> None:
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("down", "right")  # walls off
         await pilot.press("down", "right")  # world 1 -> 2: pace 11.2
         await pilot.pause()
-        assert app.config.walls is True  # a draft until ENTER
         help_text = str(app.screen.query_one("#settings-help", Static).render())
         assert "sets the pace" in help_text
-        row = str(app.screen.query_one("#setting-2", Static).render())
+        row = str(app.screen.query_one("#setting-1", Static).render())
         assert "Starting world" in row and "2 · pace 11.2" in row
+        await pilot.press("down", "right")  # walls off
+        await pilot.pause()
+        assert app.config.walls is True  # a draft until ENTER
 
         await pilot.press("enter")
         await pilot.pause()
@@ -1911,7 +1915,7 @@ async def test_layout_settings_re_establish_the_grid_for_the_next_game() -> None
 
         await pilot.press("s")
         await pilot.pause()
-        # Mode, Walls, Starting world, World change, Foods per world, Starting
+        # Mode, Starting world, Walls, World change, Foods per world, Starting
         # length, Board sizing, Grid cap.
         await pilot.press(*["down"] * 7, "right")  # 20x11 -> 24x14
         await pilot.press("enter", "space")
@@ -1928,7 +1932,7 @@ async def test_splash_prompt_offers_the_demo_and_settings() -> None:
         prompt = str(app.screen.query_one("#splash-start-prompt", Static).render())
         assert prompt == (
             "Press SPACE to start, D to run the demo, ←/→ to change mode, "
-            "or S for detailed settings."
+            "↑/↓ the world, or S for detailed settings."
         )
 
 
@@ -1945,6 +1949,7 @@ async def test_splash_mode_sits_below_the_prompts_and_above_the_version() -> Non
                 "splash-controls-prompt",
                 "splash-mode",
                 "splash-mode-help",
+                "splash-world",
                 "splash-version",
             )
         ]
@@ -2000,11 +2005,11 @@ async def test_settings_tweaks_show_as_custom_on_the_splash_and_back() -> None:
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("down", "right")  # walls off
+        await pilot.press("down", "down", "right")  # walls off
         await pilot.pause()
         first_row = str(app.screen.query_one("#setting-0", Static).render())
         assert "Custom" in first_row
-        await pilot.press("up")  # the Mode row describes the current mode
+        await pilot.press("up", "up")  # the Mode row describes the current mode
         await pilot.pause()
         help_text = str(app.screen.query_one("#settings-help", Static).render())
         assert "Your own mix" in help_text
@@ -2016,7 +2021,7 @@ async def test_settings_tweaks_show_as_custom_on_the_splash_and_back() -> None:
 
         await pilot.press("s")
         await pilot.pause()
-        await pilot.press("down", "right")  # walls back on
+        await pilot.press("down", "down", "right")  # walls back on
         await pilot.press("enter")
         await pilot.pause()
         assert _splash_mode(app)[0] == "◂ Classic ▸"
@@ -2026,6 +2031,45 @@ async def test_settings_tweaks_show_as_custom_on_the_splash_and_back() -> None:
         await pilot.press("right")
         await pilot.pause()
         assert _splash_mode(app)[0] == "◂ Classic ▸"
+
+
+def _splash_world(app: SnakeApp) -> str:
+    """The splash's starting-world line, as plain text."""
+    return str(app.screen.query_one("#splash-world", Static).render())
+
+
+@pytest.mark.asyncio
+async def test_splash_steps_the_world_beside_the_mode() -> None:
+    """↑/↓ pick the starting world (Nokia Snake's level) without leaving the
+    mode, and a mode step keeps the world."""
+    app = SnakeApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert _splash_world(app) == "▴ World 1 · pace 10 ▾"
+        await pilot.press("down")  # world 1 is the lowest: it stays
+        await pilot.pause()
+        assert app.config.start_world == 1
+
+        await pilot.press("up", "up")
+        await pilot.pause()
+        assert app.config.start_world == 3
+        assert _splash_world(app) == "▴ World 3 · pace 12.6 ▾"
+        assert _splash_mode(app)[0] == "◂ Classic ▸"
+
+        # Pixel Arena (it wraps, so the game below can't end before it's checked),
+        # still in world 3, in that world's colours.
+        await pilot.press("left")
+        await pilot.pause()
+        assert _splash_mode(app)[0] == "◂ Pixel Arena ▸"
+        assert app.config.start_world == 3
+        assert app.theme == "snek-sunset"
+
+        await pilot.press("space")
+        await pilot.pause()
+        game_screen = app.screen
+        assert isinstance(game_screen, GameScreen)
+        game_screen._disarm()
+        assert app.game.world_number == 3
 
 
 @pytest.mark.asyncio

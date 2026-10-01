@@ -18,7 +18,7 @@ from snek.modes import (
     describe,
     mode_of,
 )
-from snek.settings import MODE_ROW, ROWS
+from snek.settings import MODE_ROW, ROWS, WORLD_ROW
 
 
 def test_defaults_are_the_default_mode() -> None:
@@ -38,18 +38,19 @@ def test_every_mode_is_valid_and_recognised(mode: Mode) -> None:
 
 @pytest.mark.parametrize("mode", MODES, ids=lambda mode: mode.key)
 def test_every_mode_gives_every_setting(mode: Mode) -> None:
-    """Modes are exhaustive: each gives exactly the settings-screen fields."""
+    """Modes are exhaustive: each gives exactly the settings-screen fields but
+    the starting world."""
     assert set(mode.values) == MODE_FIELDS
     assert mode.demo_strategy in STRATEGIES
 
 
 def test_mode_fields_are_the_settings_screen_fields() -> None:
-    """Every settings row but Mode edits the demo strategy or a mode field, and
-    together they edit every mode field."""
+    """Every settings row but Mode and Starting world edits the demo strategy or
+    a mode field, and together they edit every mode field."""
     edited: set[str] = set()
     start = default_settings()
     for row in ROWS:
-        if row is MODE_ROW:
+        if row in (MODE_ROW, WORLD_ROW):
             continue
         for choice in row.choices:
             edited |= set(row.put(start, choice).values)
@@ -83,12 +84,10 @@ def test_the_agreed_modes() -> None:
 
 
 def test_the_agreed_worlds() -> None:
-    """Every mode starts in world 1, the lowest pace. Classic stays there on the
-    LCD screen; the other modes progress in each world's colours, with foods per
-    world suited to the board."""
+    """Classic stays in its starting world on the LCD screen; the other modes
+    progress in each world's colours, with foods per world suited to the board."""
     worlds = {
         mode.name: (
-            mode.values["start_world"],
             mode.values["world_change"],
             mode.values["foods_per_world"],
             mode.values["palette"],
@@ -96,10 +95,10 @@ def test_the_agreed_worlds() -> None:
         for mode in MODES
     }
     assert worlds == {
-        "Classic": (1, "fixed", 50, "lcd"),
-        "Arcade": (1, "progress", 25, "worlds"),
-        "Arena": (1, "progress", 200, "worlds"),
-        "Pixel Arena": (1, "progress", 100, "worlds"),
+        "Classic": ("fixed", 50, "lcd"),
+        "Arcade": ("progress", 25, "worlds"),
+        "Arena": ("progress", 200, "worlds"),
+        "Pixel Arena": ("progress", 100, "worlds"),
     }
     assert "LCD" in describe("Classic")
 
@@ -111,7 +110,6 @@ def test_changing_any_setting_is_custom() -> None:
         {"max_grid_width": 48},
         {"smooth_motion": False},
         {"start_length": 3},
-        {"start_world": 2},
         {"world_change": "progress"},
         {"foods_per_world": 10},
         {"palette": "worlds"},
@@ -123,6 +121,17 @@ def test_changing_any_setting_is_custom() -> None:
 def test_settings_outside_modes_do_not_change_the_mode() -> None:
     settings = default_settings().with_values(max_buffered_turns=5)
     assert mode_of(settings) == "Classic"
+
+
+@pytest.mark.parametrize("mode", MODES, ids=lambda mode: mode.key)
+def test_the_world_is_chosen_beside_the_mode(mode: Mode) -> None:
+    """Any starting world keeps the mode (it is Nokia Snake's level), and
+    applying a mode keeps the world."""
+    for world in WORLD_ROW.choices:
+        settings = default_settings().with_values(start_world=world)
+        settings = apply_mode(settings, mode.name)
+        assert settings.get("start_world") == world
+        assert mode_of(settings) == mode.name
 
 
 def test_invalid_settings_are_custom_and_say_why() -> None:

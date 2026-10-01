@@ -48,7 +48,7 @@ from .rendering import (
     motion_units,
     render_board_row,
 )
-from .settings import MODE_ROW, ROWS, widest_help
+from .settings import MODE_ROW, ROWS, WORLD_ROW, widest_help
 from .timing import StepClock, next_wake_delay
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ class SplashScreen(Screen[None]):
     # The start prompt, in the two halves it splits into when it can't fit.
     _START_PROMPT = (
         "Press SPACE to start, D to run the demo,",
-        "←/→ to change mode, or S for detailed settings.",
+        "←/→ to change mode, ↑/↓ the world, or S for detailed settings.",
     )
 
     BINDINGS = [
@@ -101,6 +101,8 @@ class SplashScreen(Screen[None]):
         ("s", "settings", "Settings"),
         ("left", "mode(-1)", "Mode"),
         ("right", "mode(1)", "Mode"),
+        ("up", "world(1)", "World"),
+        ("down", "world(-1)", "World"),
         ("q", "quit", "Quit"),
     ]
 
@@ -138,12 +140,13 @@ class SplashScreen(Screen[None]):
             )
             yield Static(id="splash-mode")
             yield Static(id="splash-mode-help", classes="splash-prompt")
+            yield Static(id="splash-world")
             yield Static(
                 f"v{__version__}", id="splash-version", classes="version-display"
             )
 
     def on_mount(self) -> None:
-        """Show the mode the settings are in."""
+        """Show the mode the settings are in, and the starting world."""
         self._show_mode()
 
     def on_resize(self, event: events.Resize) -> None:
@@ -160,7 +163,8 @@ class SplashScreen(Screen[None]):
         self.query_one("#splash-start-prompt", Static).update(text)
 
     def _show_mode(self) -> None:
-        """Show the current mode (or Custom), what it is, and its colours.
+        """Show the current mode (or Custom), what it is, the starting world,
+        and their colours.
 
         The splash takes the theme the next game starts in, so the palette and
         starting world show before play.
@@ -170,11 +174,19 @@ class SplashScreen(Screen[None]):
         name = MODE_ROW.value_text(app.settings)
         self.query_one("#splash-mode", Static).update(f"◂ {name} ▸")
         self.query_one("#splash-mode-help", Static).update(describe(name))
+        world = WORLD_ROW.value_text(app.settings)
+        self.query_one("#splash-world", Static).update(f"▴ World {world} ▾")
 
     def action_mode(self, delta: int) -> None:
         """Cycle the mode, applying its settings for the next game."""
         app = _snake_app(self)
         app.apply_settings(MODE_ROW.step(app.settings, delta))
+        self._show_mode()
+
+    def action_world(self, delta: int) -> None:
+        """Step the starting world (Nokia Snake's level), keeping the mode."""
+        app = _snake_app(self)
+        app.apply_settings(WORLD_ROW.step(app.settings, delta))
         self._show_mode()
 
     def on_screen_suspend(self) -> None:
