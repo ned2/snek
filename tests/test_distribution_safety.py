@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).parents[1]
     "member_name",
     [
         "package/.pytest_cache/v/cache/nodeids",
+        "package/.quality/coverage",
         "package/htmlcov/index.html",
         "package/snapshot_report.html",
         "package/snapshot_report-failure.html",
@@ -181,6 +182,8 @@ def test_hatch_build_excludes_local_artifacts(tmp_path: Path) -> None:
         "nosetests.xml",
         "test.cover",
         "src/snek/.pytest_cache/cache",
+        ".quality/coverage",
+        ".quality/dist/snek_tui-0.0.0.tar.gz",
         "src/snek/snapshot_report-nested.html",
         "src/snek/.env.nested",
     ]

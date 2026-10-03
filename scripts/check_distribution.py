@@ -8,7 +8,7 @@ import zipfile
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 
-FORBIDDEN_DIRECTORIES = frozenset({".pytest_cache", "cover", "htmlcov"})
+FORBIDDEN_DIRECTORIES = frozenset({".pytest_cache", ".quality", "cover", "htmlcov"})
 FORBIDDEN_EXACT_FILES = frozenset(
     {
         ".coverage",
@@ -73,11 +73,22 @@ def check_distribution_archives(archive_paths: Iterable[Path]) -> None:
         raise ValueError(f"Forbidden distribution artifacts found: {details}")
 
 
+def require_one_build(archive_paths: list[Path]) -> None:
+    """Require exactly one wheel and one sdist: the output of a single build."""
+    wheels = [path for path in archive_paths if path.suffix == ".whl"]
+    sdists = [path for path in archive_paths if path.name.endswith(".tar.gz")]
+    if len(wheels) != 1 or len(sdists) != 1 or len(archive_paths) != 2:
+        names = ", ".join(str(path) for path in archive_paths) or "none"
+        raise ValueError(f"Expected exactly one wheel and one sdist, got: {names}")
+
+
 def main(arguments: list[str] | None = None) -> int:
-    """Validate archive paths passed on the command line."""
+    """Validate the archives of one build, passed on the command line."""
     arguments = sys.argv[1:] if arguments is None else arguments
+    archive_paths = [Path(argument) for argument in arguments]
     try:
-        check_distribution_archives(Path(argument) for argument in arguments)
+        require_one_build(archive_paths)
+        check_distribution_archives(archive_paths)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(error, file=sys.stderr)
         return 1

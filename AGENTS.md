@@ -63,7 +63,8 @@ uv run pytest                     # Run all tests
 uv run pytest tests/test_game.py  # Run specific test file
 uv run ruff check                 # Lint the codebase
 uv run ruff format                # Format the codebase
-uv run python scripts/check_quality.py  # Run the complete local quality gate
+make quality                      # Run the complete local quality gate
+make help                         # List the individual gate stages (check, test, audit, ...)
 ```
 
 **Coverage Testing:**

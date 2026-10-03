@@ -25,7 +25,7 @@ worktree before setup:
 Then install exactly the locked dependencies and the hooks:
 
     uv sync --locked
-    uv run pre-commit install --install-hooks
+    make install-hooks
 
 Optional human or machine settings may go in the ignored `.envrc.local`; it is not copied into
 linked worktrees. Snek's development, pytest, Ruff, and quality commands do not require project
@@ -39,17 +39,21 @@ Run the same checks across every tracked file on demand:
 
     uv run pre-commit run --all-files
 
-Run the complete pre-push gate directly:
+The quality gates are [GNU Make](https://www.gnu.org/software/make/) targets; `make help` lists
+them. Run the complete gate on the current working tree with:
 
-    uv run python scripts/check_quality.py
+    make quality
 
-The full gate verifies the lockfile, Ruff lint and formatting, ty, the test suite and branch
-coverage floor, locked runtime dependencies, distribution contents, and isolated wheel and source
-installation with CLI and headless application smoke tests. Direct runs check the current working
-tree; the pre-push hook checks the exact revision being pushed in a temporary detached worktree.
-Gate coverage data and build artifacts are temporary and do not replace a developer's local
-coverage results. Dependency auditing queries the vulnerability service, and first-time hook setup
-downloads the pinned hook environments, so those operations require network access.
+It verifies the lockfile, Ruff lint and formatting, and ty (`make check`), the test suite and
+branch coverage floor (`make test`), the locked runtime dependencies (`make audit`), and the
+built distributions' contents and isolated wheel and sdist installation with CLI and headless
+application smoke tests (`make package`), stopping at the first failure. Each stage also runs on
+its own. The pre-push hook runs `make pre-push`, which runs the gate on the exact revision being
+pushed in a temporary detached worktree; run it directly to check `HEAD`. The gate keeps its
+coverage data and build artifacts in the ignored `.quality/` directory (`make clean-quality`
+removes it), so it never replaces your own coverage results. Dependency auditing queries the
+vulnerability service, and first-time hook setup downloads the pinned hook environments, so those
+operations require network access.
 
 ### Design decisions
 

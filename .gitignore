@@ -215,5 +215,8 @@ marimo/_lsp/
 __marimo__/
 .aider*
 
+# Quality gate artifacts (see Makefile)
+.quality/
+
 # Local issue tracker (not committed; see issues/README.md)
 issues/

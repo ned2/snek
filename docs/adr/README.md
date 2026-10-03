@@ -16,6 +16,7 @@ docstrings describe what it does, and [README.md](../../README.md) describes how
 | [0008](0008-worlds-as-nokia-levels.md) | Worlds are Nokia Snake's levels, and the only source of speed |
 | [0009](0009-classic-follows-nokia-snake.md) | Classic plays like Nokia Snake; `GameConfig`'s defaults are Classic's |
 | [0010](0010-sprite-food-scale-and-size-hold.md) | Sprite food needs cell scale 2; a too-small terminal holds the game |
+| [0011](0011-make-lifecycle-interface.md) | Make is the development lifecycle interface |
 
 ## When to write one
 
