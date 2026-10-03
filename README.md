@@ -51,6 +51,14 @@ Gate coverage data and build artifacts are temporary and do not replace a develo
 coverage results. Dependency auditing queries the vulnerability service, and first-time hook setup
 downloads the pinned hook environments, so those operations require network access.
 
+### Design decisions
+
+The reasons behind Snek's design (how screens, timing, rendering, modes and worlds work, and the
+alternatives that were rejected) are recorded as architecture decision records in
+[docs/adr/](docs/adr/). Read the relevant one before changing an area it covers, and add one for a
+new decision that is hard to reverse. Coding agents get their working rules from
+[AGENTS.md](AGENTS.md).
+
 ## Usage
 
     snek
@@ -69,13 +77,25 @@ For example:
 
     snek --mode arena
 
+A mode is just a set of settings. Change one of them, on the settings screen or with a flag, and
+the splash shows **Custom** instead; set them back to a mode's values and it shows that mode again.
+
+In every mode the snake starts as a single cell and unrolls to its starting length (8 in Classic,
+3 in the other modes), as in Nokia Snake.
+
 Every game is played in one of nine worlds. Like Nokia Snake's levels, the world sets the snake's
 pace and the points each food scores (1 in world 1, up to 9 in world 9), and filling the board
-scores a 100-point bonus. Classic stays in the world you start in; the other modes move on to the
-next world after each set of foods, each world in its own colours. Choose the starting world with
-↑/↓ on the splash, or with `--world`:
+scores a 100-point bonus. Your score shows in the side panel and on the game-over screen. Classic
+stays in the world you start in; the other modes move on to the next world after each set of foods
+(how many depends on the mode), each world in its own colours, and stay in world 9 once there.
+Choose the starting world with ↑/↓ on the splash, or with `--world`:
 
     snek --world 5
+
+The side panel shows the world's **pace**: the snake's speed on screen, which is the same whatever
+the size of the board's cells. So that turns stay responsive, the snake never drops below a minimum
+number of moves a second, so a board with big cells (such as Arcade's) runs a little faster on
+screen than its pace.
 
 Other flags override single settings of the mode, such as `--no-walls` or `--food glyphs`; run
 `snek --help` for them all. Demo strategy choices are `floodfill` (the default), `greedy`,
@@ -96,7 +116,9 @@ the terminal is made smaller, but interface elements may be clipped.
 - **D** (on the splash screen): Watch the snek play itself in demo mode
 - **S** (on the splash screen): Settings — starting world, walls, world change, foods per
   world, starting length, board sizing, grid cap, cell scale, smooth motion, food type,
-  palette and demo strategy, for the rest of the session
+  palette (each world's colours, or the board drawn like the Nokia LCD) and demo strategy, for
+  the rest of the session. A combination that can't work, such as pixel-art food at cell scale
+  1, is explained in red, and Enter applies the changes only once it is fixed
 - **Enter**: Toggle sidebar visibility
 - **Esc**: Back to the main menu (from the game, pause, diagnostics or game over; in settings
   it discards the changes)

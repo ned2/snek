@@ -4,20 +4,21 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-Snek is a terminal-based Snake game built using the
-[Textual](https://textual.textualize.io) framework. The game features progressive themes
-with different Unicode characters that unlock as the player advances through worlds.
+Snek is a terminal Snake game built with [Textual](https://textual.textualize.io).
+[README.md](README.md) describes how it plays; [docs/adr/](docs/adr/) records why it is built
+the way it is (see [Design decisions](#design-decisions)).
 
 ## Tracking & Notes
 
-**Do not create or rely on a private agent memory store.** This project tracks durable
-working context exclusively in the local issue tracker under `issues/` (see
-`issues/README.md`) — research notes, plans, and design decisions all live there. If
-something is worth remembering, record it in the relevant `issues/NNNN-*/` directory
-instead.
+Record durable context in the project's own files; never in a private agent memory store:
 
-Agent-facing rules and recurring gotchas belong in this file. Claude-Code-specific loading
-notes belong in [CLAUDE.md](CLAUDE.md), which imports this file.
+- **Working context** — research, plans, decisions in progress — goes in the local issue
+  tracker under `issues/` (see `issues/README.md`). It is git-ignored and exists only in the
+  primary checkout, so nothing in the repository may depend on it.
+- **Settled design decisions** the code depends on go in an ADR under `docs/adr/`.
+- **Anything a human player or contributor needs** goes in [README.md](README.md) or an ADR.
+- **Agent rules and recurring gotchas** go in this file, which holds nothing else.
+  Claude-Code-specific loading notes go in [CLAUDE.md](CLAUDE.md), which imports this file.
 
 ## Development Commands
 
@@ -80,205 +81,69 @@ uv run coverage erase             # Clear previous coverage data
 uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 ```
 
-## Architecture
+## Design decisions
 
-### Core Components
+`docs/adr/` holds one architecture decision record (ADR) per decision; its `README.md` lists
+them and gives the format. Read the ADR before changing the area it covers: screens and
+navigation, the model→view `StepResult`, the logical grid and cell scale, step timing, board
+rendering, interpolated motion, modes and settings, worlds and pace, Classic's Nokia defaults,
+or sprite food. A change that alters a recorded decision updates or supersedes its ADR in the
+same change. A new decision that is hard to reverse, surprising without context, and the result
+of a real trade-off gets a new ADR.
 
-- **`app.py`**: `SnakeApp`, the Textual `App`. Registers the screens in `SCREENS` and pushes
-  the splash on startup; owns the current immutable configuration, live `Game`, and selected
-  demo strategy name. `settings` / `apply_settings()` read and replace the config and strategy
-  together for the settings screen.
-- **`cli.py`**: `main()`, the console entry point (`uv run snek`). Applies `--mode` (every
-  value, demo strategy included), then any `--world`, `--world-change`, `--foods-per-world`,
-  `--palette`, sizing, grid-cap, scale, `--food`, `--start-length`, walls, smoothing and
-  demo-strategy flags given, into a validated `GameConfig`. An invalid combination is an
-  argparse usage error (exit 2) before the TUI starts.
-- **`screens.py`**: the screens-as-states UI — `SplashScreen`, `SettingsModal`, `GameScreen`
-  (the game loop + side panel), `PauseModal`, the scrollable `DiagnosticsModal`, and
-  `GameOverModal`, plus the `SnakeView` board and the `SidePanel` / `StatDisplay` panel widgets.
-- **`settings.py`**: framework-free settings rows for `SettingsModal`. Each `SettingRow`
-  offers fixed choices and steps a `Settings` draft through them without validating, so a
-  row can step into an invalid combination (e.g. sprites at cell scale 1). `MODE_ROW` (first,
-  and also on the splash) applies a whole mode per step; `WORLD_ROW` (second, and also on the
-  splash) steps the starting world.
-- **`modes.py`**: `Settings` — the demo strategy plus raw config values over a base
-  `GameConfig`; `to_config()` validates and `error()` says why they are invalid — and the game
-  modes (Classic, Arcade, Arena, Pixel Arena). Modes are exhaustive: each gives every
-  settings-screen field (`MODE_FIELDS`) and the demo strategy, so applying one resets them all,
-  except the starting world. That is Nokia Snake's level, chosen beside the mode: no mode sets
-  it or matches on it, and it survives mode changes (issue 0038).
-  The mode in force is derived by `mode_of()` — the first whose values all match, else
-  "Custom" (as are invalid settings) — never stored, so tweaking settings onto a mode's values
-  shows that mode. `GameConfig`'s defaults are Classic's: Nokia Snake's walled 20x11 board,
-  diamond food, an 8-cell start, and a fixed world on the LCD palette. Model tests about
-  progression pass `world_change="progress"`.
-- **`game.py`**: core game logic and state (`Game`), plus `StepResult` — the frozen
-  model→view contract returned by `Game.step()`.
-- **`game_rules.py`**: pure game mechanics — movement (`next_position` wraps, or returns None
-  at a wall), collision detection.
-- **`rendering.py`**: framework-free board sizing and Rich `Segment` rendering. Separates
-  logical game dimensions from visual cell scale and frames capped boards.
-- **`sprites.py`**: cached Pillow/Rich Pixels food-sprite construction. World sprite IDs map
-  to coloured tiles. Used when `food_type` is "sprites", which needs a cell scale of 2+.
-- **`clipboard.py`**: non-blocking diagnostics-copy support. Tries a platform clipboard
-  subprocess with timeout/cancellation cleanup, then falls back to Textual's OSC 52 copy.
-- **`demo/`**: pluggable demo drivers. `__init__.py` owns the strategy registry, default, and
-  factory; `base.py` defines their contract; `greedy.py`, `safe_bfs.py`, `floodfill.py`, and
-  `hamiltonian.py` provide the CLI-selectable implementations. `floodfill` is the default.
-- **`timing.py`**: `StepClock`, the framework-free fixed-step accumulator that decides how
-  many model steps each wake runs (and how far the next step has progressed), and
-  `next_wake_delay()`, which says when the loop should wake next.
-- **`worlds.py`**: world/theme progression (`WorldPath`) — the nine worlds, their food
-  symbols, `WORLD_PACES` (the pace ladder) and `moves_per_second()`, which converts a pace
-  for a cell scale.
-- **`themes.py`**: per-world Textual themes (colors) and `LCD_BOARD_STYLE`, the two-tone
-  Rich style of an LCD board.
-- **`figlet.py`**: `FigletText`, the in-repo ASCII-art title widget (recolors on theme change
-  by overriding `notify_style_update`).
-- **`config.py`**: immutable, validated `GameConfig` values for timing, layout, progression,
-  start length, food type, input buffering, and render glyphs.
-- **`styles.css`**: Textual layout, compact-terminal breakpoints, modal sizing, and theme-token
-  styling.
+A change to player-facing behaviour (modes, worlds, controls, flags, settings) updates
+[README.md](README.md) in the same change.
 
-### Board edges
+## Rules when changing code
 
-Without walls the board wraps around: the snake leaves one edge and enters the opposite one.
-With `config.walls` (on by default, as in the Classic mode; `--no-walls` turns it off) the
-edges are solid and moving off the board ends the game. Model tests written for a wrapping
-board pass `walls=False` explicitly.
-Every move goes through `GameRules.next_position`, and the demo strategies reach it through
-`demo/_helpers.neighbour`, which returns None for a wall that callers treat as blocked. The
-Hamiltonian strategy validates its cycle against the same rule, so on a walled board it uses a
-cycle without wrap edges (one exists iff the cell count is even).
+**Model.** `Game` and `game_rules.py` stay free of Textual. A new consequence of a step goes
+into `StepResult`, which the view reacts to; the view never infers it by comparing model state
+before and after a step. Speed comes only from the world's pace.
 
-### Starting length and grow-in
+**Moves and walls.** Every move goes through `GameRules.next_position`, which returns None at
+a wall. Demo strategies reach it through `demo/_helpers.neighbour` and treat None as blocked.
 
-The snake starts as one cell at the centre heading right and unrolls to `start_length`
-(Nokia-style): `Game.pending_growth` counts the remaining steps on which the tail stays put
-(`Game.tail_stays`). A step that eats grows the snake as usual and leaves the count alone.
-Assigning `game.snake` clears it, so tests that place a snake by hand get a fixed-length
-snake. Demo strategies must not treat a staying tail as free: use `demo/_helpers.tail_moves`,
-`blocked_cells`, `body_after` and `growth_after` rather than assuming the tail vacates. Model
-tests that want a one-cell snake with no grow-in pass `start_length=1`.
+**Grow-in.** The snake starts as one cell and unrolls to `start_length`; on those steps its tail
+stays put (`Game.pending_growth`, `Game.tail_stays`). Demo strategies use
+`demo/_helpers.tail_moves`, `blocked_cells`, `body_after` and `growth_after`, which account for
+a staying tail.
 
-### Game Progression System
+**Settings and modes.** Modes are exhaustive, and `tests/test_modes.py` enforces it: a new
+settings-screen field joins `MODE_FIELDS` and gets a value in every mode, apart from the
+starting world, which no mode sets. A setting that changes the logical grid or how the board is
+fitted joins `_layout_key` in `screens.py`, the only trigger for re-establishing the grid. An
+invalid combination is rejected by `GameConfig`, never corrected by falling back or changing
+another setting: the CLI turns it into an argparse usage error (exit 2) before the TUI starts,
+and the settings screen shows it and blocks ENTER. Changing a Classic value means changing the
+matching `GameConfig` default too.
 
-A world is a Nokia Snake level. Each of the 9 worlds has a pace (`worlds.WORLD_PACES`, 10 to
-25, evenly spaced), a theme and a food symbol set, and the world is the **only** source of
-speed: there is no per-food speed-up. Pace is the snake's screen speed, the same at every cell
-scale (issue 0037): rows per second, a row being a scale-1 cell's height. `moves_per_second()`
-turns it into moves/s as `pace / scale`, but at least a turn-lag floor that rises gently with
-the pace (7.5/s at pace 10, about 10.5/s at 25; `FLOOR_PACE_EXPONENT`). So big cells run on
-the floor, faster on screen than the pace, and still speed up from world to world.
-`Game.current_interval` comes from the pace of `current_world` (counted from 0;
-`world_number` from 1) at `Game.cell_scale`, the scale the grid was established at
-(`reset(cell_scale=...)`, from `GameScreen.establish_grid`) in either sizing mode. A resize
-never changes the speed. The panel shows the pace; diagnostics also show the moves/s. Model
-games that no view established run at scale 1.
-- Play starts in `start_world`. With `world_change` "fixed" it stays there; with "progress"
-  every `foods_per_world` foods eaten moves on a world, and play stays in world 9.
-- Scoring is always on: each food scores the world number it was eaten in, and filling the
-  board adds `BOARD_CLEAR_BONUS` (100). `Game.score` shows in the side panel, on the
-  game-over screen and in diagnostics.
-- The app theme is always the world's: `SnakeApp.show_world()` picks it, and the splash
-  shows the next game's. `palette` affects only the board: "worlds" draws it in that theme;
-  "lcd" draws the board and its frame (not the margin round them) in `LCD_BOARD_STYLE`, dark
-  pixels on the green-grey backlight, in every world. `SnakeView.render_line()` applies it
-  beneath the segments' own styles, so glyph and sprite food keep their colours (issue 0039).
+**Screens.** A screen that shows a snapshot of state is pushed as a fresh instance each time;
+only stateless or self-refreshing screens are registered in `SnakeApp.SCREENS`. The registered
+`GameScreen` outlives each game: games start through `start_new_game()` / `restart_game()` and
+leave through `leave_to_menu()`, which leaves the game paused so nothing re-arms the loop.
 
-### State & data flow
+**Game loop.** `GameScreen._arm()` is the only place that creates the loop timer, and
+`_disarm()` is the only reliable way to stop it. `hold_for_size()` (a terminal too small for
+sprite food) stops the loop without pausing the model; it is a hold, distinct from a pause.
 
-State is the **Textual screen stack**, not a separate state machine — each state is a screen:
-`SplashScreen` → `GameScreen` → (`PauseModal` / `DiagnosticsModal` / `GameOverModal`), navigated
-with `push_screen` / `pop_screen`; S on the splash pushes `SettingsModal`, ←/→ on the splash
-cycle the mode and ↑/↓ step the starting world. Splash, game, and pause are registered screens; settings, diagnostics, and
-game-over are fresh instances so their displayed state cannot go stale. ESC is the one way back
-to the splash: from the game, pause, diagnostics and game-over screens it abandons the game via
-`GameScreen.leave_to_menu()`, which leaves it paused so nothing re-arms the loop.
+**Grid and resizes.** A resize only refits the cell scale. The logical grid and `Game.cell_scale`
+change only through a reset before play (`GameScreen.establish_grid()`).
 
-Settings are session-only and reachable only from the splash, so no game is running when they
-change. `SettingsModal` edits a draft: every change re-validates it and a reserved red line
-under the help shows the error, if any. ENTER applies the draft only when it is valid (it does
-nothing otherwise); ESC discards it. `apply_settings()` replaces `app.config` and the live
-`Game`'s config at once; the next `start_new_game()` resets the game with it and calls
-`SnakeView.relayout()`, which re-establishes the logical grid only if a layout setting (sizing,
-scale, grid cap, walls, food type) changed since the grid was last established. The rows sit in
-a scrolling list that keeps the selected row in view; a compact title replaces the large one
-below the `-tall` breakpoint. The settings screen must still fit 80×24 (`tests/test_app.py`).
+**Drawing.** After model steps, call `SnakeView.update_board()`, which refreshes only the
+changed cells; after a reset or a direct model edit, call a full `refresh()`, which
+re-snapshots the live game. Anything new that changes how a cell is drawn goes into
+`BoardState` (or forces a full refresh), or Textual's cached lines go stale;
+`test_partial_board_updates_match_a_full_render` and
+`test_interpolated_updates_match_a_full_render` in `tests/test_app.py` catch a missed region.
+Panel stats change through `GameScreen`'s string reactives (`_sync_reactives()`), which are
+data-bound one way to the `StatDisplay` widgets.
 
-Within the game loop:
-1. `GameScreen._on_frame` feeds the elapsed wall time into a `StepClock` and runs one model
-   step for each `current_interval` that has come due, re-reading the interval before every
-   step. It then draws and calls `_arm()`, the only place that creates the loop timer
-   (`self.timer`): a one-shot at the next step's exact deadline or, while interpolating, the
-   next substep boundary (`timing.next_wake_delay`), and never closer than a frame except to
-   meet a deadline. Exact wakes keep steps and increments evenly spaced; a fixed 60 Hz grid made
-   gaps alternate by a frame. Pausing credits the time already waited and stops the timer;
-   resuming re-arms and discards the paused time; game over stops it. Textual queues timer
-   callbacks, so stopping a timer cannot recall a wake it already queued: each wake carries the
-   `_generation` it was armed in, `_disarm()` bumps it, and `_on_wake` ignores stale wakes.
-   `GameScreen.tick()` runs exactly one step and redraws it whole without touching timers;
-   tests call `_disarm()` (not `timer.stop()`) and then advance by hand.
-2. Each step, in demo mode, first asks the selected `DemoStrategy` for a direction, then calls
-   `Game.step()`, which returns a `StepResult` describing the consequences (moved / ate food /
-   world changed / game over). The view reacts to those flags rather than inferring model
-   deltas.
-3. `Game` owns world progression, speed (from the world's pace) and score. A world change
-   updates the Textual theme; game-over stops the frame timer and pushes a fresh modal.
-4. The stats panel has one source of truth: `GameScreen` holds display-ready string reactives
-   (`world_name`, `progress`, `score_label`, `foods_label`, `pace_label`), each `data_bind`'d
-   (parent → child, read-only) to a `StatDisplay` in the `SidePanel`. After a frame's steps,
-   `_sync_reactives()` runs once and the board refreshes once; the bindings propagate to the
-   panel. A fixed world shows its number and hides the progress line.
+**Terminal size.** The UI must work at 80×24; `tests/test_app.py` checks that the splash and
+settings screens fit. Below that, model invariants still hold and the cell scale stays at
+least 1.
 
-### Layout and rendering policy
-
-- The **logical grid** is model state and fixes game difficulty; the **cell scale** is visual.
-  `SnakeView` calls `compute_layout()` on its first valid layout and establishes the model grid
-  once. Later viewport resizes call `fit_grid_scale()` and never rewrite snake or food coordinates.
-- In `cap` mode, the grid grows only to `max_grid_*` and cells scale up to `cell_scale`, so larger
-  terminals may letterbox a consistently sized game. In `fill` mode, `cell_scale` is fixed and the
-  initial logical grid grows to fill the viewport; only where the grid is floored at `min_game_*`
-  do its cells shrink to fit, as a resize would.
-- The frame is dim on a wrapping board and drawn only when capped with room to spare. With walls
-  it is heavy and full intensity, and `SnakeView` reserves room for it in both sizing modes. An
-  LCD board's frame is the same, inside a one-cell bezel of backlight: half-block top and
-  bottom edges, with corners that step in over two cells (an empty edge cell, then a
-  three-quadrant block) so they read as rounded. The bezel is decoration: nothing reserves room
-  for it, and it is left out where it doesn't fit.
-- The supported UI floor is 80×24. Below it, model invariants remain valid and scale never drops
-  below one, but Textual may clip interface or board content.
-- Food is `food_type` (`--food`): "diamond" (`❖` in the world's colours, Classic's), "glyphs"
-  (each world's Unicode symbols) or "sprites" (pixel art). Sprites fix the food style: it never
-  changes with the terminal size. `GameConfig` rejects sprites with
-  `cell_scale < MIN_SPRITE_SCALE` (the CLI reports it as a usage error; the settings screen shows it and
-  blocks ENTER). With sprites the scale never drops below `config.min_cell_scale` and cap mode
-  uses the whole grid cap. Where that board does not fit, `SnakeView` draws a "terminal too
-  small" message instead and `GameScreen.hold_for_size()` stops the loop (without pausing the
-  model) until there is room.
-- `SnakeView` uses Textual's Line API: `render_line()` centres and frames the board itself and
-  delegates each board row to the pure `render_board_row()` in `rendering.py`. Food is a cached
-  pixel sprite with sprite food, otherwise the food's symbol (`❖` or the world's glyph).
-- Lines are drawn from a `BoardState` snapshot, not the live game. After each wake,
-  `SnakeView.update_board()` takes a new snapshot and refreshes only the changed cells' regions, so
-  Textual re-renders those lines and writes only those cells. Call `update_board()` after model
-  steps; a plain full `refresh()` re-snapshots the live game drawn whole (use it after resets or
-  direct model edits, as tests do).
-- Movement is interpolated. The drawing trails the model by up to one step: `Game.step()` reports
-  the new head, the vacated tail cell and their directions in `StepResult`, and
-  `rendering.motion_cells()` turns those plus the clock's progress into part-filled cells (whole
-  columns across, `▀`/`▄` half rows vertically, `2*scale` increments either way) that keep the
-  visible length constant. The screen passes the step to `update_board()` only while
-  interpolating: `smooth_motion` is on (`--no-smooth` turns it off), the glyphs are the default
-  blocks, the step spans at least two frames, and exactly one step ran in the wake. Otherwise
-  cells are drawn whole, and game over settles the board whole.
-
-### Diagnostics and clipboard flow
-
-`?` pauses play and pushes a fresh `DiagnosticsModal`, whose scrollable body snapshots current
-terminal, layout, config, model, and demo values. Its `C` action runs as an exclusive Textual worker
-so clipboard subprocesses never block the UI. `clipboard.copy_text()` prefers the native platform
-tool and reports whether it used that tool or the OSC 52 fallback.
+**Clipboard.** Clipboard copies run as an exclusive Textual worker, keeping subprocesses off
+the UI thread.
 
 ## Code Conventions
 
@@ -291,3 +156,19 @@ tool and reports whether it used that tool or the OSC 52 fallback.
 
 Tests are located in the `tests/` directory and use pytest with asyncio support. The
 test configuration is in `pytest.ini` with verbose output and short tracebacks enabled.
+
+`GameConfig`'s defaults are Classic's: walls, a fixed world and an 8-cell grow-in. Model tests
+opt out explicitly:
+
+- a wrapping board: `walls=False`;
+- world progression: `world_change="progress"`;
+- a one-cell snake with no grow-in: `start_length=1`. Assigning `game.snake` also clears
+  grow-in, giving a fixed-length snake.
+
+A `Game` that no view established runs at cell scale 1, so its speed is its world's pace at
+scale 1. Tests that need an exact step interval patch `snek.game.WORLD_PACES` or
+`Game.current_interval` with `monkeypatch`.
+
+To drive the game loop by hand, call `GameScreen._disarm()`, then `GameScreen.tick()`, which
+runs exactly one step and redraws it whole. `_disarm()` also invalidates a wake Textual has
+already queued, which `timer.stop()` cannot recall.
