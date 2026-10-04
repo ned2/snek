@@ -13,9 +13,21 @@ are the same physical size on a 2:1 cell. The head cell fills from the side it e
 vacated cell drains, so the visible length stays constant, and the first increment shows as soon
 as the step is taken. Because it trails, the drawing never shows a move the model has not made.
 
+Since 2026-10-04 the snake is drawn in pixels finer than a character
+([ADR 0012](0012-snake-narrower-than-its-cells.md)), and a step is drawn in one increment a pixel
+across the cell (`2*scale` with half blocks, `4*scale` with sextants or octants). A partly drawn
+cell is the whole cell's pixels clipped from the side it fills from. Sextant pixels are not square,
+with fewer down a cell than across it, so a step down rounds each increment to the nearest pixel.
+Each end of the snake moves one pixel an increment, the gap included: the head's join into its new
+cell is the old head's gap when moving right or down, so that cell (the neck) fills its gap first,
+and the tail's join likewise sits in the new tail cell when moving left or up, which empties its gap
+last. A partly drawn cell can therefore carry several clips, one from each end of a short snake.
+Clipping only the head and vacated cells instead stalls the head for a gap's worth of increments
+and then jumps it, which reads as a late response to a key.
+
 Cells are drawn whole unless all of these hold: `smooth_motion` is on (`--no-smooth` turns it off);
-the snake and empty glyphs are the default blocks, since partial cells are drawn with block
-elements; a step spans at least two frames, since faster steps would show a few unevenly timed
+the empty glyph is the default blank, since the unfilled part of a partial cell is blank; a step
+spans at least two frames, since faster steps would show a few unevenly timed
 increments; and exactly one step ran in the wake, since several mean the loop fell behind. Game
 over settles the board whole.
 

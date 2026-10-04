@@ -15,6 +15,7 @@ from snek.config import GameConfig
 from snek.figlet import FigletText
 from snek.game import Game
 from snek.game_rules import Direction
+from snek.rendering import motion_cells
 from snek.screens import (
     DiagnosticsModal,
     GameOverModal,
@@ -477,10 +478,18 @@ async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
         wake_at(0.125)
         assert game.snake[0] == (6, 5)
         assert view._drawn is not None
-        assert view._drawn.partial == {
-            (6, 5): (Direction.LEFT, 1),
-            (5, 5): (Direction.RIGHT, units - 1),
-        }
+        assert view._drawn.partial == motion_cells(
+            (6, 5),
+            Direction.RIGHT,
+            (5, 5),
+            Direction.RIGHT,
+            0.0,
+            view._scale,
+            view._glyphs,
+            game.width,
+            game.height,
+        )
+        assert set(view._drawn.partial) == {(6, 5), (5, 5)}
         assert armed[-1].delay == pytest.approx(substep)
         # By the last substep the step is drawn whole.
         wake_at(0.125 + (units - 1) * substep)
@@ -511,9 +520,21 @@ async def test_interpolated_steps_slide_on_substep_wakes(monkeypatch) -> None:
         assert view._drawn.partial == {}
 
 
+# Boards whose redraws must match a full render: Classic's, and wrapping boards
+# in the other glyph sets, so the snake joins across the edges too.
+_REDRAW_CONFIGS = {
+    "classic": GameConfig(),
+    "octants-wrapping": GameConfig(snake_glyphs="octants", walls=False),
+    "half-blocks-wrapping": GameConfig(snake_glyphs="half-blocks", walls=False),
+}
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize("config", _REDRAW_CONFIGS.values(), ids=_REDRAW_CONFIGS)
 @pytest.mark.parametrize("size", [(80, 24), (200, 50)])
-async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> None:
+async def test_interpolated_updates_match_a_full_render(
+    monkeypatch, size, config
+) -> None:
     """Every substep repaints exactly the cells whose drawing changed.
 
     Demo play covers turns, wraps and eating. After each wake, Textual's cached
@@ -521,7 +542,7 @@ async def test_interpolated_updates_match_a_full_render(monkeypatch, size) -> No
     survive as a stale cached line.
     """
     now = [0.0]
-    app = SnakeApp()
+    app = SnakeApp(config)
     async with app.run_test(size=size) as pilot:
         await pilot.press("d")
         await pilot.pause()
@@ -1199,14 +1220,15 @@ def _board_text(snake_view) -> str:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("config", _REDRAW_CONFIGS.values(), ids=_REDRAW_CONFIGS)
 @pytest.mark.parametrize("size", [(80, 24), (200, 50)])
-async def test_partial_board_updates_match_a_full_render(size) -> None:
+async def test_partial_board_updates_match_a_full_render(size, config) -> None:
     """Cell-level repaints leave the screen identical to redrawing everything.
 
     Each step repaints only the cells that changed, and Textual keeps every
     other line cached. A missed cell would survive here as a stale cached line.
     """
-    app = SnakeApp()
+    app = SnakeApp(config)
     async with app.run_test(size=size) as pilot:
         await pilot.press("d")
         await pilot.pause()

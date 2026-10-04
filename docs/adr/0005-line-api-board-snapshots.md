@@ -27,3 +27,5 @@ at up to 60 updates a second.
 - Centring, the frame and the LCD bezel are the widget's job, not CSS's.
 - Tests compare Textual's cached lines with a fresh full render after demo play, with and without
   interpolation, to catch a missed region.
+- Since 2026-10-04 the snapshot maps each snake cell to its joins, since a cell is drawn differently
+  once the segment beyond it moves ([ADR 0012](0012-snake-narrower-than-its-cells.md)).

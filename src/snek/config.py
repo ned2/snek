@@ -5,6 +5,7 @@ from typing import Final
 
 from rich.cells import cell_len
 
+from .snake_glyphs import SNAKE_GLYPH_SETS
 from .worlds import WORLD_PACES
 
 # The smallest cell scale that can hold a food sprite: at scale 1 a cell is only
@@ -23,6 +24,11 @@ WORLD_CHANGES: Final = ("fixed", "progress")
 
 # The board's colour palettes: each world's own theme, or the Nokia LCD screen's.
 PALETTES: Final = ("worlds", "lcd")
+
+# The glyph sets the snake can be drawn with, in the order the settings offer (see
+# `snake_glyphs`): "sextants" by default, "octants" for the finest, "half-blocks"
+# for terminals that draw neither.
+SNAKE_GLYPHS: Final = tuple(SNAKE_GLYPH_SETS)
 
 
 def _require_positive_int(name: str, value: object) -> int:
@@ -112,7 +118,6 @@ class GameConfig:
     side_panel_width: int = 30
     min_game_width: int = 10
     min_game_height: int = 10
-    snake_block: str = "██"
     empty_cell: str = "  "
 
     # How food is drawn, one of `FOOD_TYPES`. Sprites need cells of at least
@@ -127,9 +132,14 @@ class GameConfig:
 
     # Interpolate movement between steps: the head slides into its new cell and
     # the tail drains out of the old one, instead of both jumping a whole cell.
-    # Needs the default block/blank glyphs, and turns itself off at speeds where
-    # a step lasts less than two frames.
+    # Needs the default blank glyph, and turns itself off at speeds where a step
+    # lasts less than two frames.
     smooth_motion: bool = True
+
+    # The glyphs the snake is drawn with, one of `SNAKE_GLYPHS`. Each draws it
+    # narrower than its cells, so runs side by side stay apart; they differ in
+    # how fine their pixels are and which terminals draw them.
+    snake_glyphs: str = "sextants"
 
     # Solid board edges: moving off the board ends the game. Without them the
     # board wraps around, so the snake leaves one edge and enters the opposite.
@@ -192,23 +202,20 @@ class GameConfig:
         for name, value, choices in (
             ("world_change", self.world_change, WORLD_CHANGES),
             ("palette", self.palette, PALETTES),
+            ("snake_glyphs", self.snake_glyphs, SNAKE_GLYPHS),
         ):
             if not isinstance(value, str) or value not in choices:
                 raise ValueError(
                     f"{name} must be one of {', '.join(choices)}, got {value!r}"
                 )
 
-        for name, glyph in (
-            ("snake_block", self.snake_block),
-            ("empty_cell", self.empty_cell),
-        ):
-            if not isinstance(glyph, str):
-                raise ValueError(f"{name} must be a string, got {glyph!r}")
-            width = cell_len(glyph)
-            if width != 2:
-                raise ValueError(
-                    f"{name} must occupy exactly 2 terminal cells, got {width}"
-                )
+        if not isinstance(self.empty_cell, str):
+            raise ValueError(f"empty_cell must be a string, got {self.empty_cell!r}")
+        width = cell_len(self.empty_cell)
+        if width != 2:
+            raise ValueError(
+                f"empty_cell must occupy exactly 2 terminal cells, got {width}"
+            )
 
         for name, flag in (
             ("smooth_motion", self.smooth_motion),

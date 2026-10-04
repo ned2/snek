@@ -223,6 +223,11 @@ SettingsModal.-tall #settings-title-compact {
     margin-bottom: 1;
 }
 
+/* At 80x24 every row fits only without the blank line under the prompt. */
+SettingsModal.-short #settings-prompt {
+    margin-bottom: 0;
+}
+
 #settings-rows {
     width: auto;
     height: 100%;

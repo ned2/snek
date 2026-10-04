@@ -8,6 +8,7 @@ from .config import (
     FOOD_TYPES,
     MIN_SPRITE_SCALE,
     PALETTES,
+    SNAKE_GLYPHS,
     WORLD_CHANGES,
     default_config,
     validate_dimensions,
@@ -178,6 +179,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--snake-glyphs",
+        choices=SNAKE_GLYPHS,
+        default=None,
+        help=(
+            "the glyphs the snake is drawn with: 'sextants' suit most terminals, "
+            "'octants' are finer but need a newer terminal, 'half-blocks' are "
+            "coarser but drawn by every terminal (default: from --mode)"
+        ),
+    )
+    parser.add_argument(
         "--demo-strategy",
         choices=sorted(STRATEGIES),
         default=None,
@@ -209,6 +220,7 @@ def main(argv: list[str] | None = None) -> None:
         ("start_length", args.start_length),
         ("walls", args.walls),
         ("smooth_motion", args.smooth),
+        ("snake_glyphs", args.snake_glyphs),
     ):
         if value is not None:
             overrides[field] = value

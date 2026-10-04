@@ -17,7 +17,7 @@ from typing import Any, cast
 
 from rich.cells import cell_len
 
-from .config import FOOD_TYPES, PALETTES, WORLD_CHANGES
+from .config import FOOD_TYPES, PALETTES, SNAKE_GLYPHS, WORLD_CHANGES
 from .demo import STRATEGIES
 from .modes import CUSTOM, MODES, Settings, apply_mode, describe, mode_of
 from .worlds import WORLD_PACES
@@ -115,6 +115,12 @@ FOOD_HELP = {
     "sprites": "Pixel-art food. Needs cell scale 2+.",
 }
 
+SNAKE_GLYPHS_HELP = {
+    "sextants": "Draws the snake in fine blocks most terminals can show.",
+    "octants": "The finest blocks, like Nokia's pixels. Newer terminals only.",
+    "half-blocks": "Coarser blocks that every terminal can show.",
+}
+
 # The mode: one step applies a whole designed mix of the rows below it. The
 # splash offers this row too.
 MODE_ROW = SettingRow(
@@ -210,6 +216,15 @@ ROWS: tuple[SettingRow, ...] = (
         get=lambda s: s.get("smooth_motion"),
         put=_config("smooth_motion"),
         show=_on_off,
+        wrap=True,
+    ),
+    SettingRow(
+        label="Snake glyphs",
+        help=lambda s: SNAKE_GLYPHS_HELP[cast(str, s.get("snake_glyphs"))],
+        choices=SNAKE_GLYPHS,
+        get=lambda s: s.get("snake_glyphs"),
+        put=_config("snake_glyphs"),
+        show=lambda v: str(v).replace("-", " ").capitalize(),
         wrap=True,
     ),
     SettingRow(

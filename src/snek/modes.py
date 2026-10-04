@@ -82,15 +82,17 @@ MODE_FIELDS: Final = frozenset(
         "max_grid_height",
         "cell_scale",
         "smooth_motion",
+        "snake_glyphs",
         "food_type",
         "palette",
     }
 )
 
-# Shared by every mode: smooth motion and a 36x20 grid cap (which fill sizing
-# ignores).
+# Shared by every mode: smooth motion, sextant snake glyphs and a 36x20 grid cap
+# (which fill sizing ignores).
 _COMMON: Final = {
     "smooth_motion": True,
+    "snake_glyphs": "sextants",
     "max_grid_width": 36,
     "max_grid_height": 20,
 }

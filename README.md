@@ -87,6 +87,14 @@ the splash shows **Custom** instead; set them back to a mode's values and it sho
 In every mode the snake starts as a single cell and unrolls to its starting length (8 in Classic,
 3 in the other modes), as in Nokia Snake.
 
+As on the Nokia screen, the snake is a little narrower than the board's cells, so where it doubles
+back on itself you can still see the gap between its runs. It is drawn with Unicode block glyphs
+finer than a character: **sextants** by default, which most current terminals draw. If the snake
+looks broken up or shows boxes, your terminal lacks them: switch to **half blocks**, which every
+terminal draws, with `--snake-glyphs half-blocks` or on the settings screen. Terminals with
+Unicode 16's **octants** can show the snake finest of all, exactly as Nokia's pixels in Classic, with
+`--snake-glyphs octants`.
+
 Every game is played in one of nine worlds. Like Nokia Snake's levels, the world sets the snake's
 pace and the points each food scores (1 in world 1, up to 9 in world 9), and filling the board
 scores a 100-point bonus. Your score shows in the side panel and on the game-over screen. Classic
@@ -119,8 +127,8 @@ the terminal is made smaller, but interface elements may be clipped.
   the pace and the points per food, and it stays as you change the mode
 - **D** (on the splash screen): Watch the snek play itself in demo mode
 - **S** (on the splash screen): Settings — starting world, walls, world change, foods per
-  world, starting length, board sizing, grid cap, cell scale, smooth motion, food type,
-  palette (each world's colours, or the board drawn like the Nokia LCD) and demo strategy, for
+  world, starting length, board sizing, grid cap, cell scale, smooth motion, snake glyphs,
+  food type, palette (each world's colours, or the board drawn like the Nokia LCD) and demo strategy, for
   the rest of the session. A combination that can't work, such as pixel-art food at cell scale
   1, is explained in red, and Enter applies the changes only once it is fixed
 - **Enter**: Toggle sidebar visibility

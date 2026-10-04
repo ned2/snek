@@ -36,7 +36,6 @@ from .rendering import (
     CELL_BASE_WIDTH,
     FRAME_MARGIN,
     SMOOTH_EMPTY_CELL,
-    SMOOTH_SNAKE_BLOCK,
     PartialCell,
     bezel_corner,
     bezel_rule,
@@ -50,8 +49,10 @@ from .rendering import (
     motion_cells,
     motion_units,
     render_board_row,
+    snake_joins,
 )
 from .settings import MODE_ROW, ROWS, WORLD_ROW, widest_help
+from .snake_glyphs import SNAKE_GLYPH_SETS, GlyphSet
 from .themes import LCD_BEZEL_STYLE, LCD_BOARD_STYLE
 from .timing import StepClock, next_wake_delay
 
@@ -1013,13 +1014,14 @@ class BoardState:
 
     Every line is rendered from this snapshot rather than from the live game, so
     the view always knows exactly what is on screen and can repaint only the
-    cells that differ from the next snapshot. `partial` holds the cells drawn
-    part way through an interpolated step.
+    cells that differ from the next snapshot. `snake` maps each snake cell to its
+    joins (see `rendering.snake_joins`), so a cell whose joins change is redrawn
+    too. `partial` holds the cells drawn part way through an interpolated step.
     """
 
     width: int
     height: int
-    snake: frozenset[Position]
+    snake: Mapping[Position, int]
     food: Position
     world: int
     food_symbol: str
@@ -1027,13 +1029,20 @@ class BoardState:
 
     @classmethod
     def capture(
-        cls, game: Game, partial: Mapping[Position, PartialCell] | None = None
+        cls,
+        game: Game,
+        partial: Mapping[Position, PartialCell] | None = None,
+        vacated: Position | None = None,
     ) -> BoardState:
-        """Snapshot the parts of `game` the board draws."""
+        """Snapshot the parts of `game` the board draws.
+
+        A `vacated` tail cell still draining away is drawn joined to the new tail.
+        """
+        body = game.snake if vacated is None else [*game.snake, vacated]
         return cls(
             game.width,
             game.height,
-            frozenset(game.snake),
+            snake_joins(body, game.width, game.height),
             game.food,
             game.current_world,
             game.food_symbol,
@@ -1199,19 +1208,20 @@ class SnakeView(Widget):
             *regions, repaint=repaint, layout=layout, recompose=recompose
         )
 
+    @property
+    def _glyphs(self) -> GlyphSet:
+        """The glyph set the snake is drawn with."""
+        return SNAKE_GLYPH_SETS[_snake_app(self).config.snake_glyphs]
+
     def motion_units(self) -> int:
         """Increments per step when interpolating at this scale; 1 when disabled.
 
-        Partial cells are drawn with block elements, so interpolation needs the
-        default snake and blank glyphs as well as `smooth_motion`.
+        Partial cells leave their unfilled part blank, so interpolation needs the
+        default blank glyph as well as `smooth_motion`.
         """
         config = _snake_app(self).config
-        if (
-            config.smooth_motion
-            and config.snake_block == SMOOTH_SNAKE_BLOCK
-            and config.empty_cell == SMOOTH_EMPTY_CELL
-        ):
-            return motion_units(self._scale)
+        if config.smooth_motion and config.empty_cell == SMOOTH_EMPTY_CELL:
+            return motion_units(self._scale, self._glyphs)
         return 1
 
     def update_board(
@@ -1221,7 +1231,9 @@ class SnakeView(Widget):
 
         With `motion`, the step just taken is drawn `progress` of the way done.
         """
+        game = _snake_app(self).game
         partial: dict[Position, PartialCell] = {}
+        vacated: Position | None = None
         if (
             motion is not None
             and motion.head is not None
@@ -1235,13 +1247,22 @@ class SnakeView(Widget):
                 motion.vacated_heading,
                 progress,
                 self._scale,
+                self._glyphs,
+                game.width,
+                game.height,
             )
-        state = BoardState.capture(_snake_app(self).game, partial)
+            if motion.vacated in partial:
+                vacated = motion.vacated
+        state = BoardState.capture(game, partial, vacated)
         drawn, self._drawn = self._drawn, state
         if drawn is None or (state.width, state.height) != (drawn.width, drawn.height):
             super().refresh()
             return
-        changed = set(drawn.snake ^ state.snake)
+        changed = {
+            cell
+            for cell in drawn.snake.keys() | state.snake.keys()
+            if drawn.snake.get(cell) != state.snake.get(cell)
+        }
         if (drawn.food, drawn.world, drawn.food_symbol) != (
             state.food,
             state.world,
@@ -1423,7 +1444,7 @@ class SnakeView(Widget):
             state.snake,
             state.food,
             self._scale,
-            config.snake_block,
+            self._glyphs,
             config.empty_cell,
             self._food_tile(state),
             state.partial,

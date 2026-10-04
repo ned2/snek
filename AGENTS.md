@@ -87,10 +87,10 @@ uv run textual run --dev snek.app:SnakeApp  # Run with dev tools
 `docs/adr/` holds one architecture decision record (ADR) per decision; its `README.md` lists
 them and gives the format. Read the ADR before changing the area it covers: screens and
 navigation, the model→view `StepResult`, the logical grid and cell scale, step timing, board
-rendering, interpolated motion, modes and settings, worlds and pace, Classic's Nokia defaults,
-or sprite food. A change that alters a recorded decision updates or supersedes its ADR in the
-same change. A new decision that is hard to reverse, surprising without context, and the result
-of a real trade-off gets a new ADR.
+rendering, the snake's shape and glyphs, interpolated motion, modes and settings, worlds and
+pace, Classic's Nokia defaults, or sprite food. A change that alters a recorded decision updates
+or supersedes its ADR in the same change. A new decision that is hard to reverse, surprising
+without context, and the result of a real trade-off gets a new ADR.
 
 A change to player-facing behaviour (modes, worlds, controls, flags, settings) updates
 [README.md](README.md) in the same change.

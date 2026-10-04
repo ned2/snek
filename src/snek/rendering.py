@@ -27,15 +27,24 @@ pre-built *tile* so the board walker stays independent of how food is drawn:
 `glyph_food_tile` keeps the single themed glyph; a sprite tile (see `sprites`)
 swaps in pixel art. Both are `scale` rows tall and `2*scale` columns wide.
 
+The snake is drawn narrower than its cells, like Nokia Snake's: `snake_tile`
+draws a cell in pixels finer than a character (see `snake_glyphs`), lighting the
+cell but for a gap along its right and bottom edges, which it fills only where
+it joins the next segment. Runs of the snake that lie side by side stay apart,
+while the body reads as one piece. `snake_joins` works out those joins from the
+snake's order.
+
 Between steps the view can interpolate motion. `motion_cells` works out which
 cells are partly drawn at a given progress through a step: the head fills in
 from the side it entered while the vacated tail cell drains towards the tail, so
-the visible length stays constant. `partial_tile` draws such a cell with block
-elements, and `render_board_row` draws those cells in place of whole ones.
+the visible length stays constant. `snake_tile` clips such a cell from that
+side (and the neighbour holding the join, if that is still moving), and
+`render_board_row` draws those cells in place of whole ones.
 """
 
-from collections.abc import Mapping
-from collections.abc import Set as AbstractSet
+from collections.abc import Mapping, Sequence
+from functools import lru_cache
+from itertools import pairwise
 from types import MappingProxyType
 from typing import Final
 
@@ -44,6 +53,7 @@ from rich.style import Style
 
 from .config import GameConfig
 from .game_rules import Direction, GameRules, Position
+from .snake_glyphs import GlyphSet
 
 # Subtle frame around the play area; dim so it reads as chrome, not as snake.
 # No explicit colour, so it inherits the widget's colour (theme primary).
@@ -77,14 +87,21 @@ CELL_BASE_WIDTH = 2
 # columns. Kept as a type alias for readability at call sites.
 FoodTile = list[list[Segment]]
 
-# A partly drawn snake cell: the side its filled part sits against, and how many
-# of the cell's `motion_units(scale)` are filled from that side.
-PartialCell = tuple[Direction, int]
+# A cut through a partly drawn snake cell: the side its drawn part sits against,
+# and how many of the cell's pixels (see `cell_pixels`) are drawn from that side.
+Clip = tuple[Direction, int]
 
-# Partial cells are drawn with block elements: whole columns across, half rows
-# up and down. They match the default snake and blank glyphs, which is what
-# interpolation requires.
-SMOOTH_SNAKE_BLOCK = "██"
+# A partly drawn snake cell: the clips that cut it. All of them apply, since a
+# short snake's cell can be cut from both ends at once.
+PartialCell = tuple[Clip, ...]
+
+# A snake cell's joins: which of its gaps, right and bottom, it fills to join the
+# segment beyond. A cell's left and top joins are its neighbours' to draw.
+JOIN_RIGHT: Final = 1
+JOIN_DOWN: Final = 2
+
+# Partial cells leave the unfilled part blank, so interpolation needs the default
+# blank glyph.
 SMOOTH_EMPTY_CELL = "  "
 
 # Fraction of an increment within which a step's progress counts as on a
@@ -96,9 +113,6 @@ _EMPTY_PARTIAL: dict[Position, PartialCell] = {}
 NO_PARTIAL_CELLS: Final[Mapping[Position, PartialCell]] = MappingProxyType(
     _EMPTY_PARTIAL
 )
-_FULL = "█"
-_UPPER_HALF = "▀"
-_LOWER_HALF = "▄"
 
 
 def compute_layout(
@@ -198,40 +212,91 @@ def glyph_food_tile(
     ]
 
 
-def motion_units(scale: int) -> int:
+def cell_pixels(scale: int, glyphs: GlyphSet) -> tuple[int, int]:
+    """The ``(columns, rows)`` of pixels a snake cell is drawn in at `scale`."""
+    return CELL_BASE_WIDTH * scale * glyphs.columns, scale * glyphs.rows
+
+
+def _gap(pixels: int) -> int:
+    """The gap beside a snake cell `pixels` long: a quarter, like Nokia's.
+
+    Nokia Snake drew 3 pixels of each 4-pixel cell. Rounded to the nearest pixel,
+    and never less than one, so runs side by side always stay apart.
+    """
+    return max(1, (pixels + 2) // 4)
+
+
+@lru_cache(maxsize=1024)
+def snake_tile(
+    glyphs: GlyphSet, scale: int, joins: int, clips: PartialCell = ()
+) -> FoodTile:
+    """A snake cell: lit but for a gap on its right and bottom, filled where it joins.
+
+    `joins` holds `JOIN_RIGHT` and `JOIN_DOWN`. Each of `clips` keeps only that
+    many pixels from its anchored side, as the cell fills or drains during a
+    step. Rows are unstyled, so they take the snake's colour.
+    """
+    columns, rows = cell_pixels(scale, glyphs)
+    lit_columns, lit_rows = columns - _gap(columns), rows - _gap(rows)
+    right, down = bool(joins & JOIN_RIGHT), bool(joins & JOIN_DOWN)
+    lit = [
+        [
+            (c < lit_columns or right) and (r < lit_rows or (down and c < lit_columns))
+            for c in range(columns)
+        ]
+        for r in range(rows)
+    ]
+    for anchor, filled in clips:
+        for r in range(rows):
+            for c in range(columns):
+                inside = {
+                    Direction.LEFT: c < filled,
+                    Direction.RIGHT: c >= columns - filled,
+                    Direction.UP: r < filled,
+                    Direction.DOWN: r >= rows - filled,
+                }[anchor]
+                lit[r][c] = lit[r][c] and inside
+    return [[Segment(line)] for line in glyphs.encode(lit)]
+
+
+def snake_joins(
+    snake: Sequence[Position], width: int, height: int
+) -> dict[Position, int]:
+    """Each snake cell's joins (see `snake_tile`), from the cells in body order.
+
+    Wrap-aware: segments either side of a wrapping edge join across it, so the
+    cell on the right or bottom edge fills its gap against the edge.
+    """
+    joins = dict.fromkeys(snake, 0)
+    for cell, beyond in pairwise(snake):
+        direction = GameRules.direction_between(cell, beyond, width, height)
+        if direction is Direction.RIGHT:
+            joins[cell] |= JOIN_RIGHT
+        elif direction is Direction.LEFT:
+            joins[beyond] |= JOIN_RIGHT
+        elif direction is Direction.DOWN:
+            joins[cell] |= JOIN_DOWN
+        elif direction is Direction.UP:
+            joins[beyond] |= JOIN_DOWN
+    return joins
+
+
+def motion_units(scale: int, glyphs: GlyphSet) -> int:
     """How many visible increments one step is drawn in at `scale`.
 
-    A cell is ``2*scale`` columns wide and `scale` rows (``2*scale`` half rows)
-    tall, so either axis moves in ``2*scale`` equal physical increments.
+    One a pixel across the cell. Every glyph set has at least as many pixels
+    across a cell as down it, so a step down moves at most a pixel an increment.
     """
-    return CELL_BASE_WIDTH * scale
+    return cell_pixels(scale, glyphs)[0]
 
 
-def partial_tile(anchor: Direction, filled: int, scale: int) -> FoodTile:
-    """A snake cell with `filled` of its `motion_units` drawn against `anchor`.
+def _pixels_filled(units_filled: int, units: int, pixels: int) -> int:
+    """Pixels to draw for `units_filled` of `units`, along an axis `pixels` long.
 
-    Horizontal anchors fill whole columns; vertical anchors fill half rows with
-    upper and lower half blocks. Rows are unstyled, like whole snake cells, so
-    they inherit the snake colour.
+    The nearest pixel, rounding halves up, so increments stay as even as the
+    pixels allow on an axis with fewer pixels than increments.
     """
-    cols = CELL_BASE_WIDTH * scale
-    if anchor in (Direction.LEFT, Direction.RIGHT):
-        fill = _FULL * filled
-        empty = " " * (cols - filled)
-        text = fill + empty if anchor is Direction.LEFT else empty + fill
-        return [[Segment(text)] for _ in range(scale)]
-    rows: FoodTile = []
-    for r in range(scale):
-        # Half-row indices counted from the anchored edge.
-        near, far = (2 * r, 2 * r + 1)
-        if anchor is Direction.DOWN:
-            near, far = (2 * (scale - 1 - r), 2 * (scale - 1 - r) + 1)
-        upper, lower = (near < filled, far < filled)
-        if anchor is Direction.DOWN:
-            upper, lower = lower, upper
-        glyph = _FULL if upper and lower else _UPPER_HALF if upper else _LOWER_HALF
-        rows.append([Segment((glyph if upper or lower else " ") * cols)])
-    return rows
+    return (2 * units_filled * pixels + units) // (2 * units)
 
 
 def motion_cells(
@@ -241,35 +306,74 @@ def motion_cells(
     vacated_heading: Direction | None,
     progress: float,
     scale: int,
+    glyphs: GlyphSet,
+    width: int,
+    height: int,
 ) -> dict[Position, PartialCell]:
     """The partly drawn cells `progress` of the way through a step.
 
     The step has already moved the model: `head` is its new head and `vacated`
-    its old tail cell (None when the snake grew). The drawing trails the model
-    by up to one step. The head shows ``floor(progress * units) + 1`` units
-    filled from the side it entered, so a move shows at once; the vacated cell
-    keeps the rest against the side the tail moved towards. The visible length
-    is constant, and a fully drawn step needs no partial cells.
+    its old tail cell (None when the snake grew), on a `width` x `height` board.
+    The drawing trails the model by up to one step. The front of the snake has
+    moved ``floor(progress * units) + 1`` of the step's `motion_units`, so a move
+    shows at once, and its back the same; each is converted to pixels along its
+    own axis.
+
+    Each end slides a pixel an increment, gap included. A cell's join sits in
+    its own right or bottom gap (see `snake_tile`), so moving right or down the
+    head's join is in the neck and is drawn first, before the head's own pixels;
+    moving left or up the vacated cell's join is in the new tail and is drawn
+    away last. The visible length is constant, and a fully drawn step needs no
+    partial cells.
 
     A head moving into the cell its own tail just left stays whole.
     """
-    units = motion_units(scale)
+    units = motion_units(scale, glyphs)
     filled = min(units, int(progress * units + _BOUNDARY_TOLERANCE) + 1)
     if filled >= units or head == vacated:
         return {}
-    cells = {head: (GameRules.get_opposite_direction(heading), filled)}
+    columns, rows = cell_pixels(scale, glyphs)
+    clips: dict[Position, list[Clip]] = {}
+
+    def clip(cell: Position, anchor: Direction, pixels: int) -> None:
+        clips.setdefault(cell, []).append((anchor, pixels))
+
+    length = columns if heading in (Direction.LEFT, Direction.RIGHT) else rows
+    gap = _gap(length)
+    moved = max(1, _pixels_filled(filled, units, length))
+    back = GameRules.get_opposite_direction(heading)
+    if heading in (Direction.RIGHT, Direction.DOWN):
+        neck = GameRules.calculate_new_position(head, back, width, height)
+        if moved < gap:
+            clip(neck, back, length - gap + moved)
+        clip(head, back, max(0, moved - gap))
+    else:
+        clip(head, back, moved)
+
     if vacated is not None and vacated_heading is not None:
-        cells[vacated] = (vacated_heading, units - filled)
-    return cells
+        across = vacated_heading in (Direction.LEFT, Direction.RIGHT)
+        length = columns if across else rows
+        gap = _gap(length)
+        left = length - _pixels_filled(filled, units, length)
+        if vacated_heading in (Direction.RIGHT, Direction.DOWN):
+            clip(vacated, vacated_heading, left)
+        else:
+            tail = GameRules.calculate_new_position(
+                vacated, vacated_heading, width, height
+            )
+            clip(vacated, vacated_heading, max(0, left - gap))
+            if left < gap:
+                clip(tail, vacated_heading, length - gap + left)
+    return {cell: tuple(cuts) for cell, cuts in clips.items()}
 
 
 def render_board_row(
     width: int,
     y: int,
-    snake: AbstractSet[Position],
+    snake: Mapping[Position, int],
     food: Position,
     scale: int,
-    snake_block: str,
+    glyphs: GlyphSet,
     empty_cell: str,
     food_tile: FoodTile,
     partial: Mapping[Position, PartialCell] = NO_PARTIAL_CELLS,
@@ -277,45 +381,45 @@ def render_board_row(
     """Draw logical row `y` as Segments: one inner list per terminal row.
 
     Each logical cell becomes a ``(2*scale) x scale`` block, so this returns
-    `scale` terminal rows. Snake and empty cells tile their base glyph
-    (`snake_block` / `empty_cell`) and stay unstyled so they inherit the widget
-    colour; the food cell uses `food_tile`, whose rows already span the block
-    width and may carry their own styles. Cells in `partial` are drawn part
-    filled (see `partial_tile`), whatever else they hold.
+    `scale` terminal rows. `snake` maps each snake cell to its joins (see
+    `snake_joins`), and snake cells are drawn with `glyphs` (see `snake_tile`).
+    Snake and empty cells (tiling `empty_cell`) stay unstyled so they inherit
+    the widget colour; the food cell uses `food_tile`, whose rows already span
+    the block width and may carry their own styles. Cells in `partial` are drawn
+    part filled, with their joins in `snake` if they have any, whatever else
+    they hold.
 
     Each row is simplified so runs of same-style cells become one Segment. Textual
     emits a style reset and a full colour escape per Segment, so an uncoalesced
     row costs one escape pair per cell — most of the bytes written per frame.
     """
-    snake_text = snake_block * scale
     empty_text = empty_cell * scale
 
     block_rows: list[list[Segment]] = [[] for _ in range(scale)]
     for x in range(width):
         pos = (x, y)
         if pos in partial:
-            anchor, filled = partial[pos]
-            for r, tile_row in enumerate(partial_tile(anchor, filled, scale)):
-                block_rows[r].extend(tile_row)
+            tile = snake_tile(glyphs, scale, snake.get(pos, 0), partial[pos])
         elif pos in snake:
-            for r in range(scale):
-                block_rows[r].append(Segment(snake_text))
+            tile = snake_tile(glyphs, scale, snake[pos])
         elif pos == food:
-            for r in range(scale):
-                block_rows[r].extend(food_tile[r])
+            tile = food_tile
         else:
             for r in range(scale):
                 block_rows[r].append(Segment(empty_text))
+            continue
+        for r in range(scale):
+            block_rows[r].extend(tile[r])
     return [list(Segment.simplify(row)) for row in block_rows]
 
 
 def render_board(
     width: int,
     height: int,
-    snake: AbstractSet[Position],
+    snake: Mapping[Position, int],
     food: Position,
     scale: int,
-    snake_block: str,
+    glyphs: GlyphSet,
     empty_cell: str,
     food_tile: FoodTile,
 ) -> list[list[Segment]]:
@@ -324,7 +428,7 @@ def render_board(
         line
         for y in range(height)
         for line in render_board_row(
-            width, y, snake, food, scale, snake_block, empty_cell, food_tile
+            width, y, snake, food, scale, glyphs, empty_cell, food_tile
         )
     ]
 

@@ -68,6 +68,7 @@ def test_rows_are_in_the_agreed_order() -> None:
         "Grid cap",
         "Cell scale",
         "Smooth motion",
+        "Snake glyphs",
         "Food type",
         "Palette",
         "Demo strategy",

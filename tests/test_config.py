@@ -8,6 +8,7 @@ from snek.config import (
     FOOD_TYPES,
     MIN_SPRITE_SCALE,
     PALETTES,
+    SNAKE_GLYPHS,
     WORLD_CHANGES,
     GameConfig,
 )
@@ -94,8 +95,6 @@ def test_grid_cap_cannot_be_below_layout_minimum(field: str) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("snake_block", "█", "exactly 2 terminal cells"),
-        ("snake_block", 2, "must be a string"),
         ("empty_cell", " ", "exactly 2 terminal cells"),
         ("empty_cell", None, "must be a string"),
     ],
@@ -105,6 +104,13 @@ def test_render_cells_have_stable_terminal_width(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         GameConfig(**{field: value})
+
+
+def test_snake_glyphs_are_one_of_the_glyph_sets() -> None:
+    for glyphs in SNAKE_GLYPHS:
+        assert GameConfig(snake_glyphs=glyphs).snake_glyphs == glyphs
+    with pytest.raises(ValueError, match="snake_glyphs must be one of"):
+        GameConfig(snake_glyphs="braille")
 
 
 def test_food_type_is_one_of_the_food_types() -> None:

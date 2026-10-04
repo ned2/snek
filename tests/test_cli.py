@@ -43,6 +43,13 @@ def test_world_flags_default_to_the_mode():
         (["--mode", "arena"], "palette", "worlds"),
         (["--palette", "worlds"], "palette", "worlds"),
         (["--mode", "arena", "--palette", "lcd"], "palette", "lcd"),
+        ([], "snake_glyphs", "sextants"),
+        (["--snake-glyphs", "octants"], "snake_glyphs", "octants"),
+        (
+            ["--mode", "arcade", "--snake-glyphs", "half-blocks"],
+            "snake_glyphs",
+            "half-blocks",
+        ),
     ],
 )
 def test_main_applies_world_flags(monkeypatch, argv, field, value):
@@ -60,6 +67,7 @@ def test_main_applies_world_flags(monkeypatch, argv, field, value):
         ["--foods-per-world", "30"],
         ["--foods-per-world", "0"],
         ["--palette", "sepia"],
+        ["--snake-glyphs", "braille"],
     ],
 )
 def test_parser_rejects_values_off_the_settings_rows(argv):
