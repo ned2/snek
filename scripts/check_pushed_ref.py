@@ -1,9 +1,10 @@
-"""Run the complete quality gate on the exact revision being pushed.
+"""Run the static checks and tests on the exact revision being pushed.
 
 pre-commit's pre-push stage names the pushed commit in ``PRE_COMMIT_TO_REF`` but runs hooks in
 the developer's checkout, whose working tree and index may differ from it: a staged fix could
 make a broken commit pass. This checks the revision out in a temporary detached worktree and runs
-that revision's own ``make quality`` there. Without ``PRE_COMMIT_TO_REF`` it checks ``HEAD``.
+that revision's own ``make quick`` there. Without ``PRE_COMMIT_TO_REF`` it checks ``HEAD``. The
+rest of the gate (audit, packaging) and the other Python versions run in CI.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from tempfile import TemporaryDirectory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PRE_COMMIT_TO_REF = "PRE_COMMIT_TO_REF"
+GATE = ["make", "quick"]
 
 # Variables tying a process to the developer's checkout or to the calling make. The worktree's
 # gate runs without them; ``UV_PROJECT_ENVIRONMENT`` is replaced instead (see below).
@@ -46,7 +48,7 @@ def worktree_environment(checkout: Path) -> dict[str, str]:
 
 
 def check_revision(revision: str) -> None:
-    """Run ``make quality`` for ``revision`` in a temporary detached worktree."""
+    """Run the gate for ``revision`` in a temporary detached worktree."""
     if is_null_ref(revision):
         print("Skipping quality gates for a deleted ref.")
         return
@@ -60,7 +62,7 @@ def check_revision(revision: str) -> None:
         )
         try:
             subprocess.run(
-                ["make", "quality"],
+                GATE,
                 cwd=checkout,
                 env=worktree_environment(checkout),
                 check=True,
@@ -82,7 +84,7 @@ def main() -> int:
         print(f"\nQuality gate failed for {revision}: {error}", file=sys.stderr)
         return 1
 
-    print(f"\nAll local quality gates passed for {revision}.")
+    print(f"\nStatic checks and tests passed for {revision}.")
     return 0
 
 

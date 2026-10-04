@@ -1,6 +1,6 @@
 # Make is the development lifecycle interface
 
-Decided 2026-08-27 (issue 0021); implemented 2026-10-03.
+Decided 2026-08-27 (issue 0021); implemented 2026-10-03; CI and the trimmed pre-push gate added 2026-10-05 (issue 0020).
 
 The local quality gate (lockfile, lint, formatting, types, tests with a coverage floor,
 dependency audit, distribution checks and isolated install smoke tests) began as one Python
@@ -16,8 +16,15 @@ Make orchestrates, Python does the procedural work. Inspecting archive contents 
 `scripts/check_distribution.py`, and the pre-push check stays in `scripts/check_pushed_ref.py`.
 pre-commit names the pushed commit but runs hooks in the developer's checkout, where staged or
 unstaged changes could make a broken commit pass, so the helper checks the commit out in a
-temporary detached worktree, runs that revision's own `make quality` there and always removes
+temporary detached worktree, runs that revision's own gate there and always removes
 it. In shell that would need `mktemp` and traps; in Python it is short and unit-tested.
+
+Since 2026-10-05 GitHub Actions runs `make quality`'s stages on every push to `dev` and every
+pull request, with `make test` on each supported Python on Linux and on the oldest and newest on
+macOS, and the pre-push hook runs only `make quick` (`check` and `test`). Once CI runs the whole
+gate on every version, repeating audit and packaging before each push only adds waiting, and the
+local gate can only ever check one Python. CI calls the targets directly, never `make pre-push`,
+whose worktree and environment handling exist for the developer's checkout.
 
 ## Considered options
 
@@ -41,3 +48,7 @@ it. In shell that would need `mktemp` and traps; in Python it is short and unit-
   `UV_PROJECT_ENVIRONMENT` for the developer's checkout, which would otherwise make it sync the
   developer's `.venv` against the pushed revision.
 - The orchestration is tested through `make --dry-run` output and the helper's unit tests.
+- A push can reach `dev` with a failing audit or package stage, or failing on a Python other than
+  the developer's; CI reports it, and releases require CI to pass.
+- `make audit` ignores the advisories listed in `pip-audit-ignore.txt`, each with a reason, so an
+  advisory with no fix need not block a release.

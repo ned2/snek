@@ -31,9 +31,9 @@ Optional human or machine settings may go in the ignored `.envrc.local`; it is n
 linked worktrees. Snek's development, pytest, Ruff, and quality commands do not require project
 secrets, so there is no external agent dotenv file in the project contract.
 
-The install command enables both the fast commit hooks and the complete pre-push quality gate for
-this checkout. Commit hooks normalize repository hygiene, apply Ruff's safe lint fixes and
-formatter, and run ty over the production code and maintenance scripts.
+The install command enables both the fast commit hooks and the pre-push gate for this checkout.
+Commit hooks normalize repository hygiene, apply Ruff's safe lint fixes and formatter, and run ty
+over the production code and maintenance scripts, using the Ruff and ty versions in `uv.lock`.
 
 Run the same checks across every tracked file on demand:
 
@@ -48,12 +48,19 @@ It verifies the lockfile, Ruff lint and formatting, and ty (`make check`), the t
 branch coverage floor (`make test`), the locked runtime dependencies (`make audit`), and the
 built distributions' contents and isolated wheel and sdist installation with CLI and headless
 application smoke tests (`make package`), stopping at the first failure. Each stage also runs on
-its own. The pre-push hook runs `make pre-push`, which runs the gate on the exact revision being
-pushed in a temporary detached worktree; run it directly to check `HEAD`. The gate keeps its
-coverage data and build artifacts in the ignored `.quality/` directory (`make clean-quality`
-removes it), so it never replaces your own coverage results. Dependency auditing queries the
-vulnerability service, and first-time hook setup downloads the pinned hook environments, so those
-operations require network access.
+its own. The gate keeps its coverage data and build artifacts in the ignored `.quality/` directory
+(`make clean-quality` removes it), so it never replaces your own coverage results. Dependency
+auditing queries the vulnerability service, and first-time hook setup downloads the pinned hook
+environments, so those operations require network access. An advisory that cannot be fixed yet
+can be listed, with its reason, in `pip-audit-ignore.txt`.
+
+The pre-push hook runs `make pre-push`: the static checks and tests (`make quick`) on the exact
+revision being pushed, in a temporary detached worktree; run it directly to check `HEAD`. GitHub
+Actions runs the complete gate on every push to `dev` and every pull request, with the tests on
+Python 3.10 to 3.14 on Linux and on 3.10 and 3.14 on macOS.
+
+Development happens on the `dev` branch, and `main` holds the latest release, so open pull
+requests against `dev`.
 
 ### Design decisions
 

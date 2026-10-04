@@ -39,7 +39,7 @@ def dry_run(*arguments: str) -> list[str]:
 
 @needs_make
 def test_uv_commands_are_locked() -> None:
-    commands = dry_run("quality", "pre-push", "install-hooks")
+    commands = dry_run("quality", "quick", "pre-push", "install-hooks")
     for command in commands:
         if "uv run" in command:
             assert "uv run --locked" in command or (
@@ -101,6 +101,43 @@ def test_quality_runs_every_stage_in_order() -> None:
 
 
 @needs_make
+def test_quick_runs_the_static_checks_and_tests_only() -> None:
+    commands = dry_run("quick")
+    assert commands == [*dry_run("check"), *dry_run("test")]
+    assert not any(
+        "pip-audit" in command or "uv build" in command for command in commands
+    )
+
+
+@needs_make
+def test_audit_ignores_the_listed_advisories(tmp_path: Path) -> None:
+    ignore = tmp_path / "ignore.txt"
+    ignore.write_text(
+        "# header\n\nGHSA-aaaa-bbbb-cccc  # no fix yet\nPYSEC-2026-1 # dev only\n"
+    )
+    audit = next(
+        command
+        for command in dry_run("audit", f"AUDIT_IGNORE={ignore}")
+        if "pip-audit" in command
+    )
+    words = shlex.split(audit)
+    assert words[-4:] == [
+        "--ignore-vuln",
+        "GHSA-aaaa-bbbb-cccc",
+        "--ignore-vuln",
+        "PYSEC-2026-1",
+    ]
+
+
+def test_every_ignored_advisory_gives_a_reason() -> None:
+    for line in (PROJECT_ROOT / "pip-audit-ignore.txt").read_text().splitlines():
+        entry, _, reason = line.partition("#")
+        if entry.strip():
+            assert len(entry.split()) == 1, line
+            assert reason.strip(), f"no reason given: {line}"
+
+
+@needs_make
 def test_parallel_make_runs_the_same_serial_sequence() -> None:
     assert dry_run("-j8", "quality") == dry_run("quality")
 
@@ -153,7 +190,7 @@ def test_pre_push_checks_target_in_detached_worktree(
     assert add_cwd == check_pushed_ref.PROJECT_ROOT
 
     gate_command, gate_cwd, gate_environment = calls[1]
-    assert gate_command == ["make", "quality"]
+    assert gate_command == ["make", "quick"]
     assert gate_cwd == checkout
     assert gate_environment is not None
     assert gate_environment["UV_PROJECT_ENVIRONMENT"] == str(checkout / ".venv")

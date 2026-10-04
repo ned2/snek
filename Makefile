@@ -1,7 +1,8 @@
 # Snek's development lifecycle: named, composable quality gates.
 #
-#   make quality    every local gate, stopping at the first failure
-#   make pre-push   `quality` on the exact revision being pushed, in a clean worktree
+#   make quality    every gate, stopping at the first failure (CI runs it on every push to dev)
+#   make quick      the static checks and tests, which pre-push runs
+#   make pre-push   `quick` on the exact revision being pushed, in a clean worktree
 #   make help       list the targets
 #
 # Every target is phony, so every gate always runs. The gate's own artifacts (coverage data,
@@ -16,11 +17,14 @@ REQUIREMENTS := $(QUALITY)/runtime-requirements.txt
 COVERAGE := COVERAGE_FILE=$(CURDIR)/$(QUALITY)/coverage
 UV_RUN := uv run --locked
 UV_ISOLATED := uv run --isolated --no-project --with
+# Advisories pip-audit may ignore: one ID a line, each with a `#` reason.
+AUDIT_IGNORE := pip-audit-ignore.txt
+AUDIT_IGNORED = $(foreach id,$(shell sed 's/\#.*//' $(AUDIT_IGNORE)),--ignore-vuln $(id))
 
 .NOTPARALLEL:
 .DEFAULT_GOAL := help
 .PHONY: help install-hooks lock-check lint format-check typecheck check test audit build \
-	check-distributions smoke-install package quality pre-push clean-quality
+	check-distributions smoke-install package quick quality pre-push clean-quality
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -51,7 +55,7 @@ test: ## All tests with branch coverage, enforcing the coverage floor
 audit: ## Audit the locked runtime dependencies for known vulnerabilities
 	@mkdir -p $(QUALITY)
 	uv export --quiet --locked --no-dev --no-emit-project --output-file $(REQUIREMENTS)
-	$(UV_RUN) pip-audit --disable-pip --requirement $(REQUIREMENTS)
+	$(UV_RUN) pip-audit --disable-pip --requirement $(REQUIREMENTS) $(AUDIT_IGNORED)
 
 build: ## Build one wheel and one sdist into .quality/dist
 	rm -rf $(DIST)
@@ -68,9 +72,11 @@ smoke-install: check-distributions ## Install each archive in isolation and run 
 
 package: smoke-install ## Build, check and install-test the distributions
 
-quality: check test audit package ## Every local gate, stopping at the first failure
+quick: check test ## Static checks and tests: what pre-push runs
 
-pre-push: ## Run quality on PRE_COMMIT_TO_REF (default HEAD) in a temporary worktree
+quality: check test audit package ## Every gate, stopping at the first failure
+
+pre-push: ## Run quick on PRE_COMMIT_TO_REF (default HEAD) in a temporary worktree
 	$(UV_RUN) python scripts/check_pushed_ref.py
 
 clean-quality: ## Remove the gate's artifacts

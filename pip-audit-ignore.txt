@@ -1,0 +1,3 @@
+# Advisories `make audit` ignores, one ID a line (GHSA-…, PYSEC-…, CVE-…), each followed by
+# a `#` and the reason: why it cannot be fixed yet, why it does not affect Snek, and when to
+# revisit it. Remove an entry as soon as a fix can be locked.
