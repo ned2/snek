@@ -51,8 +51,8 @@ repos:
         always_run: true
         require_serial: true
 
-      - id: full-quality-gate
-        name: full local quality gate
+      - id: pre-push-gate
+        name: static checks and tests (make quick)
         entry: make pre-push
         language: system
         always_run: true
