@@ -1349,12 +1349,15 @@ async def test_sprites_hold_a_game_the_terminal_is_too_small_for():
 @pytest.mark.asyncio
 async def test_sprites_hold_a_game_when_the_terminal_shrinks():
     """Shrinking mid-game holds the loop; it resumes without the held time."""
+    now = [0.0]
     app = SnakeApp(config=SPRITES)
     async with app.run_test(size=(200, 50)) as pilot:
+        game_screen = app.get_screen("game")
+        assert isinstance(game_screen, GameScreen)
+        game_screen._now = lambda: now[0]
         await pilot.press("space")
         await pilot.pause()
-        game_screen = app.screen
-        assert isinstance(game_screen, GameScreen)
+        assert app.screen is game_screen
         snake_view = game_screen.query_one(SnakeView)
 
         await pilot.resize_terminal(120, 35)
@@ -1362,16 +1365,18 @@ async def test_sprites_hold_a_game_when_the_terminal_shrinks():
         assert snake_view.too_small
         assert snake_view._scale == 2  # never scale one with sprites
         assert game_screen.timer is None
-        # Held: the snake stays put for longer than several steps.
+        # Held for far longer than the game would take to cross the board.
         held = list(app.game.snake)
-        await asyncio.sleep(3 * app.game.current_interval)
-        await pilot.pause()
-        assert app.game.snake == held
+        now[0] += 100 * app.game.current_interval
 
         await pilot.resize_terminal(200, 50)
         await pilot.pause()
         assert not snake_view.too_small
         assert game_screen.timer is not None
+        # The first wake after the hold credits none of the held time.
+        now[0] += app.game.current_interval / 2
+        game_screen._on_frame()
+        assert app.game.snake == held
 
 
 @pytest.mark.asyncio

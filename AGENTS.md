@@ -171,6 +171,10 @@ A `Game` that no view established runs at cell scale 1, so its speed is its worl
 scale 1. Tests that need an exact step interval patch `snek.game.WORLD_PACES` or
 `Game.current_interval` with `monkeypatch`.
 
-To drive the game loop by hand, call `GameScreen._disarm()`, then `GameScreen.tick()`, which
-runs exactly one step and redraws it whole. `_disarm()` also invalidates a wake Textual has
-already queued, which `timer.stop()` cannot recall.
+Every game's clock is stopped in tests (`stopped_game_clock` in `tests/conftest.py`), so a
+started game never steps on its own: never rely on wall time to move the snake. To drive the
+game loop by hand, call `GameScreen._disarm()`, then `GameScreen.tick()`, which runs exactly one
+step and redraws it whole. `_disarm()` also invalidates a wake Textual has already queued, which
+`timer.stop()` cannot recall. To test timing, give the screen its own clock
+(`game_screen._now = lambda: now[0]`, set before the game starts via `app.get_screen("game")`)
+and call `_on_frame()`.

@@ -5,7 +5,19 @@ from collections.abc import Generator
 import pytest
 
 from snek.config import GameConfig
+from snek.screens import GameScreen
 from tests.snapshot_safety import sanitized_snapshot_environment
+
+
+@pytest.fixture(autouse=True)
+def stopped_game_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop every game's clock, so a started game never steps on its own.
+
+    The loop credits wall time, so on a loaded machine a stall of a second or two let a
+    live game run the snake into a wall mid-test. Tests advance the game with
+    `GameScreen.tick()`, or give a screen its own clock (`game_screen._now`) and wake it.
+    """
+    monkeypatch.setattr(GameScreen, "_now", staticmethod(lambda: 0.0))
 
 
 @pytest.fixture

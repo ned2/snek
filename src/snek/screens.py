@@ -256,6 +256,10 @@ class GameScreen(Screen[None]):
     foods_label: reactive[str] = reactive("")
     pace_label: reactive[str] = reactive("")
 
+    # The loop's clock: a class default, so tests can stop it for every game screen, and
+    # replaceable per instance, so a test can drive frames itself.
+    _now: Callable[[], float] = staticmethod(time.monotonic)
+
     def __init__(self) -> None:
         super().__init__()
         # `timer` is the single loop timer, created only by `_arm()`: a one-shot
@@ -269,8 +273,6 @@ class GameScreen(Screen[None]):
         self._clock = StepClock()
         self._last_frame: float | None = None
         self._motion: StepResult | None = None
-        # Injectable so tests can drive frames without patching the global clock.
-        self._now: Callable[[], float] = time.monotonic
         self.sidebar_visible: bool = True
         self.demo_ai: DemoStrategy | None = None
         # True while the terminal is too small to draw the board (see
