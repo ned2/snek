@@ -33,9 +33,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nedned/snek"
-Repository = "https://github.com/nedned/snek"
-Issues = "https://github.com/nedned/snek/issues"
+Homepage = "https://github.com/ned2/snek"
+Repository = "https://github.com/ned2/snek"
+Issues = "https://github.com/ned2/snek/issues"
 
 [project.scripts]
 snek = "snek.cli:main"
